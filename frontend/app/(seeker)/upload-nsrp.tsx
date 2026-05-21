@@ -18,6 +18,10 @@ export default function UploadNSRP() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploadId, setUploadId] = useState<number | null>(null);
   const [extracted, setExtracted] = useState<any | null>(null);
+  const [ocrSuccess, setOcrSuccess] = useState<boolean | null>(null);
+  const [ocrMessage, setOcrMessage] = useState('');
+  const [rawText, setRawText] = useState('');
+  const [showRawText, setShowRawText] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [confirming, setConfirming] = useState(false);

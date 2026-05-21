@@ -6,7 +6,6 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Card } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize } from '../../src/constants/theme';
@@ -61,25 +60,11 @@ export default function AdminDashboard() {
         </TouchableOpacity>
       </View>
 
-      {stats?.pending_employer_approvals > 0 && (
-        <Card style={{ backgroundColor: '#FEF3C7', borderColor: Colors.warning }}>
-          <Text style={{ fontWeight: '700', color: '#92400E' }}>
-            {stats.pending_employer_approvals} employer{stats.pending_employer_approvals === 1 ? '' : 's'} awaiting approval
-          </Text>
-          <TouchableOpacity onPress={() => router.push('/(admin)/employer-approvals')}>
-            <Text style={{ color: Colors.primary, marginTop: 4, fontWeight: '600', fontSize: FontSize.sm }}>
-              Review now →
-            </Text>
-          </TouchableOpacity>
-        </Card>
-      )}
-
       <Text style={styles.sectionTitle}>System Overview</Text>
       <View style={styles.statsGrid}>
         <BigStatCard label="Total Users" value={stats?.total_users ?? '-'} />
         <BigStatCard label="Job Seekers" value={stats?.total_job_seekers ?? '-'} />
         <BigStatCard label="Employers" value={stats?.total_employers ?? '-'} />
-        <BigStatCard label="Pending Approvals" value={stats?.pending_employer_approvals ?? '-'} highlight />
         <BigStatCard label="Total Jobs" value={stats?.total_jobs ?? '-'} />
         <BigStatCard label="Active Jobs" value={stats?.active_jobs ?? '-'} />
         <BigStatCard label="Applications" value={stats?.total_applications ?? '-'} />
@@ -89,7 +74,6 @@ export default function AdminDashboard() {
       <View style={{ gap: Spacing.sm }}>
         <ActionButton testID="admin-manage-emp" label="Manage Employers (create / view)" onPress={() => router.push('/(admin)/manage-employers')} />
         <ActionButton testID="admin-manage-seekers" label="Manage Job Seekers (deactivate / reactivate)" onPress={() => router.push('/(admin)/manage-job-seekers')} />
-        <ActionButton testID="admin-approvals" label="Employer Approvals (legacy)" onPress={() => router.push('/(admin)/employer-approvals')} />
         <ActionButton testID="admin-jobs" label="Monitor Job Posts (close)" onPress={() => router.push('/(admin)/monitor-jobs')} />
         <ActionButton testID="admin-apps" label="Monitor Applications" onPress={() => router.push('/(admin)/monitor-apps')} />
       </View>
