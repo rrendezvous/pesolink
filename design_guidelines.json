@@ -1,0 +1,134 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4 (Swiss & High-Contrast / Government Authority)",
+  "design_philosophy": {
+    "core_principles": [
+      "Clarity and Authority: The UI must convey trust and official government presence without being overly complex.",
+      "High Accessibility: Ensure text contrast meets at least WCAG AA standards. Never compromise readability for aesthetics.",
+      "Minimalist Precision: No unnecessary decorative elements. Every visual choice (borders, spacing, color) must serve a functional purpose.",
+      "Mobile-First Flat Design: Avoid heavy shadows or glassmorphism. Rely on crisp borders and distinct background colors to separate content."
+    ],
+    "mood": "Professional, trustworthy, official, and accessible."
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#047857",
+      "hover": "#065F46",
+      "description": "Primary Green - Used for main actions, active states, and prominent headers."
+    },
+    "secondary": {
+      "DEFAULT": "#065F46",
+      "description": "Deep Emerald - Used for secondary headers, critical text, and hover states of primary elements."
+    },
+    "accent": {
+      "DEFAULT": "#22C55E",
+      "description": "Accent / Success - Used for success badges (e.g., 'Hired' status), positive indicators, and secondary call-to-actions."
+    },
+    "background": {
+      "main": "#ECFDF5",
+      "surface": "#F8FAFC",
+      "card": "#D1FAE5",
+      "description": "Main background uses Light Background (#ECFDF5). Secondary/Neutral Surface (#F8FAFC) for alternating sections or modals. Cards use Card Highlight (#D1FAE5)."
+    },
+    "text": {
+      "primary": "#064E3B",
+      "secondary": "#047857",
+      "description": "Text Dark (#064E3B) for all main typography. Never use generic black. Ensure high contrast."
+    },
+    "border": {
+      "DEFAULT": "#A7F3D0",
+      "description": "Used for dividers, card borders, and input outlines."
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "'IBM Plex Sans', sans-serif",
+      "body": "'Public Sans', sans-serif"
+    },
+    "scale": {
+      "h1": "text-3xl md:text-4xl font-bold tracking-tight text-[#064E3B]",
+      "h2": "text-2xl md:text-3xl font-semibold tracking-tight text-[#064E3B]",
+      "h3": "text-xl md:text-2xl font-medium text-[#047857]",
+      "body": "text-base leading-relaxed text-[#064E3B]",
+      "small": "text-sm text-[#065F46]",
+      "label": "text-xs font-bold uppercase tracking-[0.1em] text-[#047857]"
+    },
+    "rules": [
+      "Never center paragraphs of text.",
+      "Maintain a 2-step hierarchy gap between headings and body text.",
+      "Use explicit hover states for all interactive text."
+    ]
+  },
+  "spacing_and_layout": {
+    "grid_system": "Mobile-first, single column for phones, max 2-column bento grids for tablets/desktop views.",
+    "container": "w-full max-w-md mx-auto px-4 md:max-w-2xl md:px-6 (optimized for mobile app feel)",
+    "padding": {
+      "card": "p-4 md:p-6",
+      "section": "py-8 md:py-12"
+    },
+    "corners": {
+      "card": "rounded-xl",
+      "button": "rounded-lg",
+      "input": "rounded-md"
+    },
+    "shadows": {
+      "card": "shadow-sm shadow-[#A7F3D0]/50",
+      "button": "shadow-none",
+      "active": "shadow-inner"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#047857] hover:bg-[#065F46] text-white font-medium px-4 py-3 rounded-lg w-full transition-colors flex items-center justify-center gap-2",
+      "secondary": "bg-[#ECFDF5] border border-[#047857] text-[#047857] hover:bg-[#D1FAE5] font-medium px-4 py-3 rounded-lg w-full transition-colors",
+      "accent": "bg-[#22C55E] hover:bg-[#047857] text-white font-medium px-4 py-3 rounded-lg transition-colors"
+    },
+    "cards": {
+      "base": "bg-[#D1FAE5] border border-[#A7F3D0] rounded-xl p-5 flex flex-col gap-3",
+      "surface": "bg-[#F8FAFC] border border-[#A7F3D0] rounded-xl p-5"
+    },
+    "inputs": {
+      "base": "bg-white border border-[#A7F3D0] text-[#064E3B] rounded-md px-3 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-[#047857] focus:border-transparent placeholder:text-[#A7F3D0]"
+    },
+    "badges": {
+      "pending": "bg-[#F8FAFC] text-[#064E3B] border border-[#064E3B] px-2 py-1 rounded-full text-xs font-bold",
+      "for_review": "bg-[#D1FAE5] text-[#047857] border border-[#047857] px-2 py-1 rounded-full text-xs font-bold",
+      "rejected": "bg-[#F8FAFC] text-[#064E3B] px-2 py-1 rounded-full text-xs font-bold opacity-75",
+      "hired": "bg-[#22C55E] text-white px-2 py-1 rounded-full text-xs font-bold shadow-sm"
+    }
+  },
+  "interactive_rules": {
+    "hover_states": "All buttons and links must have a noticeable background or text color shift. Do not rely solely on cursor changes.",
+    "testing_attributes": "All interactive elements MUST include a `data-testid` attribute (e.g., `data-testid='login-button'`).",
+    "animations": "Keep animations minimal. Use quick (150ms) ease-in-out transitions for opacity and background-color."
+  },
+  "media": {
+    "guidelines": "Use photography that represents real, professional interactions in the Philippines or similar formal settings. No overly abstract or neon imagery.",
+    "images": {
+      "onboarding_hero": {
+        "url": "https://images.unsplash.com/photo-1758518727653-5650fd9e146c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1NzZ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBqb2IlMjBpbnRlcnZpZXd8ZW58MHx8fHwxNzc4NjcyMjE5fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Professional job interview"
+      },
+      "office_collaboration": {
+        "url": "https://images.pexels.com/photos/8691842/pexels-photo-8691842.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Modern office workers collaborating"
+      },
+      "government_facade": {
+        "url": "https://images.unsplash.com/photo-1770810415797-a2d6e7839b4c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxnb3Zlcm5tZW50JTIwYnVpbGRpbmclMjBmYWNhZGV8ZW58MHx8fHwxNzc4NjcyMjE5fDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Government building facade"
+      },
+      "interview_success": {
+        "url": "https://images.pexels.com/photos/7644081/pexels-photo-7644081.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "alt": "Successful job interview setting"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the provided color hex codes. Do not use generic Tailwind colors (e.g., green-500). Define them in tailwind.config.js.",
+    "Build the UI with a mobile-first approach. Ensure all tap targets are at least 44x44px.",
+    "The application is a government service (PESO) - prioritize readability, contrast, and straightforward navigation.",
+    "Use Lucide React icons for UI elements, ensuring they are sized appropriately (e.g., w-5 h-5 for buttons).",
+    "Forms like the NSRP Profile should use clear labels and distinct input borders.",
+    "Add 'data-testid' to every button, link, and form input."
+  ]
+}
