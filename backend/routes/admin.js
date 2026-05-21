@@ -264,6 +264,60 @@ router.put('/job-seekers/:id/reactivate', async (req, res) => {
   }
 });
 
+// PUT /api/admin/job-seekers/:id/referral-status - PESO review of submitted NSRP profile
+router.put('/job-seekers/:id/referral-status', async (req, res) => {
+  const { referral_status, notes } = req.body;
+  const allowed = ['referral_ready', 'needs_revision'];
+  if (!allowed.includes(referral_status)) {
+    return res.status(400).json({ error: 'referral_status must be referral_ready or needs_revision' });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_seekers WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Job seeker not found' });
+    }
+    const seeker = rows[0];
+
+    if (!seeker.profile_completed) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Profile is incomplete and cannot be marked referral-ready' });
+    }
+
+    await conn.query(
+      `UPDATE job_seekers
+       SET referral_status=?, referral_review_notes=?, referral_reviewed_by=?, referral_reviewed_at=NOW()
+       WHERE id=?`,
+      [referral_status, notes || null, req.user.id, req.params.id]
+    );
+
+    const isReady = referral_status === 'referral_ready';
+    await conn.query(
+      `INSERT INTO notifications (user_id, title, message, type)
+       VALUES (?, ?, ?, 'nsrp_referral_review')`,
+      [
+        seeker.user_id,
+        isReady ? 'NSRP Profile Referral-Ready' : 'NSRP Profile Needs Revision',
+        isReady
+          ? 'PESO has reviewed your NSRP profile and marked it referral-ready. This does not represent hiring approval.'
+          : `PESO reviewed your NSRP profile and requested revisions.${notes ? ' Notes: ' + notes : ''}`,
+      ]
+    );
+
+    await conn.commit();
+    res.json({ message: 'Referral status updated', referral_status });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Admin Referral Status]', err);
+    res.status(500).json({ error: 'Failed to update referral status' });
+  } finally {
+    conn.release();
+  }
+});
+
 // PUT /api/admin/jobs/:id/close - admin soft-closes a job post (no hard delete)
 router.put('/jobs/:id/close', async (req, res) => {
   const { reason } = req.body;

@@ -1,9 +1,9 @@
 // ============================================================
-// Admin Dashboard - simple counts only
+// Admin Dashboard
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api, getApiError } from '../../src/api/client';
@@ -28,7 +28,11 @@ export default function AdminDashboard() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   const handleLogout = () => {
     confirmAction(
@@ -46,93 +50,142 @@ export default function AdminDashboard() {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       testID="admin-dashboard"
     >
-      <View style={styles.welcomeCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.welcomeLabel}>PESO Admin Console</Text>
-          <Text style={styles.welcomeName}>PESO Misamis Oriental</Text>
-          <Text style={styles.welcomeEmail}>{user?.email}</Text>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.headerTitle}>Admin Console</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="admin-logout">
-          <Text style={styles.logout}>Sign out</Text>
+        <TouchableOpacity onPress={handleLogout} testID="admin-logout" style={styles.exitButton}>
+          <Text style={styles.exitText}>Exit</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>System Overview</Text>
-      <View style={styles.statsGrid}>
-        <BigStatCard label="Total Users" value={stats?.total_users ?? '-'} />
-        <BigStatCard label="Job Seekers" value={stats?.total_job_seekers ?? '-'} />
-        <BigStatCard label="Employers" value={stats?.total_employers ?? '-'} />
-        <BigStatCard label="Total Jobs" value={stats?.total_jobs ?? '-'} />
-        <BigStatCard label="Active Jobs" value={stats?.active_jobs ?? '-'} />
-        <BigStatCard label="Applications" value={stats?.total_applications ?? '-'} />
-      </View>
+      <View style={styles.body}>
+        <View style={styles.officeCard}>
+          <Text style={styles.officeLabel}>Employment Registration and Validation Support</Text>
+          <Text style={styles.officeName}>PESO Misamis Oriental</Text>
+          <Text style={styles.officeEmail}>{user?.email}</Text>
+        </View>
 
-      <Text style={styles.sectionTitle}>Management</Text>
-      <View style={{ gap: Spacing.sm }}>
-        <ActionButton testID="admin-manage-emp" label="Manage Employers (create / view)" onPress={() => router.push('/(admin)/manage-employers')} />
-        <ActionButton testID="admin-manage-seekers" label="Manage Job Seekers (deactivate / reactivate)" onPress={() => router.push('/(admin)/manage-job-seekers')} />
-        <ActionButton testID="admin-jobs" label="Monitor Job Posts (close)" onPress={() => router.push('/(admin)/monitor-jobs')} />
-        <ActionButton testID="admin-apps" label="Monitor Applications" onPress={() => router.push('/(admin)/monitor-apps')} />
-      </View>
+        <Text style={styles.sectionTitle}>System Overview</Text>
+        <View style={styles.statsGrid}>
+          <BigStatCard label="Total Users" value={stats?.total_users ?? '-'} />
+          <BigStatCard label="Job Seekers" value={stats?.total_job_seekers ?? '-'} />
+          <BigStatCard label="Employers" value={stats?.total_employers ?? '-'} />
+          <BigStatCard label="Total Jobs" value={stats?.total_jobs ?? '-'} />
+          <BigStatCard label="Active Jobs" value={stats?.active_jobs ?? '-'} />
+          <BigStatCard label="Applications" value={stats?.total_applications ?? '-'} />
+        </View>
 
-      <Text style={styles.footnote}>
-        OCR is optional and assistive. Users must review and confirm extracted data before saving.
-        Skill comparison is rule-based only. Status updates are tracking labels and do not represent
-        automated hiring decisions.
-      </Text>
+        <Text style={styles.sectionTitle}>Management</Text>
+        <View style={styles.actionList}>
+          <ActionButton testID="admin-manage-emp" label="Manage Employers" detail="Create and monitor employer accounts" onPress={() => router.push('/(admin)/manage-employers')} />
+          <ActionButton testID="admin-manage-seekers" label="Manage Job Seekers" detail="Review NSRP and referral-ready status" onPress={() => router.push('/(admin)/manage-job-seekers')} />
+          <ActionButton testID="admin-jobs" label="Monitor Job Posts" detail="View active and closed job posts" onPress={() => router.push('/(admin)/monitor-jobs')} />
+          <ActionButton testID="admin-apps" label="Monitor Applications" detail="Read-only application tracking" onPress={() => router.push('/(admin)/monitor-apps')} />
+        </View>
+
+        <View style={styles.noteCard}>
+          <Text style={styles.noteTitle}>Scope Reminder</Text>
+          <Text style={styles.noteText}>
+            OCR is optional and assistive. PESO Referral-Ready means the NSRP profile was reviewed for referral support.
+            Skill comparison remains rule-based only and does not make hiring decisions.
+          </Text>
+        </View>
+      </View>
     </ScrollView>
   );
 }
 
-function BigStatCard({ label, value, highlight }: { label: string; value: any; highlight?: boolean }) {
+function BigStatCard({ label, value }: { label: string; value: any }) {
   return (
-    <View style={[styles.bigStat, highlight && { backgroundColor: Colors.accent, borderColor: Colors.accent }]}>
-      <Text style={[styles.bigStatValue, highlight && { color: Colors.white }]}>{value}</Text>
-      <Text style={[styles.bigStatLabel, highlight && { color: Colors.white }]}>{label}</Text>
+    <View style={styles.bigStat}>
+      <Text style={styles.bigStatValue}>{value}</Text>
+      <Text style={styles.bigStatLabel}>{label}</Text>
     </View>
   );
 }
 
-function ActionButton({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
+function ActionButton({
+  label, detail, onPress, testID,
+}: { label: string; detail: string; onPress: () => void; testID?: string }) {
   return (
-    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.7} style={styles.actionBtn}>
-      <Text style={styles.actionText}>{label}</Text>
-      <Text style={styles.actionArrow}>›</Text>
+    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.75} style={styles.actionBtn}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.actionText}>{label}</Text>
+        <Text style={styles.actionDetail}>{detail}</Text>
+      </View>
+      <Text style={styles.actionArrow}>{'>'}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.lightBg, padding: Spacing.md },
-  welcomeCard: {
-    backgroundColor: Colors.primaryDark, borderRadius: 12, padding: Spacing.md,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.lg,
+  container: { flex: 1, backgroundColor: Colors.primaryDark },
+  content: { backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  welcomeLabel: { color: Colors.cardHighlight, fontSize: FontSize.sm },
-  welcomeName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '700', marginTop: 2 },
-  welcomeEmail: { color: Colors.cardHighlight, fontSize: FontSize.xs, marginTop: 4 },
-  logout: { color: Colors.white, fontSize: FontSize.sm, textDecorationLine: 'underline' },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark, marginTop: Spacing.md, marginBottom: Spacing.sm },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  exitButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
+  exitText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
+  body: { padding: Spacing.md },
+  officeCard: {
+    backgroundColor: Colors.primary,
+    borderRadius: 18,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  officeLabel: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
+  officeName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 8 },
+  officeEmail: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 5 },
+  sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginTop: Spacing.sm, marginBottom: Spacing.sm },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
   bigStat: {
     width: '48%',
-    backgroundColor: Colors.cardHighlight, borderColor: Colors.border, borderWidth: 1,
-    borderRadius: 10, padding: 14,
+    backgroundColor: Colors.white,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
   },
-  bigStatValue: { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.primary },
-  bigStatLabel: { fontSize: FontSize.xs, color: Colors.textDark, marginTop: 2, fontWeight: '600' },
+  bigStatValue: { fontSize: FontSize.xxl, fontWeight: '900', color: Colors.primary },
+  bigStatLabel: { fontSize: FontSize.xs, color: Colors.textDark, marginTop: 4, fontWeight: '800' },
+  actionList: { gap: Spacing.sm },
   actionBtn: {
-    backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1,
-    borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    minHeight: 64,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '600' },
-  actionArrow: { color: Colors.primary, fontSize: 22, fontWeight: '700' },
-  footnote: {
-    fontSize: FontSize.xs, color: Colors.gray, marginTop: Spacing.xl, marginBottom: Spacing.lg,
-    fontStyle: 'italic', textAlign: 'center', lineHeight: 16,
+  actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '900' },
+  actionDetail: { color: Colors.gray, fontSize: FontSize.xs, marginTop: 3 },
+  actionArrow: { color: Colors.primary, fontSize: FontSize.lg, fontWeight: '900', marginLeft: Spacing.sm },
+  noteCard: {
+    backgroundColor: Colors.cardHighlight,
+    borderColor: Colors.primary,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: Spacing.md,
+    marginTop: Spacing.lg,
   },
+  noteTitle: { color: Colors.primaryDark, fontSize: FontSize.sm, fontWeight: '900' },
+  noteText: { color: Colors.textDark, fontSize: FontSize.sm, lineHeight: 20, marginTop: 6 },
 });

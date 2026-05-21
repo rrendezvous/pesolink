@@ -113,13 +113,14 @@ async function run() {
       `INSERT INTO job_seekers
         (user_id, first_name, middle_name, last_name, date_of_birth, gender, civil_status,
          contact_number, address, city, province, education_level, course,
-         years_of_experience, employment_status, preferred_occupation, profile_completed)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+         years_of_experience, employment_status, preferred_occupation, profile_completed, referral_status,
+         referral_reviewed_by, referral_reviewed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, 'referral_ready', ?, NOW())`,
       [
         userRes.insertId, s.first_name, s.middle_name, s.last_name, s.date_of_birth,
         s.gender, s.civil_status, s.contact_number, s.address, s.city, s.province,
         s.education_level, s.course, s.years_of_experience, s.employment_status,
-        s.preferred_occupation,
+        s.preferred_occupation, adminUser.insertId,
       ]
     );
     for (const skillName of s.skills) {

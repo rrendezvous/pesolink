@@ -56,10 +56,16 @@ CREATE TABLE job_seekers (
   years_of_experience INT DEFAULT 0,
   employment_status ENUM('unemployed', 'underemployed', 'employed'),
   preferred_occupation VARCHAR(255),
+  nsrp_full_data JSON,
   profile_completed BOOLEAN DEFAULT FALSE,
+  referral_status ENUM('draft', 'submitted', 'needs_revision', 'referral_ready') DEFAULT 'draft',
+  referral_review_notes TEXT,
+  referral_reviewed_by INT,
+  referral_reviewed_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (referral_reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- 3. employers (with PESO Admin approval)

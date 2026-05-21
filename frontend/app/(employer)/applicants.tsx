@@ -41,35 +41,37 @@ export default function Applicants() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.lightBg }}>
+    <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerLabel}>Applicants for</Text>
-        <Text style={styles.headerTitle}>{jobTitle}</Text>
+        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.headerTitle}>Applicants</Text>
+        <Text style={styles.headerSub}>{jobTitle || 'Selected job post'}</Text>
       </View>
 
       <FlatList
         data={applicants}
         keyExtractor={(item) => String(item.application_id)}
-        contentContainerStyle={{ padding: Spacing.md }}
+        contentContainerStyle={styles.listContent}
         ListEmptyComponent={<EmptyState message="No applicants yet for this job." />}
         renderItem={({ item }) => (
-          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)}>
-            <Card>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
+            <Card style={styles.applicantCard}>
+              <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>
                     {item.first_name} {item.middle_name} {item.last_name}
                   </Text>
                   <Text style={styles.detail}>{item.email}</Text>
                   <Text style={styles.detail}>
-                    {item.education_level} {item.course ? `· ${item.course}` : ''}
+                    {item.education_level || 'Education not specified'}{item.course ? ` / ${item.course}` : ''}
                   </Text>
                   <Text style={styles.detail}>
-                    {item.years_of_experience} yr{item.years_of_experience === 1 ? '' : 's'} exp • {item.city || 'N/A'}
+                    {item.years_of_experience || 0} yr{item.years_of_experience === 1 ? '' : 's'} exp / {item.city || 'N/A'}
                   </Text>
                 </View>
                 <StatusBadge status={item.application_status} />
               </View>
+              <Text style={styles.cardHint}>Tap to review applicant details and update tracking status.</Text>
             </Card>
           </TouchableOpacity>
         )}
@@ -80,6 +82,7 @@ export default function Applicants() {
           <View style={styles.modalCard}>
             <ScrollView>
               <Text style={styles.modalTitle}>Applicant Details</Text>
+              <Text style={styles.modalSubtle}>Review NSRP profile summary before updating the application status.</Text>
               {selected && (
                 <>
                   <Row left="Name" right={`${selected.first_name} ${selected.last_name}`} />
@@ -88,7 +91,7 @@ export default function Applicants() {
                   <Row left="Location" right={`${selected.city || ''} ${selected.province || ''}`} />
                   <Row left="Education" right={selected.education_level || 'N/A'} />
                   <Row left="Course" right={selected.course || 'N/A'} />
-                  <Row left="Experience" right={`${selected.years_of_experience} yr`} />
+                  <Row left="Experience" right={`${selected.years_of_experience || 0} yr`} />
                   <Row left="Employment" right={selected.employment_status || 'N/A'} />
                   <Row left="Preferred Job" right={selected.preferred_occupation || 'N/A'} />
 
@@ -100,9 +103,9 @@ export default function Applicants() {
                   )}
 
                   <Text style={[styles.modalSub, { marginTop: Spacing.md }]}>Update Status</Text>
-                  <View style={{ marginTop: 6 }}>
+                  <View style={styles.statusGrid}>
                     {STATUSES.map((s) => (
-                      <View key={s} style={{ marginBottom: 8 }}>
+                      <View key={s} style={styles.statusButton}>
                         <Button
                           testID={`set-${s}`}
                           title={StatusLabels[s]}
@@ -127,14 +130,42 @@ export default function Applicants() {
 }
 
 const styles = StyleSheet.create({
-  header: { padding: Spacing.md, backgroundColor: Colors.primaryDark },
-  headerLabel: { color: Colors.cardHighlight, fontSize: FontSize.xs },
-  headerTitle: { color: Colors.white, fontSize: FontSize.lg, fontWeight: '700', marginTop: 2 },
-  name: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark },
-  detail: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 2 },
+  container: { flex: 1, backgroundColor: Colors.lightBg },
+  header: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+    backgroundColor: Colors.primaryDark,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
+  listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  applicantCard: { borderRadius: 16 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
+  cardHint: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
+  name: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
+  detail: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 3 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: Spacing.md, maxHeight: '88%' },
-  modalTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textDark, marginBottom: Spacing.sm },
-  modalSub: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, textTransform: 'uppercase' },
-  coverLetter: { fontSize: FontSize.sm, color: Colors.textDark, marginTop: 4, lineHeight: 20, backgroundColor: Colors.surface, padding: 10, borderRadius: 8 },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: Spacing.md,
+    maxHeight: '88%',
+  },
+  modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
+  modalSubtle: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginTop: 4, marginBottom: Spacing.sm },
+  modalSub: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase' },
+  coverLetter: {
+    fontSize: FontSize.sm,
+    color: Colors.textDark,
+    marginTop: 4,
+    lineHeight: 20,
+    backgroundColor: Colors.surface,
+    padding: 10,
+    borderRadius: 8,
+  },
+  statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.sm },
+  statusButton: { width: '48%' },
 });

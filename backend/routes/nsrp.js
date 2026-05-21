@@ -224,12 +224,18 @@ router.post('/confirm', async (req, res) => {
     const d = confirmed_data;
     const profileCompleted = !!(d.first_name && d.last_name && d.date_of_birth && d.contact_number && d.city);
 
+    const [[current]] = await conn.query('SELECT referral_status FROM job_seekers WHERE id = ?', [jsId]);
+    const nextReferralStatus = current?.referral_status === 'submitted' ? 'submitted' : 'draft';
+
+    const nsrpFullData = d.nsrp_full_data ? JSON.stringify(d.nsrp_full_data) : null;
+
     await conn.query(
       `UPDATE job_seekers SET
          first_name=?, middle_name=?, last_name=?, date_of_birth=?, gender=?,
          civil_status=?, contact_number=?, address=?, city=?, province=?,
          education_level=?, course=?, years_of_experience=?, employment_status=?,
-         preferred_occupation=?, profile_completed=?
+         preferred_occupation=?, nsrp_full_data=COALESCE(?, nsrp_full_data), profile_completed=?, referral_status=?, referral_review_notes=NULL,
+         referral_reviewed_by=NULL, referral_reviewed_at=NULL
        WHERE id=?`,
       [
         d.first_name || null, d.middle_name || null, d.last_name || null,
@@ -237,7 +243,9 @@ router.post('/confirm', async (req, res) => {
         d.contact_number || null, d.address || null, d.city || null,
         d.province || null, d.education_level || null, d.course || null,
         d.years_of_experience || 0, d.employment_status || null,
-        d.preferred_occupation || null, profileCompleted, jsId,
+        d.preferred_occupation || null,
+        nsrpFullData,
+        profileCompleted, nextReferralStatus, jsId,
       ]
     );
 

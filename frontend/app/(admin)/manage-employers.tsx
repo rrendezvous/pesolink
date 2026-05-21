@@ -82,18 +82,23 @@ export default function ManageEmployers() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.lightBg }}>
-      <View style={{ padding: Spacing.md, paddingBottom: 0 }}>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.headerTitle}>Employers</Text>
+        <Text style={styles.headerSub}>Admin-created employer accounts only</Text>
+      </View>
+      <View style={styles.topBar}>
         <Button testID="new-employer-btn" title="+ Create Employer Account" onPress={() => setShowForm(true)} />
       </View>
       <FlatList
         data={employers}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: Spacing.md }}
+        contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         ListEmptyComponent={<EmptyState message="No employers in the system yet." />}
         renderItem={({ item }) => (
-          <Card testID={`emp-${item.id}`}>
+          <Card testID={`emp-${item.id}`} style={styles.employerCard}>
             <Text style={styles.companyName}>{item.company_name}</Text>
             <Text style={styles.subtitle}>{item.business_type || 'Business type not specified'}</Text>
             <View style={{ marginTop: Spacing.sm }}>
@@ -148,10 +153,23 @@ export default function ManageEmployers() {
 }
 
 const styles = StyleSheet.create({
-  companyName: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textDark },
-  subtitle: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600', marginTop: 2 },
+  container: { flex: 1, backgroundColor: Colors.lightBg },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
+  topBar: { padding: Spacing.md, paddingBottom: Spacing.sm },
+  listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
+  employerCard: { borderRadius: 16 },
+  companyName: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
+  subtitle: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '800', marginTop: 2 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: Spacing.md, maxHeight: '90%' },
-  modalTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textDark },
+  modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   modalSub: { fontSize: FontSize.sm, color: Colors.gray, marginBottom: Spacing.sm },
 });

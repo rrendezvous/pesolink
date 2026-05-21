@@ -64,121 +64,167 @@ export default function EmployerDashboard() {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       testID="employer-dashboard"
     >
-      <View style={styles.welcomeCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.welcomeLabel}>Welcome,</Text>
-          <Text style={styles.welcomeName}>{profile?.company_name || 'Employer'}</Text>
-          <Text style={styles.welcomeEmail}>{user?.email}</Text>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.headerTitle}>Overview</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="emp-logout">
-          <Text style={styles.logout}>Sign out</Text>
+        <TouchableOpacity onPress={handleLogout} testID="emp-logout" style={styles.avatar}>
+          <Text style={styles.avatarText}>Exit</Text>
         </TouchableOpacity>
       </View>
 
-      {isPending && (
-        <Card style={{ backgroundColor: '#FEF3C7', borderColor: Colors.warning }}>
-          <Text style={{ fontWeight: '700', color: '#92400E' }}>Pending Approval</Text>
-          <Text style={{ color: '#92400E', marginTop: 4, fontSize: FontSize.sm }}>
-            Your employer account is pending PESO admin review. You cannot post jobs until approved.
-          </Text>
-        </Card>
-      )}
-      {isRejected && (
-        <Card style={{ backgroundColor: '#FEE2E2', borderColor: Colors.error }}>
-          <Text style={{ fontWeight: '700', color: '#991B1B' }}>Account Rejected</Text>
-          <Text style={{ color: '#991B1B', marginTop: 4, fontSize: FontSize.sm }}>
-            Please contact PESO admin for more information.
-          </Text>
-        </Card>
-      )}
+      <View style={styles.body}>
+        <View style={styles.companyCard}>
+          <Text style={styles.companyName}>{profile?.company_name || 'Employer'}</Text>
+          <Text style={styles.companyEmail}>{user?.email}</Text>
+          <View style={styles.verifiedPill}>
+            <Text style={styles.verifiedText}>{profile?.approval_status === 'approved' ? 'Verified Partner' : 'PESO Managed Account'}</Text>
+          </View>
+        </View>
 
-      <Text style={styles.sectionTitle}>Overview</Text>
-      <View style={styles.statsRow}>
-        <StatCard label="Job Posts" value={jobs.length} sub="total" />
-        <StatCard label="Active" value={activeJobs} sub="open" />
-        <StatCard label="Applicants" value={totalApplicants} sub="received" />
-        <StatCard label="Alerts" value={unread} sub="new" />
+        {isPending && (
+          <Card style={styles.warningCard}>
+            <Text style={styles.warningTitle}>Pending Approval</Text>
+            <Text style={styles.warningText}>Your employer account is pending PESO admin review. You cannot post jobs until approved.</Text>
+          </Card>
+        )}
+        {isRejected && (
+          <Card style={styles.rejectedCard}>
+            <Text style={styles.rejectedTitle}>Account Rejected</Text>
+            <Text style={styles.rejectedText}>Please contact PESO admin for more information.</Text>
+          </Card>
+        )}
+
+        <View style={styles.statsRow}>
+          <StatCard label="Created Jobs" value={jobs.length} />
+          <StatCard label="Active Jobs" value={activeJobs} />
+          <StatCard label="Applicants" value={totalApplicants} />
+        </View>
+
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.actionList}>
+          <ActionButton testID="action-manage" label="Manage Job Posts" onPress={() => router.push('/(employer)/manage-jobs')} />
+          <ActionButton
+            testID="action-new"
+            label="Post New Job"
+            onPress={() => {
+              if (isPending) {
+                Alert.alert('Approval Required', 'Your account must be approved by PESO admin before posting jobs.');
+                return;
+              }
+              router.push('/(employer)/job-form');
+            }}
+          />
+          <ActionButton testID="action-notif" label={`Notifications${unread > 0 ? ` (${unread})` : ''}`} onPress={() => router.push('/(employer)/notifications')} />
+        </View>
+
+        <Text style={styles.sectionTitle}>Recent Job Posts</Text>
+        {jobs.length === 0 ? (
+          <EmptyState message="You haven't posted any jobs yet." />
+        ) : (
+          jobs.slice(0, 3).map((j) => (
+            <TouchableOpacity key={j.id} testID={`emp-job-${j.id}`} onPress={() => router.push({ pathname: '/(employer)/applicants', params: { jobId: j.id, jobTitle: j.job_title } })} activeOpacity={0.85} style={styles.jobCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.jobTitle}>{j.job_title}</Text>
+                <Text style={styles.jobMeta}>{j.applicant_count || 0} applicant{j.applicant_count === 1 ? '' : 's'} / {j.status}</Text>
+              </View>
+              <Text style={styles.manageLink}>Manage</Text>
+            </TouchableOpacity>
+          ))
+        )}
       </View>
-
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
-      <View style={{ gap: Spacing.sm }}>
-        <ActionButton testID="action-manage" label="Manage Job Posts" onPress={() => router.push('/(employer)/manage-jobs')} />
-        <ActionButton
-          testID="action-new"
-          label="+ Create New Job Post"
-          onPress={() => {
-            if (isPending) {
-              Alert.alert('Approval Required', 'Your account must be approved by PESO admin before posting jobs.');
-              return;
-            }
-            router.push('/(employer)/job-form');
-          }}
-        />
-        <ActionButton testID="action-notif" label={`Notifications${unread > 0 ? ` (${unread})` : ''}`} onPress={() => router.push('/(employer)/notifications')} />
-      </View>
-
-      <Text style={styles.sectionTitle}>Recent Job Posts</Text>
-      {jobs.length === 0 ? (
-        <EmptyState message="You haven't posted any jobs yet." />
-      ) : (
-        jobs.slice(0, 3).map((j) => (
-          <TouchableOpacity key={j.id} testID={`emp-job-${j.id}`} onPress={() => router.push({ pathname: '/(employer)/applicants', params: { jobId: j.id, jobTitle: j.job_title } })}>
-            <Card>
-              <Text style={{ fontWeight: '700', color: Colors.textDark, fontSize: FontSize.md }}>{j.job_title}</Text>
-              <Text style={{ color: Colors.gray, fontSize: FontSize.sm, marginTop: 2 }}>
-                {j.applicant_count || 0} applicant{j.applicant_count === 1 ? '' : 's'} • {j.status}
-              </Text>
-            </Card>
-          </TouchableOpacity>
-        ))
-      )}
     </ScrollView>
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: any; sub: string }) {
+function StatCard({ label, value }: { label: string; value: any }) {
   return (
     <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statSub}>{sub}</Text>
+      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }
 
 function ActionButton({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
   return (
-    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.7} style={styles.actionBtn}>
+    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.75} style={styles.actionBtn}>
       <Text style={styles.actionText}>{label}</Text>
-      <Text style={styles.actionArrow}>›</Text>
+      <Text style={styles.actionArrow}>{'>'}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.lightBg, padding: Spacing.md },
-  welcomeCard: {
-    backgroundColor: Colors.primary, borderRadius: 12, padding: Spacing.md,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.lg,
+  container: { flex: 1, backgroundColor: Colors.primaryDark },
+  content: { backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  welcomeLabel: { color: Colors.cardHighlight, fontSize: FontSize.sm },
-  welcomeName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '700', marginTop: 2 },
-  welcomeEmail: { color: Colors.cardHighlight, fontSize: FontSize.xs, marginTop: 4 },
-  logout: { color: Colors.white, fontSize: FontSize.sm, textDecorationLine: 'underline' },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark, marginTop: Spacing.md, marginBottom: Spacing.sm },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: Spacing.md },
-  statCard: { flex: 1, backgroundColor: Colors.cardHighlight, borderColor: Colors.border, borderWidth: 1, borderRadius: 10, padding: 12, alignItems: 'center' },
-  statValue: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.primary },
-  statLabel: { fontSize: FontSize.xs, color: Colors.textDark, marginTop: 2, fontWeight: '600' },
-  statSub: { fontSize: 10, color: Colors.gray },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
+  body: { padding: Spacing.md },
+  companyCard: {
+    backgroundColor: Colors.primary,
+    borderRadius: 18,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  companyName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900' },
+  companyEmail: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 5 },
+  verifiedPill: {
+    alignSelf: 'flex-start',
+    borderColor: Colors.accent,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: Spacing.md,
+  },
+  verifiedText: { color: Colors.white, fontSize: FontSize.xs, fontWeight: '900' },
+  warningCard: { backgroundColor: '#FEF3C7', borderColor: Colors.warning },
+  warningTitle: { fontWeight: '900', color: '#92400E' },
+  warningText: { color: '#92400E', marginTop: 4, fontSize: FontSize.sm, lineHeight: 20 },
+  rejectedCard: { backgroundColor: '#FEE2E2', borderColor: Colors.error },
+  rejectedTitle: { fontWeight: '900', color: '#991B1B' },
+  rejectedText: { color: '#991B1B', marginTop: 4, fontSize: FontSize.sm },
+  statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
+  statCard: { flex: 1, backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1, borderRadius: 14, padding: 14 },
+  statLabel: { fontSize: FontSize.xs, color: Colors.gray, fontWeight: '900', textTransform: 'uppercase' },
+  statValue: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.textDark, marginTop: 8 },
+  sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginTop: Spacing.sm, marginBottom: Spacing.sm },
+  actionList: { gap: Spacing.sm, marginBottom: Spacing.lg },
   actionBtn: {
     backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1,
-    borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16,
+    borderRadius: 13, minHeight: 52, paddingVertical: 14, paddingHorizontal: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '600' },
-  actionArrow: { color: Colors.primary, fontSize: 22, fontWeight: '700' },
+  actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '800' },
+  actionArrow: { color: Colors.primary, fontSize: FontSize.lg, fontWeight: '900' },
+  jobCard: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  jobTitle: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '900' },
+  jobMeta: { color: Colors.gray, fontSize: FontSize.sm, marginTop: 4, textTransform: 'capitalize' },
+  manageLink: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '900' },
 });

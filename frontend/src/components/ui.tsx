@@ -22,7 +22,7 @@ export function Button({
   const isDisabled = disabled || loading;
   const bgColor =
     variant === 'primary' ? Colors.primary :
-    variant === 'secondary' ? Colors.lightBg :
+    variant === 'secondary' ? Colors.white :
     variant === 'danger' ? Colors.error :
     Colors.accent;
   const textColor = variant === 'secondary' ? Colors.primary : Colors.white;
@@ -51,17 +51,18 @@ export function Button({
 
 const btn = StyleSheet.create({
   base: {
-    paddingVertical: 14,
+    paddingVertical: 15,
     paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    minHeight: 48,
+    minHeight: 52,
   },
   text: {
     fontSize: FontSize.md,
-    fontWeight: '600',
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
 });
 
@@ -113,18 +114,17 @@ const inp = StyleSheet.create({
   label: {
     fontSize: FontSize.sm,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.textDark,
     marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   input: {
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    minHeight: 48,
     fontSize: FontSize.md,
     color: Colors.textDark,
   },
@@ -145,10 +145,10 @@ export function Card({ children, style, testID }: { children: React.ReactNode; s
 
 const card = StyleSheet.create({
   base: {
-    backgroundColor: Colors.cardHighlight,
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },

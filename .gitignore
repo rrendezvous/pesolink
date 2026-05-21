@@ -102,3 +102,6 @@ credentials.json
 .expo/
 .metro-cache/
 frontend/.metro-cache/
+
+figma-reference/
+*.fig

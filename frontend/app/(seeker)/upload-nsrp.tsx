@@ -4,7 +4,7 @@
 // ============================================================
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Image, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,6 +26,15 @@ export default function UploadNSRP() {
   const [extracting, setExtracting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
+  const resetReview = () => {
+    setUploadId(null);
+    setExtracted(null);
+    setOcrSuccess(null);
+    setOcrMessage('');
+    setRawText('');
+    setShowRawText(false);
+  };
+
   const pickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
@@ -42,8 +51,7 @@ export default function UploadNSRP() {
       const asset = result.assets[0];
       setImageBase64(`data:image/jpeg;base64,${asset.base64}`);
       setImageUri(asset.uri);
-      setUploadId(null);
-      setExtracted(null);
+      resetReview();
     }
   };
 
@@ -62,8 +70,7 @@ export default function UploadNSRP() {
       const asset = result.assets[0];
       setImageBase64(`data:image/jpeg;base64,${asset.base64}`);
       setImageUri(asset.uri);
-      setUploadId(null);
-      setExtracted(null);
+      resetReview();
     }
   };
 
@@ -89,7 +96,6 @@ export default function UploadNSRP() {
       setOcrSuccess(!!exRes.data.success);
       setOcrMessage(exRes.data.notice || exRes.data.error_message || '');
     } catch (err) {
-      // Network-level failure: still show empty editable fields for manual encoding
       setExtracted({
         first_name: '', middle_name: '', last_name: '',
         date_of_birth: '', gender: '', civil_status: '',
@@ -129,107 +135,155 @@ export default function UploadNSRP() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <Card style={{ backgroundColor: Colors.surface }}>
-          <Text style={styles.notice}>
-            <Text style={{ fontWeight: '700' }}>OCR Notice: </Text>
-            OCR is optional and assistive only. It extracts raw text from the uploaded NSRP form image
-            and places it into editable fields. OCR does not auto-save, validate, decide, rank, or screen
-            applicants. You must review, edit, and manually confirm every field before saving. If OCR
-            fails or returns incomplete results, you can still encode the NSRP profile manually below.
-          </Text>
-        </Card>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <Text style={styles.kicker}>OCR ASSISTANT</Text>
+          <Text style={styles.headerTitle}>Scan NSRP Form</Text>
+          <Text style={styles.headerSub}>Auto-fill is optional. Human review is mandatory before saving.</Text>
+        </View>
 
-        <Card>
-          <Text style={styles.section}>Step 1: Upload NSRP Form Image</Text>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
-          ) : (
-            <View style={styles.placeholder}>
-              <Text style={{ color: Colors.gray, textAlign: 'center' }}>No image selected</Text>
-            </View>
-          )}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: Spacing.sm }}>
-            <View style={{ flex: 1 }}>
-              <Button testID="pick-image" title="Choose from Gallery" variant="secondary" onPress={pickImage} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button testID="take-photo" title="Take Photo" variant="secondary" onPress={takePhoto} />
-            </View>
-          </View>
-          <View style={{ marginTop: Spacing.sm }}>
-            <Button
-              testID="upload-extract"
-              title={uploading ? 'Uploading...' : extracting ? 'Extracting (Simulated OCR)...' : 'Upload & Extract'}
-              onPress={uploadAndExtract}
-              loading={uploading || extracting}
-              disabled={!imageBase64}
-            />
-          </View>
-        </Card>
-
-        {extracted && (
-          <Card>
-            <Text style={styles.section}>Step 2: Review & Confirm</Text>
-            {ocrSuccess === false ? (
-              <View style={{ backgroundColor: '#FEF3C7', borderColor: '#F59E0B', borderWidth: 1, padding: 10, borderRadius: 8, marginBottom: Spacing.sm }}>
-                <Text style={{ fontWeight: '700', color: '#92400E', fontSize: FontSize.sm }}>OCR did not extract usable text</Text>
-                <Text style={{ color: '#92400E', fontSize: FontSize.xs, marginTop: 4, lineHeight: 16 }}>
-                  {ocrMessage || 'Please encode each NSRP field manually below.'}
-                </Text>
-              </View>
+        <View style={styles.body}>
+          <Card style={styles.captureCard}>
+            <Text style={styles.section}>Step 1: Capture or select form</Text>
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
             ) : (
-              <Text style={styles.noticeInline}>
-                {ocrMessage || 'Please review every field. Edit anything incorrect before confirming.'}
-              </Text>
-            )}
-
-            {!!rawText && (
-              <TouchableOpacity onPress={() => setShowRawText((v) => !v)} testID="toggle-raw-text" style={{ marginBottom: Spacing.sm }}>
-                <Text style={{ color: Colors.primary, fontSize: FontSize.xs, fontWeight: '600' }}>
-                  {showRawText ? '▼' : '▶'} View raw extracted text (transparency)
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showRawText && !!rawText && (
-              <View style={{ backgroundColor: Colors.surface, padding: 8, borderRadius: 6, marginBottom: Spacing.sm }}>
-                <Text style={{ fontSize: FontSize.xs, color: Colors.gray, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
-                  {rawText}
-                </Text>
+              <View style={styles.placeholder}>
+                <Text style={styles.cameraIcon}>[]</Text>
+                <Text style={styles.placeholderTitle}>Place NSRP form within frame</Text>
+                <Text style={styles.placeholderSub}>Select an image or use the camera to begin.</Text>
               </View>
             )}
-            <Input testID="rev-first" label="First Name" value={extracted.first_name || ''} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
-            <Input testID="rev-middle" label="Middle Name" value={extracted.middle_name || ''} onChangeText={(v) => setField('middle_name', v)} autoCapitalize="words" />
-            <Input testID="rev-last" label="Last Name" value={extracted.last_name || ''} onChangeText={(v) => setField('last_name', v)} autoCapitalize="words" />
-            <Input testID="rev-dob" label="Date of Birth (YYYY-MM-DD)" value={extracted.date_of_birth || ''} onChangeText={(v) => setField('date_of_birth', v)} />
-            <Input testID="rev-gender" label="Gender" value={extracted.gender || ''} onChangeText={(v) => setField('gender', v)} />
-            <Input testID="rev-civil" label="Civil Status" value={extracted.civil_status || ''} onChangeText={(v) => setField('civil_status', v)} />
-            <Input testID="rev-contact" label="Contact Number" value={extracted.contact_number || ''} onChangeText={(v) => setField('contact_number', v)} keyboardType="phone-pad" />
-            <Input testID="rev-address" label="Address" value={extracted.address || ''} onChangeText={(v) => setField('address', v)} multiline numberOfLines={2} />
-            <Input testID="rev-city" label="City" value={extracted.city || ''} onChangeText={(v) => setField('city', v)} autoCapitalize="words" />
-            <Input testID="rev-province" label="Province" value={extracted.province || ''} onChangeText={(v) => setField('province', v)} autoCapitalize="words" />
-            <Input testID="rev-edu" label="Education Level" value={extracted.education_level || ''} onChangeText={(v) => setField('education_level', v)} />
-            <Input testID="rev-course" label="Course" value={extracted.course || ''} onChangeText={(v) => setField('course', v)} />
-            <Input testID="rev-occ" label="Preferred Occupation" value={extracted.preferred_occupation || ''} onChangeText={(v) => setField('preferred_occupation', v)} autoCapitalize="words" />
-
+            <View style={styles.pickRow}>
+              <View style={{ flex: 1 }}>
+                <Button testID="pick-image" title="Gallery" variant="secondary" onPress={pickImage} />
+              </View>
+              <View style={{ width: Spacing.sm }} />
+              <View style={{ flex: 1 }}>
+                <Button testID="take-photo" title="Camera" variant="secondary" onPress={takePhoto} />
+              </View>
+            </View>
             <View style={{ marginTop: Spacing.sm }}>
-              <Button testID="confirm-save" title="Confirm & Save to Profile" onPress={confirmAndSave} loading={confirming} />
+              <Button
+                testID="upload-extract"
+                title={uploading ? 'Uploading...' : extracting ? 'Extracting OCR...' : 'Scan and Pre-fill'}
+                onPress={uploadAndExtract}
+                loading={uploading || extracting}
+                disabled={!imageBase64}
+              />
             </View>
           </Card>
-        )}
+
+          <Card style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>OCR Notice</Text>
+            <Text style={styles.notice}>
+              OCR extracts raw text and places possible values into editable fields. It does not auto-save,
+              validate identity, rank, screen, or make decisions. If OCR fails, manually encode the form below.
+            </Text>
+          </Card>
+
+          {extracted && (
+            <Card style={styles.reviewCard}>
+              <Text style={styles.section}>Step 2: Review and confirm</Text>
+              {ocrSuccess === false ? (
+                <View style={styles.warningBox}>
+                  <Text style={styles.warningTitle}>OCR did not extract usable text</Text>
+                  <Text style={styles.warningText}>
+                    {ocrMessage || 'Please encode each NSRP field manually below.'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.noticeInline}>
+                  {ocrMessage || 'Please review every field. Edit anything incorrect before confirming.'}
+                </Text>
+              )}
+
+              {!!rawText && (
+                <TouchableOpacity onPress={() => setShowRawText((v) => !v)} testID="toggle-raw-text" style={styles.rawToggle}>
+                  <Text style={styles.rawToggleText}>
+                    {showRawText ? 'Hide raw extracted text' : 'View raw extracted text'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {showRawText && !!rawText && (
+                <View style={styles.rawBox}>
+                  <Text style={styles.rawText}>{rawText}</Text>
+                </View>
+              )}
+
+              <Input testID="rev-first" label="First Name" value={extracted.first_name || ''} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
+              <Input testID="rev-middle" label="Middle Name" value={extracted.middle_name || ''} onChangeText={(v) => setField('middle_name', v)} autoCapitalize="words" />
+              <Input testID="rev-last" label="Last Name" value={extracted.last_name || ''} onChangeText={(v) => setField('last_name', v)} autoCapitalize="words" />
+              <Input testID="rev-dob" label="Date of Birth (YYYY-MM-DD)" value={extracted.date_of_birth || ''} onChangeText={(v) => setField('date_of_birth', v)} />
+              <Input testID="rev-gender" label="Gender" value={extracted.gender || ''} onChangeText={(v) => setField('gender', v)} />
+              <Input testID="rev-civil" label="Civil Status" value={extracted.civil_status || ''} onChangeText={(v) => setField('civil_status', v)} />
+              <Input testID="rev-contact" label="Contact Number" value={extracted.contact_number || ''} onChangeText={(v) => setField('contact_number', v)} keyboardType="phone-pad" />
+              <Input testID="rev-address" label="Address" value={extracted.address || ''} onChangeText={(v) => setField('address', v)} multiline numberOfLines={2} />
+              <Input testID="rev-city" label="City" value={extracted.city || ''} onChangeText={(v) => setField('city', v)} autoCapitalize="words" />
+              <Input testID="rev-province" label="Province" value={extracted.province || ''} onChangeText={(v) => setField('province', v)} autoCapitalize="words" />
+              <Input testID="rev-edu" label="Education Level" value={extracted.education_level || ''} onChangeText={(v) => setField('education_level', v)} />
+              <Input testID="rev-course" label="Course" value={extracted.course || ''} onChangeText={(v) => setField('course', v)} />
+              <Input testID="rev-occ" label="Preferred Occupation" value={extracted.preferred_occupation || ''} onChangeText={(v) => setField('preferred_occupation', v)} autoCapitalize="words" />
+
+              <View style={{ marginTop: Spacing.sm }}>
+                <Button testID="confirm-save" title="Confirm and Save" onPress={confirmAndSave} loading={confirming} />
+              </View>
+            </Card>
+          )}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.lightBg, padding: Spacing.md },
-  notice: { fontSize: FontSize.xs, color: Colors.textDark, lineHeight: 18 },
-  noticeInline: { fontSize: FontSize.xs, color: Colors.warning, marginBottom: 8, fontWeight: '600' },
-  section: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark, marginBottom: Spacing.sm },
-  preview: { width: '100%', height: 220, borderRadius: 10, backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1 },
-  placeholder: {
-    height: 160, borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.border,
-    borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.white,
+  container: { flex: 1, backgroundColor: Colors.lightBg },
+  content: { paddingBottom: Spacing.xl },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, lineHeight: 20, marginTop: 8 },
+  body: { padding: Spacing.md },
+  captureCard: { marginBottom: Spacing.md },
+  noticeCard: { backgroundColor: Colors.cardHighlight },
+  reviewCard: { marginTop: Spacing.sm },
+  noticeTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
+  notice: { fontSize: FontSize.xs, color: Colors.textDark, lineHeight: 18 },
+  noticeInline: { fontSize: FontSize.xs, color: Colors.primary, marginBottom: Spacing.sm, fontWeight: '700', lineHeight: 18 },
+  section: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
+  preview: { width: '100%', height: 250, borderRadius: 18, backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1 },
+  placeholder: {
+    height: 280,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: Colors.textDark,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    padding: Spacing.lg,
+  },
+  cameraIcon: { color: Colors.textDark, fontSize: FontSize.xxxl, fontWeight: '900', marginBottom: Spacing.sm },
+  placeholderTitle: { color: Colors.textDark, textAlign: 'center', fontSize: FontSize.md, fontWeight: '900', textTransform: 'uppercase' },
+  placeholderSub: { color: Colors.gray, textAlign: 'center', fontSize: FontSize.xs, marginTop: 8, lineHeight: 18 },
+  pickRow: { flexDirection: 'row', marginTop: Spacing.md },
+  warningBox: {
+    backgroundColor: '#FEF3C7',
+    borderColor: Colors.warning,
+    borderWidth: 1,
+    padding: Spacing.sm,
+    borderRadius: 12,
+    marginBottom: Spacing.sm,
+  },
+  warningTitle: { fontWeight: '900', color: '#92400E', fontSize: FontSize.sm },
+  warningText: { color: '#92400E', fontSize: FontSize.xs, marginTop: 4, lineHeight: 16 },
+  rawToggle: { marginBottom: Spacing.sm },
+  rawToggleText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },
+  rawBox: { backgroundColor: Colors.surface, padding: 10, borderRadius: 10, marginBottom: Spacing.sm },
+  rawText: { fontSize: FontSize.xs, color: Colors.gray, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });

@@ -4,7 +4,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
+import { StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize } from '../../src/constants/theme';
 
@@ -31,36 +31,80 @@ export default function MyApplications() {
   };
 
   return (
-    <FlatList
-      style={styles.container}
-      data={apps}
-      keyExtractor={(item) => String(item.id)}
-      contentContainerStyle={{ padding: Spacing.md }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-      ListEmptyComponent={<EmptyState message="You haven't applied to any jobs yet. Browse jobs to start applying." />}
-      renderItem={({ item }) => (
-        <TouchableOpacity onPress={() => router.push(`/(seeker)/job/${item.job_post_id}`)} testID={`my-app-${item.id}`}>
-          <Card>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.headerTitle}>Application Status</Text>
+      </View>
+
+      <FlatList
+        data={apps}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        ListEmptyComponent={<EmptyState message="You haven't applied to any jobs yet. Browse jobs to start applying." />}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => router.push(`/(seeker)/job/${item.job_post_id}`)} testID={`my-app-${item.id}`} activeOpacity={0.85} style={styles.card}>
+            <View style={styles.cardTop}>
+              <View style={styles.companyMark}>
+                <Text style={styles.companyMarkText}>{(item.company_name || 'P').charAt(0).toUpperCase()}</Text>
+              </View>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={styles.title}>{item.job_title}</Text>
                 <Text style={styles.company}>{item.company_name}</Text>
-                <Text style={styles.meta}>{item.location} • {item.job_type}</Text>
-                <Text style={styles.date}>Applied {new Date(item.applied_at).toLocaleDateString()}</Text>
+                <Text style={styles.meta}>{item.location} / {item.job_type}</Text>
               </View>
               <StatusBadge status={item.application_status} testID={`status-${item.id}`} />
             </View>
-          </Card>
-        </TouchableOpacity>
-      )}
-    />
+            <View style={styles.statusPanel}>
+              <Text style={styles.statusLabel}>Application Status</Text>
+              <Text style={styles.date}>Applied {new Date(item.applied_at).toLocaleDateString()}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.lightBg },
-  title: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark },
-  company: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600', marginTop: 2 },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  card: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center' },
+  companyMark: {
+    width: 58, height: 58, borderRadius: 14,
+    backgroundColor: Colors.cardHighlight,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  companyMarkText: { color: Colors.primary, fontSize: FontSize.xl, fontWeight: '900' },
+  title: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
+  company: { fontSize: FontSize.sm, color: Colors.gray, fontWeight: '700', marginTop: 2 },
   meta: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 4, textTransform: 'capitalize' },
-  date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 6 },
+  statusPanel: {
+    backgroundColor: Colors.cardHighlight,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  statusLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },
+  date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 4 },
 });

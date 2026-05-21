@@ -3,7 +3,7 @@
 // ============================================================
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Button, Input, Card, Chip } from '../../src/components/ui';
@@ -111,56 +111,65 @@ export default function JobForm() {
     skillsByCategory[cat].push(sk);
   }
 
-  if (loading) return <View style={styles.center}><Text>Loading...</Text></View>;
+  if (loading) return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <Card>
-          <Text style={styles.sectionTitle}>Job Information</Text>
-          <Input testID="job-title" label="Job Title *" value={form.job_title} onChangeText={(v) => setField('job_title', v)} placeholder="e.g., Software Developer" autoCapitalize="words" />
-          <Input testID="job-desc" label="Job Description *" value={form.job_description} onChangeText={(v) => setField('job_description', v)} multiline numberOfLines={4} placeholder="Describe the role, responsibilities, environment..." />
-          <Input testID="job-req" label="Requirements" value={form.requirements} onChangeText={(v) => setField('requirements', v)} multiline numberOfLines={3} placeholder="Education, experience, qualifications..." />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <Text style={styles.kicker}>EMPLOYER JOB POST</Text>
+          <Text style={styles.headerTitle}>{isEdit ? 'Update Job' : 'Post New Job'}</Text>
+          <Text style={styles.headerSub}>Create structured vacancies for PESO job seeker application tracking.</Text>
+        </View>
 
-          <Text style={styles.label}>Job Type</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.md }}>
-            {JOB_TYPES.map((t) => (
-              <Chip key={t} testID={`type-${t}`} label={t} active={form.job_type === t} onPress={() => setField('job_type', t)} />
-            ))}
-          </View>
+        <View style={styles.body}>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Job Information</Text>
+            <Input testID="job-title" label="Job Title *" value={form.job_title} onChangeText={(v) => setField('job_title', v)} placeholder="e.g., Software Developer" autoCapitalize="words" />
+            <Input testID="job-desc" label="Job Description *" value={form.job_description} onChangeText={(v) => setField('job_description', v)} multiline numberOfLines={4} placeholder="Describe the role, responsibilities, environment..." />
+            <Input testID="job-req" label="Requirements" value={form.requirements} onChangeText={(v) => setField('requirements', v)} multiline numberOfLines={3} placeholder="Education, experience, qualifications..." />
 
-          <Input testID="job-loc" label="Location" value={form.location} onChangeText={(v) => setField('location', v)} placeholder="e.g., Cagayan de Oro City" autoCapitalize="words" />
-          <Input testID="job-vac" label="Vacancies" value={form.vacancies} onChangeText={(v) => setField('vacancies', v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
-
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Input testID="job-smin" label="Salary Min (₱)" value={form.salary_min} onChangeText={(v) => setField('salary_min', v.replace(/[^0-9.]/g, ''))} keyboardType="numeric" placeholder="15000" />
+            <Text style={styles.label}>Job Type</Text>
+            <View style={styles.chipWrap}>
+              {JOB_TYPES.map((t) => (
+                <Chip key={t} testID={`type-${t}`} label={t} active={form.job_type === t} onPress={() => setField('job_type', t)} />
+              ))}
             </View>
-            <View style={{ flex: 1 }}>
-              <Input testID="job-smax" label="Salary Max (₱)" value={form.salary_max} onChangeText={(v) => setField('salary_max', v.replace(/[^0-9.]/g, ''))} keyboardType="numeric" placeholder="20000" />
-            </View>
-          </View>
 
-          <Input testID="job-close" label="Closing Date (YYYY-MM-DD)" value={form.closing_date} onChangeText={(v) => setField('closing_date', v)} placeholder="optional" />
-        </Card>
+            <Input testID="job-loc" label="Location" value={form.location} onChangeText={(v) => setField('location', v)} placeholder="e.g., Cagayan de Oro City" autoCapitalize="words" />
+            <Input testID="job-vac" label="Vacancies" value={form.vacancies} onChangeText={(v) => setField('vacancies', v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
 
-        <Card>
-          <Text style={styles.sectionTitle}>Required Skills</Text>
-          <Text style={styles.help}>Used for rule-based skill comparison only. No ranking is performed.</Text>
-          {Object.keys(skillsByCategory).sort().map((cat) => (
-            <View key={cat} style={{ marginTop: Spacing.sm }}>
-              <Text style={styles.catLabel}>{cat}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                {skillsByCategory[cat].map((sk) => (
-                  <Chip key={sk.id} testID={`req-skill-${sk.id}`} label={sk.skill_name} active={selectedSkills.has(sk.id)} onPress={() => toggleSkill(sk.id)} />
-                ))}
+            <View style={styles.twoColumn}>
+              <View style={{ flex: 1 }}>
+                <Input testID="job-smin" label="Salary Min (PHP)" value={form.salary_min} onChangeText={(v) => setField('salary_min', v.replace(/[^0-9.]/g, ''))} keyboardType="numeric" placeholder="15000" />
+              </View>
+              <View style={{ width: Spacing.sm }} />
+              <View style={{ flex: 1 }}>
+                <Input testID="job-smax" label="Salary Max (PHP)" value={form.salary_max} onChangeText={(v) => setField('salary_max', v.replace(/[^0-9.]/g, ''))} keyboardType="numeric" placeholder="20000" />
               </View>
             </View>
-          ))}
-        </Card>
 
-        <View style={{ margin: Spacing.md, marginTop: 0 }}>
-          <Button testID="save-job" title={isEdit ? 'Update Job' : 'Post Job'} onPress={handleSave} loading={saving} />
+            <Input testID="job-close" label="Closing Date (YYYY-MM-DD)" value={form.closing_date} onChangeText={(v) => setField('closing_date', v)} placeholder="optional" />
+          </Card>
+
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Required Skills</Text>
+            <Text style={styles.help}>Used for rule-based matched/missing skill comparison only. No ranking is performed.</Text>
+            {Object.keys(skillsByCategory).sort().map((cat) => (
+              <View key={cat} style={{ marginTop: Spacing.sm }}>
+                <Text style={styles.catLabel}>{cat}</Text>
+                <View style={styles.chipWrap}>
+                  {skillsByCategory[cat].map((sk) => (
+                    <Chip key={sk.id} testID={`req-skill-${sk.id}`} label={sk.skill_name} active={selectedSkills.has(sk.id)} onPress={() => toggleSkill(sk.id)} />
+                  ))}
+                </View>
+              </View>
+            ))}
+          </Card>
+
+          <View style={{ marginVertical: Spacing.md }}>
+            <Button testID="save-job" title={isEdit ? 'Update Job' : 'Post Job'} onPress={handleSave} loading={saving} />
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -168,10 +177,25 @@ export default function JobForm() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.lightBg, padding: Spacing.md },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark, marginBottom: Spacing.sm },
-  label: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.3 },
-  catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
-  help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4 },
+  container: { flex: 1, backgroundColor: Colors.lightBg },
+  content: { paddingBottom: Spacing.xl },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
+  loadingText: { color: Colors.textDark, fontSize: FontSize.md },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, lineHeight: 20, marginTop: 8 },
+  body: { padding: Spacing.md },
+  sectionCard: { marginBottom: Spacing.md },
+  sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },
+  label: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.sm },
+  catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
+  help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },
+  twoColumn: { flexDirection: 'row' },
 });

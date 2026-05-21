@@ -24,12 +24,17 @@ export default function MonitorJobs() {
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   const closeJob = (job: any) => {
     confirmAction(
       'Close Job Post',
-      `Close "${job.job_title}"? This is a soft removal — the record is retained for monitoring and audit.`,
+      `Close "${job.job_title}"? This is a soft removal. The record is retained for monitoring and audit.`,
       async () => {
         setBusyId(job.id);
         try {
@@ -47,47 +52,72 @@ export default function MonitorJobs() {
   };
 
   return (
-    <FlatList
-      style={styles.container}
-      data={jobs}
-      keyExtractor={(item) => String(item.id)}
-      contentContainerStyle={{ padding: Spacing.md }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-      ListEmptyComponent={<EmptyState message="No job posts in the system yet." />}
-      renderItem={({ item }) => (
-        <Card testID={`monitor-job-${item.id}`}>
-          <Text style={styles.title}>{item.job_title}</Text>
-          <Text style={styles.company}>{item.company_name}</Text>
-          <Text style={styles.meta}>
-            {item.job_type} • {item.location || 'N/A'} • {item.vacancies} vacanc{item.vacancies > 1 ? 'ies' : 'y'}
-          </Text>
-          <Text style={styles.meta}>
-            Status: <Text style={{ fontWeight: '700', color: item.status === 'closed' ? Colors.gray : Colors.primary }}>
-              {String(item.status).toUpperCase()}
-            </Text> • Applicants: {item.applicant_count || 0}
-          </Text>
-          <Text style={styles.date}>Posted {new Date(item.posted_at).toLocaleDateString()}</Text>
-          {item.status !== 'closed' && (
-            <View style={{ marginTop: Spacing.sm }}>
-              <Button
-                testID={`close-job-${item.id}`}
-                title="Close Job (Soft Removal)"
-                variant="danger"
-                onPress={() => closeJob(item)}
-                loading={busyId === item.id}
-              />
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.headerTitle}>Job Posts</Text>
+        <Text style={styles.headerSub}>Monitor employer postings and soft-close when needed</Text>
+      </View>
+      <FlatList
+        data={jobs}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        ListEmptyComponent={<EmptyState message="No job posts in the system yet." />}
+        renderItem={({ item }) => (
+          <Card testID={`monitor-job-${item.id}`} style={styles.jobCard}>
+            <View style={styles.cardHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>{item.job_title}</Text>
+                <Text style={styles.company}>{item.company_name}</Text>
+              </View>
+              <View style={[styles.statusPill, item.status === 'closed' && styles.closedPill]}>
+                <Text style={[styles.statusText, item.status === 'closed' && styles.closedText]}>{item.status}</Text>
+              </View>
             </View>
-          )}
-        </Card>
-      )}
-    />
+            <Text style={styles.meta}>
+              {item.job_type} / {item.location || 'N/A'} / {item.vacancies} vacanc{item.vacancies > 1 ? 'ies' : 'y'}
+            </Text>
+            <Text style={styles.meta}>Applicants: {item.applicant_count || 0}</Text>
+            <Text style={styles.date}>Posted {new Date(item.posted_at).toLocaleDateString()}</Text>
+            {item.status !== 'closed' && (
+              <View style={{ marginTop: Spacing.md }}>
+                <Button
+                  testID={`close-job-${item.id}`}
+                  title="Close Job"
+                  variant="danger"
+                  onPress={() => closeJob(item)}
+                  loading={busyId === item.id}
+                />
+              </View>
+            )}
+          </Card>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.lightBg },
-  title: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark },
-  company: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600', marginTop: 2 },
-  meta: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 4, textTransform: 'capitalize' },
-  date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 6 },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
+  listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  jobCard: { borderRadius: 16 },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  title: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
+  company: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '800', marginTop: 3 },
+  meta: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 5, textTransform: 'capitalize' },
+  date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 7 },
+  statusPill: { backgroundColor: Colors.cardHighlight, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  closedPill: { backgroundColor: Colors.muted },
+  statusText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
+  closedText: { color: Colors.gray },
 });

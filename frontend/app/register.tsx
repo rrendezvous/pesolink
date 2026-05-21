@@ -61,43 +61,72 @@ export default function Register() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, backgroundColor: Colors.lightBg }}
+      style={{ flex: 1, backgroundColor: Colors.primaryDark }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.heading}>Create a Job Seeker account</Text>
-        <Text style={styles.sub}>Register to access PESO MisOr job opportunities.</Text>
+        <View style={styles.topBlock}>
+          <Text style={styles.kicker}>JOB SEEKER REGISTRATION</Text>
+          <Text style={styles.title}>Create account</Text>
+          <Text style={styles.subtitle}>Register to access PESO MisOr job opportunities.</Text>
+        </View>
 
-        <Card style={{ backgroundColor: Colors.surface }} testID="employer-notice">
-          <Text style={styles.noticeTitle}>Employer Accounts</Text>
-          <Text style={styles.noticeText}>
-            Employer accounts are created by PESO Admin only. If you represent a company,
-            please contact your local PESO Misamis Oriental office to request an account.
+        <View style={styles.sheet}>
+          <Card style={styles.noticeCard} testID="employer-notice">
+            <Text style={styles.noticeTitle}>Employer Accounts</Text>
+            <Text style={styles.noticeText}>
+              Employer accounts are created by PESO Admin only. If you represent a company,
+              please contact your local PESO Misamis Oriental office to request an account.
+            </Text>
+          </Card>
+
+          <Input testID="reg-email" label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
+          <Input testID="reg-password" label="Password (min 6 chars)" value={password} onChangeText={setPassword} secureTextEntry placeholder="Enter password" />
+          <Input testID="reg-confirm" label="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="Confirm password" />
+          <View style={styles.nameRow}>
+            <View style={{ flex: 1 }}>
+              <Input testID="reg-firstname" label="First Name" value={firstName} onChangeText={setFirstName} placeholder="Juan" autoCapitalize="words" />
+            </View>
+            <View style={{ width: Spacing.sm }} />
+            <View style={{ flex: 1 }}>
+              <Input testID="reg-lastname" label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Cruz" autoCapitalize="words" />
+            </View>
+          </View>
+          <Input testID="reg-contact" label="Contact Number" value={contact} onChangeText={setContact} placeholder="09xx xxx xxxx" keyboardType="phone-pad" />
+
+          <Button testID="reg-submit" title="Create Account" onPress={handleRegister} loading={loading} style={{ marginTop: Spacing.sm }} />
+
+          <Text style={styles.linkText} onPress={() => router.push('/login')} testID="go-login">
+            Already have an account? <Text style={styles.link}>Sign in</Text>
           </Text>
-        </Card>
-
-        <Input testID="reg-email" label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
-        <Input testID="reg-password" label="Password (min 6 chars)" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••" />
-        <Input testID="reg-confirm" label="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="••••••" />
-        <Input testID="reg-firstname" label="First Name" value={firstName} onChangeText={setFirstName} placeholder="Juan" autoCapitalize="words" />
-        <Input testID="reg-lastname" label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Cruz" autoCapitalize="words" />
-        <Input testID="reg-contact" label="Contact Number" value={contact} onChangeText={setContact} placeholder="09xx xxx xxxx" keyboardType="phone-pad" />
-
-        <Button testID="reg-submit" title="Create Account" onPress={handleRegister} loading={loading} />
-
-        <Text style={styles.linkText} onPress={() => router.push('/login')} testID="go-login">
-          Already have an account? <Text style={styles.link}>Sign in</Text>
-        </Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.xl },
-  heading: { fontSize: FontSize.xxl, fontWeight: '800', color: Colors.textDark },
-  sub: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 4, marginBottom: Spacing.md },
-  noticeTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, marginBottom: 6, textTransform: 'uppercase' },
+  content: { flexGrow: 1, backgroundColor: Colors.lightBg },
+  topBlock: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xxl,
+    paddingBottom: Spacing.xl,
+  },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '800', marginBottom: Spacing.md },
+  title: { fontSize: FontSize.xxxl, fontWeight: '900', color: Colors.white },
+  subtitle: { fontSize: FontSize.md, color: Colors.cardHighlight, marginTop: 6, lineHeight: 22 },
+  sheet: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: Spacing.lg,
+    marginTop: -Spacing.md,
+  },
+  noticeCard: { backgroundColor: Colors.cardHighlight, borderColor: Colors.border },
+  noticeTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
   noticeText: { fontSize: FontSize.sm, color: Colors.textDark, lineHeight: 20 },
-  linkText: { textAlign: 'center', color: Colors.textDark, fontSize: FontSize.sm, marginTop: Spacing.md },
-  link: { color: Colors.primary, fontWeight: '700' },
+  nameRow: { flexDirection: 'row' },
+  linkText: { textAlign: 'center', color: Colors.textDark, fontSize: FontSize.sm, marginTop: Spacing.lg },
+  link: { color: Colors.primary, fontWeight: '800' },
 });

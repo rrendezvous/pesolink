@@ -28,6 +28,13 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
       return res.status(400).json({ error: 'Please complete your NSRP profile before applying' });
     }
 
+    if (jobSeeker.referral_status !== 'referral_ready') {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'Your NSRP profile must be marked PESO Referral-Ready before applying',
+      });
+    }
+
     const [job] = await conn.query(
       `SELECT jp.*, e.user_id AS employer_user_id, e.company_name
        FROM job_posts jp JOIN employers e ON e.id = jp.employer_id

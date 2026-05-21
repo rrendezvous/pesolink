@@ -51,7 +51,7 @@ export default function JobDetails() {
   };
 
   if (loading) {
-    return <View style={styles.center}><Text>Loading...</Text></View>;
+    return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
   }
   if (!job) {
     return <EmptyState message="Job not found." />;
@@ -61,21 +61,32 @@ export default function JobDetails() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <Card>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.headerTitle}>Job Details</Text>
+        </View>
+
+        <Card style={styles.heroCard}>
+          <View style={styles.companyMark}>
+            <Text style={styles.companyMarkText}>{(job.company_name || 'P').charAt(0).toUpperCase()}</Text>
+          </View>
           <Text style={styles.title}>{job.job_title}</Text>
           <Text style={styles.company}>{job.company_name}</Text>
-          {job.location && <Text style={styles.meta}>📍 {job.location}</Text>}
-          <Text style={styles.meta}>💼 {job.job_type} • {job.vacancies} vacanc{job.vacancies > 1 ? 'ies' : 'y'}</Text>
+          <View style={styles.metaGrid}>
+            {job.location && <MetaBox label="Location" value={job.location} />}
+            <MetaBox label="Type" value={job.job_type} />
+            <MetaBox label="Vacancies" value={`${job.vacancies} ${job.vacancies > 1 ? 'slots' : 'slot'}`} />
+            {job.closing_date && <MetaBox label="Closes" value={new Date(job.closing_date).toLocaleDateString()} />}
+          </View>
           {job.salary_min && (
-            <Text style={styles.meta}>
-              💰 ₱{Number(job.salary_min).toLocaleString()} - ₱{Number(job.salary_max).toLocaleString()}
+            <Text style={styles.salary}>
+              PHP {Number(job.salary_min).toLocaleString()} - PHP {Number(job.salary_max).toLocaleString()}
             </Text>
           )}
-          {job.closing_date && <Text style={styles.meta}>📅 Closes: {new Date(job.closing_date).toLocaleDateString()}</Text>}
         </Card>
 
-        <Card style={{ backgroundColor: Colors.surface }}>
+        <Card style={styles.sectionCard}>
           <Text style={styles.section}>Description</Text>
           <Text style={styles.body}>{job.job_description}</Text>
           {job.requirements && (
@@ -87,31 +98,22 @@ export default function JobDetails() {
         </Card>
 
         {match && (
-          <Card>
-            <Text style={styles.section}>Skill Comparison</Text>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>Rule-Based Skill Comparison</Text>
             <Text style={styles.disclaimer}>{match.notice}</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: Spacing.sm }}>
-              <View style={[styles.statBox, { backgroundColor: Colors.accent }]}>
-                <Text style={styles.statBoxNum}>{match.matched_count}</Text>
-                <Text style={styles.statBoxLabel}>Matched</Text>
-              </View>
-              <View style={[styles.statBox, { backgroundColor: Colors.surface, borderColor: Colors.border, borderWidth: 1 }]}>
-                <Text style={[styles.statBoxNum, { color: Colors.textDark }]}>{match.unmatched_count}</Text>
-                <Text style={[styles.statBoxLabel, { color: Colors.textDark }]}>Unmatched</Text>
-              </View>
-              <View style={[styles.statBox, { backgroundColor: Colors.cardHighlight, borderColor: Colors.border, borderWidth: 1 }]}>
-                <Text style={[styles.statBoxNum, { color: Colors.textDark }]}>{match.total_required}</Text>
-                <Text style={[styles.statBoxLabel, { color: Colors.textDark }]}>Required</Text>
-              </View>
+            <View style={styles.matchRow}>
+              <MatchBox label="Matched" value={match.matched_count} active />
+              <MatchBox label="Missing" value={match.unmatched_count} />
+              <MatchBox label="Required" value={match.total_required} />
             </View>
 
             {match.matched_skills.length > 0 && (
               <>
-                <Text style={styles.subSection}>Skills you have ({match.matched_count})</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                <Text style={styles.subSection}>Matched skills</Text>
+                <View style={styles.pillWrap}>
                   {match.matched_skills.map((s: any) => (
-                    <View key={s.id} style={[styles.skillPill, { backgroundColor: Colors.accent, borderColor: Colors.accent }]}>
-                      <Text style={{ color: Colors.white, fontSize: FontSize.xs, fontWeight: '600' }}>✓ {s.skill_name}</Text>
+                    <View key={s.id} style={[styles.skillPill, styles.skillPillMatched]}>
+                      <Text style={styles.skillPillMatchedText}>{s.skill_name}</Text>
                     </View>
                   ))}
                 </View>
@@ -119,11 +121,11 @@ export default function JobDetails() {
             )}
             {match.unmatched_required_skills.length > 0 && (
               <>
-                <Text style={[styles.subSection, { marginTop: Spacing.sm }]}>Skills you're missing ({match.unmatched_count})</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                <Text style={styles.subSection}>Missing required skills</Text>
+                <View style={styles.pillWrap}>
                   {match.unmatched_required_skills.map((s: any) => (
                     <View key={s.id} style={styles.skillPill}>
-                      <Text style={{ color: Colors.textDark, fontSize: FontSize.xs }}>{s.skill_name}</Text>
+                      <Text style={styles.skillPillText}>{s.skill_name}</Text>
                     </View>
                   ))}
                 </View>
@@ -132,17 +134,17 @@ export default function JobDetails() {
           </Card>
         )}
 
-        <Card>
+        <Card style={styles.sectionCard}>
           {alreadyApplied ? (
             <View>
               <Text style={styles.section}>Your Application</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <Text style={{ color: Colors.gray, fontSize: FontSize.sm }}>Status:</Text>
+              <View style={styles.applicationStatus}>
+                <Text style={styles.statusLabel}>Application Status</Text>
                 <StatusBadge status={job.my_application.application_status} />
+                <Text style={styles.statusNote}>
+                  Applied on {new Date(job.my_application.applied_at).toLocaleDateString()}
+                </Text>
               </View>
-              <Text style={{ color: Colors.gray, fontSize: FontSize.xs, marginTop: 6 }}>
-                Applied on {new Date(job.my_application.applied_at).toLocaleDateString()}
-              </Text>
             </View>
           ) : (
             <>
@@ -152,7 +154,7 @@ export default function JobDetails() {
                 label="Cover Letter (optional)"
                 value={coverLetter}
                 onChangeText={setCoverLetter}
-                placeholder="Why are you a good fit for this role?"
+                placeholder="Add a short note for the employer."
                 multiline
                 numberOfLines={4}
               />
@@ -165,21 +167,97 @@ export default function JobDetails() {
   );
 }
 
+function MetaBox({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metaBox}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
+    </View>
+  );
+}
+
+function MatchBox({ label, value, active }: { label: string; value: number; active?: boolean }) {
+  return (
+    <View style={[styles.matchBox, active && styles.matchBoxActive]}>
+      <Text style={[styles.matchValue, active && styles.matchValueActive]}>{value}</Text>
+      <Text style={[styles.matchLabel, active && styles.matchLabelActive]}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.lightBg, padding: Spacing.md },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.textDark },
-  company: { fontSize: FontSize.md, color: Colors.primary, fontWeight: '600', marginTop: 4 },
-  meta: { color: Colors.gray, fontSize: FontSize.sm, marginTop: 4 },
-  section: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textDark, marginBottom: Spacing.sm },
-  subSection: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, marginTop: 8, marginBottom: 6, textTransform: 'uppercase' },
-  body: { color: Colors.textDark, fontSize: FontSize.sm, lineHeight: 20 },
-  disclaimer: { color: Colors.gray, fontSize: FontSize.xs, fontStyle: 'italic' },
-  statBox: { flex: 1, borderRadius: 10, padding: 12, alignItems: 'center' },
-  statBoxNum: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.white },
-  statBoxLabel: { fontSize: FontSize.xs, color: Colors.white, fontWeight: '600', marginTop: 2 },
-  skillPill: {
-    backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginRight: 6, marginBottom: 6,
+  container: { flex: 1, backgroundColor: Colors.lightBg },
+  content: { paddingBottom: Spacing.xl },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
+  loadingText: { color: Colors.textDark, fontSize: FontSize.md },
+  header: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
+  headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
+  heroCard: { margin: Spacing.md, marginBottom: Spacing.sm, alignItems: 'flex-start' },
+  companyMark: {
+    width: 62, height: 62, borderRadius: 16,
+    backgroundColor: Colors.cardHighlight,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  companyMarkText: { color: Colors.primary, fontSize: FontSize.xl, fontWeight: '900' },
+  title: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.textDark },
+  company: { fontSize: FontSize.md, color: Colors.gray, fontWeight: '700', marginTop: 4 },
+  salary: { color: Colors.primaryDark, fontSize: FontSize.md, fontWeight: '900', marginTop: Spacing.md },
+  metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
+  metaBox: {
+    backgroundColor: Colors.muted,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: '47%',
+  },
+  metaLabel: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
+  metaValue: { color: Colors.textDark, fontSize: FontSize.sm, fontWeight: '800', marginTop: 2, textTransform: 'capitalize' },
+  sectionCard: { marginHorizontal: Spacing.md, marginTop: Spacing.sm },
+  section: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
+  subSection: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, marginTop: Spacing.md, marginBottom: 6 },
+  body: { color: Colors.textDark, fontSize: FontSize.sm, lineHeight: 21 },
+  disclaimer: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18 },
+  matchRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+  matchBox: {
+    flex: 1,
+    backgroundColor: Colors.muted,
+    borderRadius: 12,
+    padding: Spacing.sm,
+    alignItems: 'center',
+  },
+  matchBoxActive: { backgroundColor: Colors.primary },
+  matchValue: { color: Colors.textDark, fontSize: FontSize.xl, fontWeight: '900' },
+  matchValueActive: { color: Colors.white },
+  matchLabel: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800', marginTop: 2 },
+  matchLabelActive: { color: Colors.white },
+  pillWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  skillPill: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  skillPillMatched: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primary },
+  skillPillText: { color: Colors.textDark, fontSize: FontSize.xs, fontWeight: '700' },
+  skillPillMatchedText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '800' },
+  applicationStatus: {
+    backgroundColor: Colors.cardHighlight,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: Spacing.md,
+  },
+  statusLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', marginBottom: Spacing.sm },
+  statusNote: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
 });

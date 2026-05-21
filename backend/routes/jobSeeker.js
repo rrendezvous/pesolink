@@ -60,6 +60,7 @@ router.post('/profile', async (req, res) => {
     years_of_experience,
     employment_status,
     preferred_occupation,
+    nsrp_full_data,
   } = req.body;
 
   try {
@@ -68,12 +69,16 @@ router.post('/profile', async (req, res) => {
 
     const profileCompleted = !!(first_name && last_name && date_of_birth && contact_number && city);
 
+    const [[current]] = await db.query('SELECT referral_status FROM job_seekers WHERE id = ?', [jsId]);
+    const nextReferralStatus = current?.referral_status === 'submitted' ? 'submitted' : 'draft';
+
     await db.query(
       `UPDATE job_seekers SET
          first_name=?, middle_name=?, last_name=?, date_of_birth=?, gender=?,
          civil_status=?, contact_number=?, address=?, city=?, province=?,
          education_level=?, course=?, years_of_experience=?, employment_status=?,
-         preferred_occupation=?, profile_completed=?
+         preferred_occupation=?, nsrp_full_data=?, profile_completed=?, referral_status=?, referral_review_notes=NULL,
+         referral_reviewed_by=NULL, referral_reviewed_at=NULL
        WHERE id=?`,
       [
         first_name || null,
@@ -91,7 +96,9 @@ router.post('/profile', async (req, res) => {
         years_of_experience || 0,
         employment_status || null,
         preferred_occupation || null,
+        nsrp_full_data ? JSON.stringify(nsrp_full_data) : null,
         profileCompleted,
+        nextReferralStatus,
         jsId,
       ]
     );
@@ -101,6 +108,33 @@ router.post('/profile', async (req, res) => {
   } catch (err) {
     console.error('[Profile POST]', err);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// POST /api/job-seeker/profile/submit-referral - submit NSRP profile for PESO review
+router.post('/profile/submit-referral', async (req, res) => {
+  try {
+    const jsId = await getJobSeekerId(req.user.id);
+    if (!jsId) return res.status(404).json({ error: 'Profile not found' });
+
+    const [rows] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
+    const profile = rows[0];
+    if (!profile.profile_completed) {
+      return res.status(400).json({ error: 'Complete the required NSRP fields before submitting for PESO review' });
+    }
+
+    await db.query(
+      `UPDATE job_seekers
+       SET referral_status='submitted', referral_review_notes=NULL,
+           referral_reviewed_by=NULL, referral_reviewed_at=NULL
+       WHERE id=?`,
+      [jsId]
+    );
+
+    res.json({ message: 'NSRP profile submitted for PESO review', referral_status: 'submitted' });
+  } catch (err) {
+    console.error('[Referral Submit]', err);
+    res.status(500).json({ error: 'Failed to submit profile for review' });
   }
 });
 

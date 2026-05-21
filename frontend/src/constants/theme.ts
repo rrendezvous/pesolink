@@ -4,18 +4,20 @@
 export const Colors = {
   primary: '#047857',        // Primary Green
   primaryDark: '#065F46',    // Deep Emerald
+  primarySoft: '#0B8F68',
   accent: '#22C55E',         // Accent / Success
-  lightBg: '#ECFDF5',        // Light Background
-  cardHighlight: '#D1FAE5',  // Card Highlight
-  textDark: '#064E3B',       // Text Dark
+  lightBg: '#E7EFED',        // App Background
+  cardHighlight: '#ECFDF5',  // Card Highlight
+  textDark: '#1F2937',       // Main Text
   textSecondary: '#047857',  // Secondary Text
-  border: '#A7F3D0',         // Border / Divider
+  border: '#D1D5DB',         // Border / Divider
   surface: '#F8FAFC',        // Neutral Surface
   white: '#FFFFFF',
   error: '#DC2626',
   warning: '#F59E0B',
   gray: '#6B7280',
   grayLight: '#9CA3AF',
+  muted: '#EEF2F1',
 };
 
 export const Spacing = {
