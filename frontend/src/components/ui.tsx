@@ -6,7 +6,9 @@ import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator,
   StyleSheet, ViewStyle, TextStyle, KeyboardTypeOptions,
 } from 'react-native';
-import { Colors, Spacing, FontSize, StatusColors, StatusLabels } from '../constants/theme';
+import {
+  Colors, Spacing, FontSize, Radius, Shadow, StatusColors, StatusLabels,
+} from '../constants/theme';
 
 export function Button({
   title, onPress, variant = 'primary', loading, disabled, testID, style,
@@ -36,6 +38,7 @@ export function Button({
       activeOpacity={0.8}
       style={[
         btn.base,
+        variant === 'primary' && btn.primary,
         { backgroundColor: bgColor, borderColor, opacity: isDisabled ? 0.6 : 1 },
         style,
       ]}
@@ -51,18 +54,22 @@ export function Button({
 
 const btn = StyleSheet.create({
   base: {
-    paddingVertical: 15,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     minHeight: 52,
   },
+  primary: {
+    ...Shadow.raised,
+  },
   text: {
     fontSize: FontSize.md,
     fontWeight: '800',
     textTransform: 'uppercase',
+    letterSpacing: 0,
   },
 });
 
@@ -120,8 +127,8 @@ const inp = StyleSheet.create({
   input: {
     backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 7,
+    borderColor: Colors.borderSoft,
+    borderRadius: Radius.sm,
     paddingHorizontal: 14,
     paddingVertical: 13,
     minHeight: 48,
@@ -147,10 +154,11 @@ const card = StyleSheet.create({
   base: {
     backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
+    borderColor: Colors.borderSoft,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    ...Shadow.card,
   },
 });
 
@@ -164,13 +172,14 @@ export function StatusBadge({ status, testID }: { status: keyof typeof StatusCol
         backgroundColor: cfg.bg,
         borderColor: cfg.border,
         borderWidth: 1,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 999,
+        paddingHorizontal: 11,
+        paddingVertical: 5,
+        borderRadius: Radius.pill,
         alignSelf: 'flex-start',
+        maxWidth: 150,
       }}
     >
-      <Text style={{ color: cfg.text, fontSize: FontSize.xs, fontWeight: '700' }}>
+      <Text style={{ color: cfg.text, fontSize: FontSize.xs, fontWeight: '800', textAlign: 'center' }}>
         {StatusLabels[status]}
       </Text>
     </View>
@@ -188,24 +197,37 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
 
 const hdr = StyleSheet.create({
   container: {
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
+    backgroundColor: Colors.primaryDark,
   },
-  title: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '700' },
-  subtitle: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 2 },
+  title: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900' },
+  subtitle: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4, lineHeight: 20 },
 });
 
 export function EmptyState({ message, testID }: { message: string; testID?: string }) {
   return (
-    <View testID={testID} style={{ padding: Spacing.xl, alignItems: 'center' }}>
+    <View testID={testID} style={empty.base}>
       <Text style={{ fontSize: FontSize.md, color: Colors.gray, textAlign: 'center' }}>
         {message}
       </Text>
     </View>
   );
 }
+
+const empty = StyleSheet.create({
+  base: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.borderSoft,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    ...Shadow.card,
+  },
+});
 
 export function Chip({
   label, active, onPress, testID,
@@ -217,13 +239,13 @@ export function Chip({
       activeOpacity={onPress ? 0.7 : 1}
       style={{
         backgroundColor: active ? Colors.primary : Colors.white,
-        borderColor: active ? Colors.primary : Colors.border,
+        borderColor: active ? Colors.primary : Colors.borderSoft,
         borderWidth: 1,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 999,
-        marginRight: 6,
-        marginBottom: 6,
+        paddingHorizontal: 13,
+        paddingVertical: 7,
+        borderRadius: Radius.pill,
+        marginRight: 7,
+        marginBottom: 7,
       }}
     >
       <Text
@@ -241,11 +263,34 @@ export function Chip({
 
 export function Row({ left, right, style }: { left: string; right: string | number; style?: TextStyle }) {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-      <Text style={{ color: Colors.gray, fontSize: FontSize.sm, flex: 1 }}>{left}</Text>
-      <Text style={[{ color: Colors.textDark, fontSize: FontSize.sm, fontWeight: '600', flex: 1, textAlign: 'right' }, style]}>
+    <View style={row.base}>
+      <Text style={row.left}>{left}</Text>
+      <Text style={[row.right, style]}>
         {right}
       </Text>
     </View>
   );
 }
+
+const row = StyleSheet.create({
+  base: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+    borderBottomColor: Colors.borderSoft,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: Spacing.sm,
+  },
+  left: {
+    color: Colors.gray,
+    fontSize: FontSize.sm,
+    flex: 1,
+  },
+  right: {
+    color: Colors.textDark,
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    flex: 1.2,
+    textAlign: 'right',
+  },
+});

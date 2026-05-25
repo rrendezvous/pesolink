@@ -156,7 +156,7 @@ CREATE TABLE job_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   job_post_id INT NOT NULL,
   job_seeker_id INT NOT NULL,
-  application_status ENUM('submitted', 'pending', 'for_review', 'referred', 'rejected', 'closed') DEFAULT 'submitted',
+  application_status ENUM('submitted', 'pending', 'for_review', 'for_interview', 'hired', 'rejected', 'closed') DEFAULT 'submitted',
   cover_letter TEXT,
   applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

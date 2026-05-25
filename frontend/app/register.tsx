@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { Button, Input, Card } from '../src/components/ui';
 import { api, getApiError } from '../src/api/client';
 import { useAuth } from '../src/context/AuthContext';
-import { Colors, Spacing, FontSize } from '../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../src/constants/theme';
 
 export default function Register() {
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function Register() {
         <View style={styles.topBlock}>
           <Text style={styles.kicker}>JOB SEEKER REGISTRATION</Text>
           <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Register to access PESO MisOr job opportunities.</Text>
+          <Text style={styles.subtitle}>Register to access PESO-Link MisOr job opportunities.</Text>
         </View>
 
         <View style={styles.sheet}>
@@ -118,8 +118,8 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
     padding: Spacing.lg,
     marginTop: -Spacing.md,
   },

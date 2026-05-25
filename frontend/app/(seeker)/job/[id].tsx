@@ -8,7 +8,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Input, Card, StatusBadge, EmptyState } from '../../../src/components/ui';
 import { api, getApiError } from '../../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../../src/constants/theme';
 
 export default function JobDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -63,7 +63,7 @@ export default function JobDetails() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Job Details</Text>
         </View>
 
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   heroCard: { margin: Spacing.md, marginBottom: Spacing.sm, alignItems: 'flex-start' },
   companyMark: {
-    width: 62, height: 62, borderRadius: 16,
+    width: 60, height: 60, borderRadius: Radius.md,
     backgroundColor: Colors.cardHighlight,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: Spacing.md,
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   metaBox: {
     backgroundColor: Colors.muted,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: '47%',
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   matchBox: {
     flex: 1,
     backgroundColor: Colors.muted,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: Spacing.sm,
     alignItems: 'center',
   },
@@ -240,11 +240,11 @@ const styles = StyleSheet.create({
   pillWrap: { flexDirection: 'row', flexWrap: 'wrap' },
   skillPill: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     marginRight: 6,
     marginBottom: 6,
   },
@@ -253,9 +253,9 @@ const styles = StyleSheet.create({
   skillPillMatchedText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '800' },
   applicationStatus: {
     backgroundColor: Colors.cardHighlight,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
   },
   statusLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', marginBottom: Spacing.sm },

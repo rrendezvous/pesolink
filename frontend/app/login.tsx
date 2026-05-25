@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import { Button, Input, Card } from '../src/components/ui';
 import { api, getApiError } from '../src/api/client';
 import { useAuth } from '../src/context/AuthContext';
-import { Colors, Spacing, FontSize } from '../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../src/constants/theme';
 
 export default function Login() {
   const router = useRouter();
@@ -46,7 +46,7 @@ export default function Login() {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.topBlock}>
-          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.title}>Welcome</Text>
           <Text style={styles.subtitle}>Enter your account details to continue.</Text>
         </View>
@@ -128,15 +128,15 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
     padding: Spacing.lg,
     marginTop: -Spacing.md,
   },
   segment: {
     flexDirection: 'row',
     backgroundColor: Colors.cardHighlight,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 4,
     marginBottom: Spacing.sm,
   },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 9,
+    borderRadius: Radius.sm,
   },
   segmentActive: {
     backgroundColor: Colors.white,

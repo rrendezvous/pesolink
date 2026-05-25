@@ -31,7 +31,7 @@ export default function Index() {
       <View style={styles.brandArea}>
         <BriefcaseMark size="large" />
         <View style={styles.titleBlock}>
-          <Text testID="app-title" style={styles.title}>PESO MisOr</Text>
+          <Text testID="app-title" style={styles.title}>PESO-Link MisOr</Text>
           <Text style={styles.titleAccent}>Mobile</Text>
         </View>
         <Text style={styles.description}>
@@ -68,7 +68,7 @@ function SplashState() {
     <View style={styles.container}>
       <View style={styles.splashCenter}>
         <BriefcaseMark size="compact" />
-        <Text style={styles.splashTitle}>PESO MisOr Mobile</Text>
+        <Text style={styles.splashTitle}>PESO-Link MisOr</Text>
         <Text style={styles.splashSub}>Provincial Job Portal</Text>
         <ActivityIndicator color={Colors.white} size="small" style={{ marginTop: Spacing.xl }} />
       </View>

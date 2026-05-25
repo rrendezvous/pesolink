@@ -8,7 +8,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Button, Input, Card, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
 
@@ -154,7 +154,7 @@ export default function JobForm() {
 
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Required Skills</Text>
-            <Text style={styles.help}>Used for rule-based matched/missing skill comparison only. No ranking is performed.</Text>
+            <Text style={styles.help}>Used for rule-based matched and missing skill comparison only.</Text>
             {Object.keys(skillsByCategory).sort().map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
@@ -191,11 +191,11 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, lineHeight: 20, marginTop: 8 },
   body: { padding: Spacing.md },
-  sectionCard: { marginBottom: Spacing.md },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },
   label: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.sm },
   catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
   help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },
   twoColumn: { flexDirection: 'row' },
+  sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
 });

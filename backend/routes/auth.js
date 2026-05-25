@@ -25,8 +25,9 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 
-  const conn = await db.getConnection();
+  let conn;
   try {
+    conn = await db.getConnection();
     await conn.beginTransaction();
 
     // Check if email exists
@@ -71,11 +72,11 @@ router.post('/register', async (req, res) => {
       user: { id: userId, email, role, account_status: userStatus },
     });
   } catch (err) {
-    await conn.rollback();
+    if (conn) await conn.rollback();
     console.error('[Register Error]', err);
     res.status(500).json({ error: 'Registration failed' });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 });
 

@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } fr
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function MyApplications() {
   const router = useRouter();
@@ -33,7 +33,7 @@ export default function MyApplications() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Application Status</Text>
       </View>
 
@@ -80,15 +80,16 @@ const styles = StyleSheet.create({
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
   card: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    ...Shadow.card,
   },
   cardTop: { flexDirection: 'row', alignItems: 'center' },
   companyMark: {
-    width: 58, height: 58, borderRadius: 14,
+    width: 56, height: 56, borderRadius: Radius.md,
     backgroundColor: Colors.cardHighlight,
     alignItems: 'center', justifyContent: 'center',
     marginRight: Spacing.md,
@@ -99,9 +100,9 @@ const styles = StyleSheet.create({
   meta: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 4, textTransform: 'capitalize' },
   statusPanel: {
     backgroundColor: Colors.cardHighlight,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: Spacing.sm,
     marginTop: Spacing.md,
   },

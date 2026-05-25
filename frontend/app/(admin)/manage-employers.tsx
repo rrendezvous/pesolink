@@ -1,5 +1,5 @@
 // ============================================================
-// Admin: Manage Employers (create, view, legacy approve/reject)
+// Admin: Manage Employers (create and view admin-controlled employer accounts)
 // Employer accounts are created exclusively by PESO Admin.
 // ============================================================
 import React, { useCallback, useState } from 'react';
@@ -10,8 +10,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { Card, Button, Input, EmptyState, Row } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { confirmAction } from '../../src/utils/confirm';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function ManageEmployers() {
   const [employers, setEmployers] = useState<any[]>([]);
@@ -64,27 +63,10 @@ export default function ManageEmployers() {
     }
   };
 
-  const legacyDecide = (emp: any, action: 'approve' | 'reject') => {
-    confirmAction(
-      action === 'approve' ? 'Approve Employer' : 'Reject Employer',
-      `Are you sure you want to ${action} "${emp.company_name}"?`,
-      async () => {
-        try {
-          await api.put(`/admin/employers/${emp.id}/${action}`);
-          await load();
-        } catch (err) {
-          Alert.alert('Error', getApiError(err));
-        }
-      },
-      action === 'approve' ? 'Approve' : 'Reject',
-      action === 'reject',
-    );
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Employers</Text>
         <Text style={styles.headerSub}>Admin-created employer accounts only</Text>
       </View>
@@ -108,16 +90,6 @@ export default function ManageEmployers() {
               <Row left="Approval" right={item.approval_status} />
               <Row left="Account" right={item.account_status} />
             </View>
-            {item.approval_status === 'pending' && (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: Spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Button testID={`legacy-approve-${item.id}`} title="Approve (legacy)" onPress={() => legacyDecide(item, 'approve')} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Button testID={`legacy-reject-${item.id}`} title="Reject (legacy)" variant="danger" onPress={() => legacyDecide(item, 'reject')} />
-                </View>
-              </View>
-            )}
           </Card>
         )}
       />
@@ -165,11 +137,18 @@ const styles = StyleSheet.create({
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   topBar: { padding: Spacing.md, paddingBottom: Spacing.sm },
   listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
-  employerCard: { borderRadius: 16 },
+  employerCard: { borderRadius: Radius.lg },
   companyName: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   subtitle: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '800', marginTop: 2 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: Spacing.md, maxHeight: '90%' },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.lg,
+    maxHeight: '90%',
+    ...Shadow.raised,
+  },
   modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   modalSub: { fontSize: FontSize.sm, color: Colors.gray, marginBottom: Spacing.sm },
 });

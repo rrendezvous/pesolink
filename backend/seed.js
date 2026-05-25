@@ -22,7 +22,7 @@ async function run() {
   );
   await db.query(
     'INSERT INTO peso_admins (user_id, full_name, position, contact_number) VALUES (?, ?, ?, ?)',
-    [adminUser.insertId, 'PESO MisOr Administrator', 'PESO Officer-in-Charge', '088-857-1234']
+    [adminUser.insertId, 'PESO-Link MisOr Administrator', 'PESO Officer-in-Charge', '088-857-1234']
   );
   console.log('[Seed] Admin created: admin@peso.gov.ph / Admin@123');
 

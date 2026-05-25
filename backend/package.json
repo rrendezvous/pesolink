@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "init-db": "node init-db.js",
-    "migrate:referral": "node migrate-referral-status.js"
+    "migrate:referral": "node migrate-referral-status.js",
+    "migrate:application-status": "node migrate-application-status.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

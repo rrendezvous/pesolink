@@ -9,7 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 import { confirmAction } from '../../src/utils/confirm';
 
 export default function SeekerDashboard() {
@@ -70,7 +70,7 @@ export default function SeekerDashboard() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Overview</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} testID="seeker-logout" style={styles.avatar}>
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   body: { padding: Spacing.md },
   welcomeCard: {
     padding: Spacing.lg,
-    borderRadius: 16,
+    borderRadius: Radius.xl,
     marginBottom: Spacing.md,
   },
   welcomeName: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   referralBadge: {
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 7,
     marginTop: Spacing.md,
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF3C7',
     borderColor: Colors.warning,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: 14,
     paddingVertical: 8,
     marginTop: Spacing.md,
@@ -258,9 +258,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 92,
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.md,
@@ -274,10 +274,11 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     padding: 12,
+    ...Shadow.card,
   },
   statLabel: { fontSize: FontSize.xs, color: Colors.gray, fontWeight: '900' },
   statValue: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.textDark, marginTop: 4 },
@@ -286,9 +287,9 @@ const styles = StyleSheet.create({
   actionList: { gap: Spacing.sm, marginBottom: Spacing.lg },
   actionBtn: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 13,
+    borderRadius: Radius.md,
     minHeight: 52,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -303,14 +304,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
   },
   companyMark: {
-    width: 54, height: 54, borderRadius: 14,
+    width: 52, height: 52, borderRadius: Radius.md,
     backgroundColor: Colors.cardHighlight,
     alignItems: 'center', justifyContent: 'center',
     marginRight: Spacing.md,

@@ -8,9 +8,9 @@ import {
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Card, Button, StatusBadge, EmptyState, Row } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize, StatusLabels } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels } from '../../src/constants/theme';
 
-const STATUSES = ['submitted', 'pending', 'for_review', 'referred', 'rejected', 'closed'] as const;
+const STATUSES = ['for_review', 'for_interview', 'hired', 'rejected'] as const;
 
 export default function Applicants() {
   const { jobId, jobTitle } = useLocalSearchParams<{ jobId: string; jobTitle: string }>();
@@ -43,7 +43,7 @@ export default function Applicants() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Applicants</Text>
         <Text style={styles.headerSub}>{jobTitle || 'Selected job post'}</Text>
       </View>
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  applicantCard: { borderRadius: 16 },
+  applicantCard: { borderRadius: Radius.lg },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
   cardHint: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
   name: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
@@ -149,10 +149,11 @@ const styles = StyleSheet.create({
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: Spacing.md,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.lg,
     maxHeight: '88%',
+    ...Shadow.raised,
   },
   modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   modalSubtle: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginTop: 4, marginBottom: Spacing.sm },
@@ -164,7 +165,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     backgroundColor: Colors.surface,
     padding: 10,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
   },
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.sm },
   statusButton: { width: '48%' },

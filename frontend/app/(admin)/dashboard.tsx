@@ -8,7 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 import { confirmAction } from '../../src/utils/confirm';
 
 export default function AdminDashboard() {
@@ -56,7 +56,7 @@ export default function AdminDashboard() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Admin Console</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} testID="admin-logout" style={styles.exitButton}>
@@ -143,9 +143,10 @@ const styles = StyleSheet.create({
   body: { padding: Spacing.md },
   officeCard: {
     backgroundColor: Colors.primary,
-    borderRadius: 18,
+    borderRadius: Radius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
+    ...Shadow.raised,
   },
   officeLabel: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
   officeName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 8 },
@@ -155,19 +156,20 @@ const styles = StyleSheet.create({
   bigStat: {
     width: '48%',
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     padding: 14,
+    ...Shadow.card,
   },
   bigStatValue: { fontSize: FontSize.xxl, fontWeight: '900', color: Colors.primary },
   bigStatLabel: { fontSize: FontSize.xs, color: Colors.textDark, marginTop: 4, fontWeight: '800' },
   actionList: { gap: Spacing.sm },
   actionBtn: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     minHeight: 64,
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -182,7 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardHighlight,
     borderColor: Colors.primary,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginTop: Spacing.lg,
   },

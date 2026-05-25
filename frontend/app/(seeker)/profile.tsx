@@ -8,7 +8,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Button, Input, Card, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const GENDERS = ['male', 'female', 'other'];
 const CIVIL = ['single', 'married', 'widowed', 'separated'];
@@ -456,11 +456,11 @@ const styles = StyleSheet.create({
   noticeTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
   noticeText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
   reviewNotes: { fontSize: FontSize.sm, color: '#92400E', lineHeight: 20, marginBottom: Spacing.md, fontWeight: '700' },
-  sectionCard: { marginBottom: Spacing.md },
+  sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
   formTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },
   help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },
   catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
   selectLabel: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
-  optBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, marginRight: 6, marginBottom: 6 },
+  optBtn: { borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 7, marginRight: 6, marginBottom: 6 },
   twoColumn: { flexDirection: 'row' },
 });

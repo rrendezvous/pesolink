@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } fr
 import { useFocusEffect } from 'expo-router';
 import { Card, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function SeekerNotifications() {
   const [notifs, setNotifs] = useState<any[]>([]);
@@ -41,7 +41,7 @@ export default function SeekerNotifications() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Notifications</Text>
         <Text style={styles.headerSub}>{unread} unread update{unread === 1 ? '' : 's'}</Text>
       </View>
@@ -80,8 +80,8 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  notificationCard: { borderRadius: 16 },
-  readNotificationCard: { borderRadius: 16, backgroundColor: Colors.surface, opacity: 0.82 },
+  notificationCard: { borderRadius: Radius.lg },
+  readNotificationCard: { borderRadius: Radius.lg, backgroundColor: Colors.surface, opacity: 0.82 },
   titleRow: { flexDirection: 'row', alignItems: 'center' },
   statusMark: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.accent, marginRight: 10 },
   readMark: { backgroundColor: Colors.grayLight },

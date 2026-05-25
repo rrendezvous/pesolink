@@ -11,7 +11,7 @@ export interface AuthUser {
   id: number;
   email: string;
   role: UserRole;
-  status: string;
+  account_status: string;
 }
 
 interface AuthContextValue {

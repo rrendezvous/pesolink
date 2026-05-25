@@ -9,7 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 import { confirmAction } from '../../src/utils/confirm';
 
 export default function EmployerDashboard() {
@@ -70,7 +70,7 @@ export default function EmployerDashboard() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>PESO MIS.OR</Text>
+          <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Overview</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} testID="emp-logout" style={styles.avatar}>
@@ -179,9 +179,10 @@ const styles = StyleSheet.create({
   body: { padding: Spacing.md },
   companyCard: {
     backgroundColor: Colors.primary,
-    borderRadius: 18,
+    borderRadius: Radius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
+    ...Shadow.raised,
   },
   companyName: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900' },
   companyEmail: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 5 },
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderColor: Colors.accent,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 7,
     marginTop: Spacing.md,
@@ -202,27 +203,28 @@ const styles = StyleSheet.create({
   rejectedTitle: { fontWeight: '900', color: '#991B1B' },
   rejectedText: { color: '#991B1B', marginTop: 4, fontSize: FontSize.sm },
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
-  statCard: { flex: 1, backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1, borderRadius: 14, padding: 14 },
+  statCard: { flex: 1, backgroundColor: Colors.white, borderColor: Colors.borderSoft, borderWidth: 1, borderRadius: Radius.lg, padding: 14, ...Shadow.card },
   statLabel: { fontSize: FontSize.xs, color: Colors.gray, fontWeight: '900', textTransform: 'uppercase' },
   statValue: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.textDark, marginTop: 8 },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginTop: Spacing.sm, marginBottom: Spacing.sm },
   actionList: { gap: Spacing.sm, marginBottom: Spacing.lg },
   actionBtn: {
-    backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1,
-    borderRadius: 13, minHeight: 52, paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: Colors.white, borderColor: Colors.borderSoft, borderWidth: 1,
+    borderRadius: Radius.md, minHeight: 52, paddingVertical: 14, paddingHorizontal: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '800' },
   actionArrow: { color: Colors.primary, fontSize: FontSize.lg, fontWeight: '900' },
   jobCard: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
+    ...Shadow.card,
   },
   jobTitle: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '900' },
   jobMeta: { color: Colors.gray, fontSize: FontSize.sm, marginTop: 4, textTransform: 'capitalize' },

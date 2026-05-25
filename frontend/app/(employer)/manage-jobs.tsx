@@ -8,7 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Button, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function ManageJobs() {
   const router = useRouter();
@@ -32,15 +32,15 @@ export default function ManageJobs() {
     setRefreshing(false);
   };
 
-  const deleteJob = (id: number) => {
-    Alert.alert('Delete Job', 'Are you sure you want to delete this job post?', [
+  const closeJob = (id: number) => {
+    Alert.alert('Close Job Post', 'Close this job post? The record will stay available for PESO monitoring.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Close',
         style: 'destructive',
         onPress: async () => {
           try {
-            await api.delete(`/employer/jobs/${id}`);
+            await api.put(`/employer/jobs/${id}/close`);
             await load();
           } catch (err) {
             Alert.alert('Error', getApiError(err));
@@ -53,7 +53,7 @@ export default function ManageJobs() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Jobs</Text>
       </View>
 
@@ -95,9 +95,11 @@ export default function ManageJobs() {
               >
                 <Text style={styles.linkButtonText}>Edit</Text>
               </TouchableOpacity>
-              <TouchableOpacity testID={`delete-job-${item.id}`} style={[styles.linkButton, styles.deleteButton]} onPress={() => deleteJob(item.id)}>
-                <Text style={[styles.linkButtonText, { color: Colors.error }]}>Delete</Text>
-              </TouchableOpacity>
+              {item.status !== 'closed' && (
+                <TouchableOpacity testID={`close-job-${item.id}`} style={[styles.linkButton, styles.closeButton]} onPress={() => closeJob(item.id)}>
+                  <Text style={[styles.linkButtonText, { color: Colors.error }]}>Close</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -120,16 +122,17 @@ const styles = StyleSheet.create({
   listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   jobCard: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    ...Shadow.card,
   },
   jobHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   title: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
   meta: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 4, textTransform: 'capitalize' },
-  statusPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  statusPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.pill },
   statusActive: { backgroundColor: Colors.cardHighlight },
   statusInactive: { backgroundColor: Colors.muted },
   statusText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
@@ -137,13 +140,13 @@ const styles = StyleSheet.create({
   linkButton: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 10,
-    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.surface,
   },
-  deleteButton: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  closeButton: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
   linkButtonText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '900' },
 });

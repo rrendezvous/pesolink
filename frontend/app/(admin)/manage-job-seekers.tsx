@@ -9,7 +9,7 @@ import { useFocusEffect } from 'expo-router';
 import { Card, Button, EmptyState, Row } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function ManageJobSeekers() {
   const [seekers, setSeekers] = useState<any[]>([]);
@@ -81,7 +81,7 @@ export default function ManageJobSeekers() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Job Seekers</Text>
         <Text style={styles.headerSub}>Review NSRP profiles and referral-ready status</Text>
       </View>
@@ -184,13 +184,13 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  seekerCard: { borderRadius: 16 },
+  seekerCard: { borderRadius: Radius.lg },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   name: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   subtitle: { fontSize: FontSize.sm, color: Colors.primary, marginTop: 2 },
   referralPill: {
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },

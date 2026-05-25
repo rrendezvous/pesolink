@@ -1,5 +1,5 @@
 // ============================================================
-// Monitor Jobs - Admin (with soft-close action; no hard delete)
+// Monitor Jobs - Admin (soft-close action)
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
@@ -7,7 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { Card, Button, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function MonitorJobs() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -54,7 +54,7 @@ export default function MonitorJobs() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Job Posts</Text>
         <Text style={styles.headerSub}>Monitor employer postings and soft-close when needed</Text>
       </View>
@@ -110,13 +110,13 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  jobCard: { borderRadius: 16 },
+  jobCard: { borderRadius: Radius.lg },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   title: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
   company: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '800', marginTop: 3 },
   meta: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 5, textTransform: 'capitalize' },
   date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 7 },
-  statusPill: { backgroundColor: Colors.cardHighlight, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  statusPill: { backgroundColor: Colors.cardHighlight, borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
   closedPill: { backgroundColor: Colors.muted },
   statusText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
   closedText: { color: Colors.gray },

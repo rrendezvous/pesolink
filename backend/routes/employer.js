@@ -8,7 +8,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate, requireRole('employer'));
 
-const VALID_STATUSES = ['submitted', 'pending', 'for_review', 'referred', 'rejected', 'closed'];
+const VALID_STATUSES = ['submitted', 'pending', 'for_review', 'for_interview', 'hired', 'rejected', 'closed'];
 
 async function getEmployer(userId) {
   const [rows] = await db.query('SELECT * FROM employers WHERE user_id = ?', [userId]);
@@ -208,21 +208,21 @@ router.put('/jobs/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/employer/jobs/:id
-router.delete('/jobs/:id', async (req, res) => {
+// PUT /api/employer/jobs/:id/close - employer soft-closes a job post
+router.put('/jobs/:id/close', async (req, res) => {
   try {
-    const emp = await getEmployer(req.user.id);
-    if (!emp) return res.status(404).json({ error: 'Profile not found' });
+    const emp = await requireApprovedEmployer(req, res);
+    if (!emp) return;
 
     const [result] = await db.query(
-      'DELETE FROM job_posts WHERE id = ? AND employer_id = ?',
+      "UPDATE job_posts SET status = 'closed' WHERE id = ? AND employer_id = ?",
       [req.params.id, emp.id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Job not found' });
-    res.json({ message: 'Job deleted' });
+    res.json({ message: 'Job post closed; record retained for monitoring' });
   } catch (err) {
-    console.error('[Emp Job DELETE]', err);
-    res.status(500).json({ error: 'Failed to delete job' });
+    console.error('[Emp Job Close]', err);
+    res.status(500).json({ error: 'Failed to close job post' });
   }
 });
 
@@ -311,7 +311,8 @@ router.put('/applications/:id/status', async (req, res) => {
       submitted: 'submitted',
       pending: 'pending review',
       for_review: 'now under review',
-      referred: 'referred for employer consideration',
+      for_interview: 'set for interview',
+      hired: 'marked hired by the employer',
       rejected: 'no longer being considered',
       closed: 'closed',
     }[status];

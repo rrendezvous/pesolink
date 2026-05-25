@@ -8,7 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Input, EmptyState, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
 
@@ -42,7 +42,7 @@ export default function JobBrowse() {
   return (
     <View style={styles.container} testID="job-browse">
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Jobs</Text>
       </View>
 
@@ -108,26 +108,28 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   filterCard: {
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     margin: Spacing.md,
     marginBottom: Spacing.sm,
     padding: Spacing.md,
+    ...Shadow.card,
   },
   filterChips: { flexDirection: 'row', flexWrap: 'wrap' },
   listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   jobCard: {
     flexDirection: 'row',
     backgroundColor: Colors.white,
-    borderColor: Colors.border,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    ...Shadow.card,
   },
   companyMark: {
-    width: 64, height: 64, borderRadius: 15,
+    width: 60, height: 60, borderRadius: Radius.md,
     backgroundColor: Colors.cardHighlight,
     alignItems: 'center', justifyContent: 'center',
     marginRight: Spacing.md,
@@ -141,7 +143,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.muted,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 5,
+    borderRadius: Radius.sm,
   },
   metaPillText: { color: Colors.textDark, fontSize: FontSize.xs, textTransform: 'capitalize', fontWeight: '700' },
   jobDesc: { color: Colors.gray, fontSize: FontSize.sm, marginTop: 10, lineHeight: 18 },

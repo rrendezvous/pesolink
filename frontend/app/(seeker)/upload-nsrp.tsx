@@ -1,5 +1,5 @@
 // ============================================================
-// Upload NSRP Form + Simulated OCR Review (combined)
+// Upload NSRP Form + OCR-assisted NSRP review (combined)
 // OCR is OPTIONAL & ASSISTIVE - User must review/confirm before saving.
 // ============================================================
 import React, { useState } from 'react';
@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Input, Card } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function UploadNSRP() {
   const router = useRouter();
@@ -256,13 +256,13 @@ const styles = StyleSheet.create({
   notice: { fontSize: FontSize.xs, color: Colors.textDark, lineHeight: 18 },
   noticeInline: { fontSize: FontSize.xs, color: Colors.primary, marginBottom: Spacing.sm, fontWeight: '700', lineHeight: 18 },
   section: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
-  preview: { width: '100%', height: 250, borderRadius: 18, backgroundColor: Colors.white, borderColor: Colors.border, borderWidth: 1 },
+  preview: { width: '100%', height: 250, borderRadius: Radius.lg, backgroundColor: Colors.white, borderColor: Colors.borderSoft, borderWidth: 1 },
   placeholder: {
     height: 280,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: Colors.textDark,
-    borderRadius: 28,
+    borderColor: Colors.primarySoft,
+    borderRadius: Radius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: Colors.surface,
@@ -277,13 +277,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.warning,
     borderWidth: 1,
     padding: Spacing.sm,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     marginBottom: Spacing.sm,
   },
   warningTitle: { fontWeight: '900', color: '#92400E', fontSize: FontSize.sm },
   warningText: { color: '#92400E', fontSize: FontSize.xs, marginTop: 4, lineHeight: 16 },
   rawToggle: { marginBottom: Spacing.sm },
   rawToggleText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },
-  rawBox: { backgroundColor: Colors.surface, padding: 10, borderRadius: 10, marginBottom: Spacing.sm },
+  rawBox: { backgroundColor: Colors.surface, padding: 10, borderRadius: Radius.md, marginBottom: Spacing.sm },
   rawText: { fontSize: FontSize.xs, color: Colors.gray, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });

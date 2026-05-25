@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function MonitorApps() {
   const [apps, setApps] = useState<any[]>([]);
@@ -32,7 +32,7 @@ export default function MonitorApps() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>PESO MIS.OR</Text>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Applications</Text>
         <Text style={styles.headerSub}>Read-only tracking across employer job posts</Text>
       </View>
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  appCard: { borderRadius: 16 },
+  appCard: { borderRadius: Radius.lg },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
   applicant: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
   company: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '800', marginTop: 3 },

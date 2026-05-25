@@ -249,7 +249,7 @@ class TestEmployer:
                                 "job_type": "full_time", "location": "CDO"})
         assert r.status_code == 403
 
-    def test_employer_create_update_delete_job(self, employer_token):
+    def test_employer_create_update_close_job(self, employer_token):
         # Create
         payload = {
             "job_title": "TEST QA Engineer",
@@ -277,10 +277,17 @@ class TestEmployer:
                           headers=headers(employer_token))
         assert ra.status_code == 200
 
-        # Delete
-        rd = requests.delete(f"{BASE_URL}/api/employer/jobs/{job_id}",
-                             headers=headers(employer_token))
-        assert rd.status_code in (200, 204)
+        # Close, not hard-delete
+        rc = requests.put(f"{BASE_URL}/api/employer/jobs/{job_id}/close",
+                          headers=headers(employer_token))
+        assert rc.status_code in (200, 204)
+
+        rj = requests.get(f"{BASE_URL}/api/employer/jobs",
+                          headers=headers(employer_token))
+        assert rj.status_code == 200
+        closed = [j for j in rj.json()["jobs"] if j["id"] == job_id]
+        assert closed
+        assert closed[0]["status"] == "closed"
 
     def test_application_status_update_valid_and_invalid_enum(self, employer_token):
         # find an applicant in employer's jobs
@@ -307,11 +314,12 @@ class TestEmployer:
                           json={"status": "shortlisted"})
         assert ri.status_code == 400, f"expected 400, got {ri.status_code}: {ri.text}"
 
-        # valid enum
-        rv = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
-                          headers=headers(employer_token),
-                          json={"status": "for_review", "notes": "reviewing"})
-        assert rv.status_code in (200, 204), rv.text
+        # valid employer-side enums, including final employer-entered hired status
+        for status in ("for_review", "for_interview", "hired", "rejected"):
+            rv = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
+                              headers=headers(employer_token),
+                              json={"status": status, "notes": f"to {status}"})
+            assert rv.status_code in (200, 204), rv.text
 
 
 # ---------------- Admin ----------------

@@ -210,13 +210,11 @@ class TestApplicationStatuses:
         assert r.status_code == 200
         apps = r.json()["applications"]
         assert isinstance(apps, list)
-        allowed = {"submitted", "pending", "for_review", "referred", "rejected", "closed"}
+        allowed = {"submitted", "pending", "for_review", "for_interview", "hired", "rejected", "closed"}
         for a in apps:
             assert a["application_status"] in allowed, f"unknown status: {a['application_status']}"
-        # 'hired' must NOT appear
-        assert not any(a["application_status"] == "hired" for a in apps)
 
-    def test_status_update_accepts_all_six_and_rejects_hired(self, employer_token):
+    def test_status_update_accepts_employer_statuses_and_rejects_unknown(self, employer_token):
         rj = requests.get(f"{BASE_URL}/api/employer/jobs",
                           headers=headers(employer_token))
         jobs = rj.json()["jobs"]
@@ -232,14 +230,14 @@ class TestApplicationStatuses:
             pytest.skip("No applicants to test")
         app_id = target.get("id") or target.get("application_id")
 
-        # invalid: 'hired'
+        # invalid: unsupported employer status
         ri = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
                           headers=headers(employer_token),
-                          json={"status": "hired"})
-        assert ri.status_code == 400, f"hired should be rejected, got {ri.status_code}"
+                          json={"status": "shortlisted"})
+        assert ri.status_code == 400, f"shortlisted should be rejected, got {ri.status_code}"
 
-        # all 6 valid statuses
-        for st in ["submitted", "pending", "for_review", "referred", "rejected", "closed"]:
+        # Employer application statuses are manually updated by employer, not system-decided.
+        for st in ["submitted", "pending", "for_review", "for_interview", "hired", "rejected", "closed"]:
             rv = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
                               headers=headers(employer_token),
                               json={"status": st, "notes": f"to {st}"})
