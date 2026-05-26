@@ -2,7 +2,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = "https://peso-link-misor.preview.emergentagent.com"
+BASE_URL = os.getenv("PESO_LINK_BASE_URL", "http://localhost:8001")
 
 
 @pytest.fixture(scope="session")

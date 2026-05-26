@@ -123,12 +123,12 @@
       }
     }
   },
-  "instructions_to_main_agent": [
-    "Strictly adhere to the provided color hex codes. Do not use generic Tailwind colors (e.g., green-500). Define them in tailwind.config.js.",
-    "Build the UI with a mobile-first approach. Ensure all tap targets are at least 44x44px.",
-    "The application is a government service (PESO) - prioritize readability, contrast, and straightforward navigation.",
-    "Use Lucide React icons for UI elements, ensuring they are sized appropriately (e.g., w-5 h-5 for buttons).",
-    "Forms like the NSRP Profile should use clear labels and distinct input borders.",
-    "Add 'data-testid' to every button, link, and form input."
+  "implementation_notes": [
+    "Follow the provided color hex codes and keep the interface visually consistent with PESO-Link MisOr's government service context.",
+    "Build screens with a mobile-first approach and keep tap targets at least 44x44px.",
+    "Prioritize readability, contrast, clear labels, and straightforward navigation.",
+    "Use the existing shared UI components and status colors before adding new styling patterns.",
+    "Forms such as the NSRP profile should use clear labels and distinct input borders.",
+    "Interactive React Native elements should keep stable testID values for testing."
   ]
 }

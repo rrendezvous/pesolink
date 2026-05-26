@@ -127,7 +127,15 @@ export default function JobForm() {
             <Text style={styles.sectionTitle}>Job Information</Text>
             <Input testID="job-title" label="Job Title *" value={form.job_title} onChangeText={(v) => setField('job_title', v)} placeholder="e.g., Software Developer" autoCapitalize="words" />
             <Input testID="job-desc" label="Job Description *" value={form.job_description} onChangeText={(v) => setField('job_description', v)} multiline numberOfLines={4} placeholder="Describe the role, responsibilities, environment..." />
-            <Input testID="job-req" label="Requirements" value={form.requirements} onChangeText={(v) => setField('requirements', v)} multiline numberOfLines={3} placeholder="Education, experience, qualifications..." />
+            <Input
+              testID="job-req"
+              label="Requirements / Application Instructions"
+              value={form.requirements}
+              onChangeText={(v) => setField('requirements', v)}
+              multiline
+              numberOfLines={3}
+              placeholder="Education, experience, documents, and how applicants should proceed..."
+            />
 
             <Text style={styles.label}>Job Type</Text>
             <View style={styles.chipWrap}>

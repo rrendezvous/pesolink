@@ -91,7 +91,7 @@ export default function JobDetails() {
           <Text style={styles.body}>{job.job_description}</Text>
           {job.requirements && (
             <>
-              <Text style={[styles.section, { marginTop: Spacing.md }]}>Requirements</Text>
+              <Text style={[styles.section, { marginTop: Spacing.md }]}>Requirements / Application Instructions</Text>
               <Text style={styles.body}>{job.requirements}</Text>
             </>
           )}

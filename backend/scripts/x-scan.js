@@ -1,6 +1,6 @@
 // X-scan script: scan horizontal strips at a given Y to find text column positions
 // Usage: node scripts/x-scan.js <image> <y_fraction>
-// e.g.:  node scripts/x-scan.js figma-reference/NSRP_Form_1_ssamplepg1.jpg 0.175
+// e.g.:  node scripts/x-scan.js ../samples/nsrp-ocr/nsrp-page-1-sample.jpg 0.175
 'use strict';
 const fs=require('fs'), path=require('path'), Tesseract=require('tesseract.js');
 const LANG_PATH=path.resolve(__dirname,'..'), CACHE_PATH=path.join(LANG_PATH,'.tesseract-cache');

@@ -40,7 +40,7 @@ const NSRP_REGION_MAP = {
     langPath: path.resolve(__dirname, '..'),
     cachePath: path.resolve(__dirname, '..', '.tesseract-cache')
   });
-  const buf = fs.readFileSync('../../figma-reference/NSRP_Form_1_ssamplepg1.jpg');
+  const buf = fs.readFileSync(path.resolve(__dirname, '..', '..', 'samples', 'nsrp-ocr', 'nsrp-page-1-sample.jpg'));
   for (const [name, region] of Object.entries(NSRP_REGION_MAP)) {
     const rect = {
       left: Math.round(1240 * region[0]),

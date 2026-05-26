@@ -104,5 +104,7 @@ credentials.json
 frontend/.metro-cache/
 backend/.tesseract-cache/
 
+# Local reference materials
+# Bulky prototype exports, paper drafts, and PIT files can stay local.
 figma-reference/
 *.fig

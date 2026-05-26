@@ -28,6 +28,21 @@ async function requireApprovedEmployer(req, res) {
   return emp;
 }
 
+function buildSkillComparison(requiredSkills, seekerSkills) {
+  const seekerSkillIds = new Set(seekerSkills.map((skill) => skill.id));
+  const matched = requiredSkills.filter((skill) => seekerSkillIds.has(skill.id));
+  const missing = requiredSkills.filter((skill) => !seekerSkillIds.has(skill.id));
+
+  return {
+    total_required_skills: requiredSkills.length,
+    matched_count: matched.length,
+    missing_count: missing.length,
+    matched_skills: matched,
+    missing_required_skills: missing,
+    skill_comparison_notice: 'Rule-based skill comparison only. It lists matched and missing skills and does not decide hiring outcomes.',
+  };
+}
+
 // GET /api/employer/profile
 router.get('/profile', async (req, res) => {
   try {
@@ -129,6 +144,19 @@ router.post('/jobs', async (req, res) => {
         );
       }
     }
+
+    await conn.query(
+      `INSERT INTO notifications (user_id, title, message, type, related_id, related_type)
+       SELECT u.id, ?, ?, 'new_job_post', ?, 'job_post'
+       FROM users u
+       JOIN job_seekers js ON js.user_id = u.id
+       WHERE u.role = 'job_seeker' AND u.account_status = 'active'`,
+      [
+        'New Job Posted',
+        `${emp.company_name} posted "${job_title}". Open the job details to review requirements and application instructions.`,
+        jobId,
+      ]
+    );
 
     await conn.commit();
     res.status(201).json({ message: 'Job posted', job_id: jobId });
@@ -243,6 +271,7 @@ router.get('/jobs/:id/applicants', async (req, res) => {
               js.id AS job_seeker_id, js.first_name, js.middle_name, js.last_name,
               js.contact_number, js.city, js.province, js.education_level, js.course,
               js.years_of_experience, js.employment_status, js.preferred_occupation,
+              js.profile_completed, js.referral_status,
               u.email
        FROM job_applications ja
        JOIN job_seekers js ON js.id = ja.job_seeker_id
@@ -252,7 +281,50 @@ router.get('/jobs/:id/applicants', async (req, res) => {
       [req.params.id]
     );
 
-    res.json({ job: jobs[0], applicants });
+    const [requiredSkills] = await db.query(
+      `SELECT s.id, s.skill_name, s.category, jrs.required_level, jrs.is_required
+       FROM job_required_skills jrs
+       JOIN skills s ON s.id = jrs.skill_id
+       WHERE jrs.job_post_id = ?`,
+      [req.params.id]
+    );
+
+    const applicantIds = applicants.map((applicant) => applicant.job_seeker_id);
+    let seekerSkills = [];
+    if (applicantIds.length > 0) {
+      const [rows] = await db.query(
+        `SELECT jss.job_seeker_id, s.id, s.skill_name, s.category, jss.proficiency_level
+         FROM job_seeker_skills jss
+         JOIN skills s ON s.id = jss.skill_id
+         WHERE jss.job_seeker_id IN (?)`,
+        [applicantIds]
+      );
+      seekerSkills = rows;
+    }
+
+    const skillsBySeeker = new Map();
+    for (const skill of seekerSkills) {
+      if (!skillsBySeeker.has(skill.job_seeker_id)) {
+        skillsBySeeker.set(skill.job_seeker_id, []);
+      }
+      skillsBySeeker.get(skill.job_seeker_id).push({
+        id: skill.id,
+        skill_name: skill.skill_name,
+        category: skill.category,
+        proficiency_level: skill.proficiency_level,
+      });
+    }
+
+    const applicantsWithComparison = applicants.map((applicant) => {
+      const applicantSkills = skillsBySeeker.get(applicant.job_seeker_id) || [];
+      return {
+        ...applicant,
+        applicant_skills: applicantSkills,
+        ...buildSkillComparison(requiredSkills, applicantSkills),
+      };
+    });
+
+    res.json({ job: jobs[0], applicants: applicantsWithComparison });
   } catch (err) {
     console.error('[Emp Applicants]', err);
     res.status(500).json({ error: 'Failed to fetch applicants' });

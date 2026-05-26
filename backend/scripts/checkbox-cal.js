@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),zlib=require('zlib'),Tesseract=require('tesseract.js');
 const LANG_PATH=path.resolve(__dirname,'..'),CACHE_PATH=path.join(LANG_PATH,'.tesseract-cache');
-const image=fs.readFileSync(process.argv[2]||'figma-reference/NSRP_Form_1_ssamplepg1.jpg');
+const image=fs.readFileSync(process.argv[2]||path.resolve(__dirname,'..','..','samples','nsrp-ocr','nsrp-page-1-sample.jpg'));
 const PAGE_H=1755,PAGE_W=1240;
 
 // Minimal PNG decoder for binary image

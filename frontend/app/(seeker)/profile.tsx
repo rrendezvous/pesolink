@@ -211,7 +211,7 @@ export default function ProfileScreen() {
       setReferralStatus(res.data.referral_status || 'submitted');
       setReviewNotes('');
       Alert.alert('Submitted', 'Your NSRP profile has been submitted for PESO review.');
-    } catch (err) {
+    } catch (err: any) {
       const missing = err?.response?.data?.missing_fields;
       if (Array.isArray(missing) && missing.length > 0) {
         Alert.alert(
