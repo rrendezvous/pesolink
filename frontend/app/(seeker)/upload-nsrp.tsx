@@ -189,7 +189,7 @@ export default function UploadNSRP() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       base64: true,
       quality: 1,
       allowsEditing: false,

@@ -60,6 +60,34 @@ const defaultNsrpFullData = {
   passport_expiry: '',
 };
 
+const hasText = (value: any) => String(value ?? '').trim().length > 0;
+const hasAny = (...values: any[]) => values.some(hasText);
+
+function getMissingReferralFields(form: any, full: typeof defaultNsrpFullData, selectedSkills: Set<number>) {
+  const checks = [
+    { label: 'First name', ok: hasText(form.first_name) },
+    { label: 'Last name', ok: hasText(form.last_name) },
+    { label: 'Date of birth', ok: hasText(form.date_of_birth) },
+    { label: 'Place of birth', ok: hasText(full.place_of_birth) },
+    { label: 'Gender', ok: hasText(form.gender) },
+    { label: 'Civil status', ok: hasText(form.civil_status) },
+    { label: 'Contact number or cellphone number', ok: hasAny(form.contact_number, full.cell_phone_number) },
+    { label: 'Present address or house/street/barangay', ok: hasAny(form.address, full.house_street) && hasAny(form.address, full.barangay) },
+    { label: 'City/Municipality', ok: hasText(form.city) },
+    { label: 'Province', ok: hasText(form.province) },
+    { label: 'Employment status', ok: hasText(form.employment_status) },
+    { label: 'Employment type', ok: hasText(full.employment_type) },
+    { label: 'Actively looking for work', ok: hasText(full.looking_for_work) },
+    { label: 'Willing to work immediately', ok: hasText(full.willing_to_work_immediately) },
+    { label: '4Ps beneficiary answer', ok: hasText(full.four_ps_beneficiary) },
+    { label: 'Educational background', ok: hasAny(form.education_level, form.course, full.elementary_background, full.secondary_background, full.tertiary_background, full.graduate_studies_background) },
+    { label: 'Preferred occupation', ok: hasAny(form.preferred_occupation, full.preferred_occupations) },
+    { label: 'Preferred work location', ok: hasAny(full.preferred_work_location, full.preferred_local_locations, full.preferred_overseas_locations) },
+    { label: 'At least one skill, training, or work experience', ok: selectedSkills.size > 0 || hasAny(full.other_skills_acquired, full.trainings, full.eligibility_license, full.work_experience) },
+  ];
+  return checks.filter((check) => !check.ok).map((check) => check.label);
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -135,6 +163,20 @@ export default function ProfileScreen() {
     });
   };
 
+  const saveProfileDraft = async () => {
+    const res = await api.post('/job-seeker/profile', {
+        ...form,
+        years_of_experience: parseInt(form.years_of_experience, 10) || 0,
+        nsrp_full_data: nsrpFullData,
+      });
+    setReferralStatus(res.data.profile?.referral_status || 'draft');
+    setReviewNotes(res.data.profile?.referral_review_notes || '');
+    await api.post('/job-seeker/skills', {
+      skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
+    });
+    return res;
+  };
+
   const handleSave = async () => {
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
@@ -142,16 +184,7 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      const res = await api.post('/job-seeker/profile', {
-        ...form,
-        years_of_experience: parseInt(form.years_of_experience, 10) || 0,
-        nsrp_full_data: nsrpFullData,
-      });
-      setReferralStatus(res.data.profile?.referral_status || 'draft');
-      setReviewNotes(res.data.profile?.referral_review_notes || '');
-      await api.post('/job-seeker/skills', {
-        skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
-      });
+      await saveProfileDraft();
       Alert.alert('Saved', 'Profile updated successfully.', [
         { text: 'OK', onPress: goToDashboard },
       ]);
@@ -163,14 +196,31 @@ export default function ProfileScreen() {
   };
 
   const submitForReview = async () => {
+    const missing = getMissingReferralFields(form, nsrpFullData, selectedSkills);
+    if (missing.length > 0) {
+      Alert.alert(
+        'Complete Required Fields',
+        `Please complete these fields before submitting for PESO review:\n\n${missing.slice(0, 10).join('\n')}${missing.length > 10 ? `\n+ ${missing.length - 10} more` : ''}`
+      );
+      return;
+    }
     setSubmitting(true);
     try {
+      await saveProfileDraft();
       const res = await api.post('/job-seeker/profile/submit-referral');
       setReferralStatus(res.data.referral_status || 'submitted');
       setReviewNotes('');
       Alert.alert('Submitted', 'Your NSRP profile has been submitted for PESO review.');
     } catch (err) {
-      Alert.alert('Submit Failed', getApiError(err));
+      const missing = err?.response?.data?.missing_fields;
+      if (Array.isArray(missing) && missing.length > 0) {
+        Alert.alert(
+          'Complete Required Fields',
+          `Please complete these fields before submitting for PESO review:\n\n${missing.slice(0, 10).join('\n')}${missing.length > 10 ? `\n+ ${missing.length - 10} more` : ''}`
+        );
+      } else {
+        Alert.alert('Submit Failed', getApiError(err));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -182,6 +232,9 @@ export default function ProfileScreen() {
     if (!skillsByCategory[cat]) skillsByCategory[cat] = [];
     skillsByCategory[cat].push(sk);
   }
+  const missingReferralFields = getMissingReferralFields(form, nsrpFullData, selectedSkills);
+  const requiredReferralCount = 19;
+  const filledReferralCount = requiredReferralCount - missingReferralFields.length;
 
   if (loading) {
     return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
@@ -211,6 +264,28 @@ export default function ProfileScreen() {
             {!!reviewNotes && <Text style={styles.reviewNotes}>PESO note: {reviewNotes}</Text>}
             <Button testID="profile-upload-shortcut" title="Use OCR Assistant" variant="secondary" onPress={() => router.push('/(seeker)/upload-nsrp')} />
           </Card>
+
+          {(referralStatus === 'draft' || referralStatus === 'needs_revision') && (
+            <Card style={missingReferralFields.length ? styles.requirementsCard : styles.readyCard}>
+              <Text style={styles.noticeTitle}>PESO Review Requirements</Text>
+              <Text style={styles.noticeText}>
+                {filledReferralCount}/{requiredReferralCount} required items complete.
+              </Text>
+              {missingReferralFields.length > 0 ? (
+                <>
+                  <Text style={styles.requirementsIntro}>Complete these before submitting:</Text>
+                  {missingReferralFields.slice(0, 8).map((field) => (
+                    <Text key={field} style={styles.missingItem}>- {field}</Text>
+                  ))}
+                  {missingReferralFields.length > 8 && (
+                    <Text style={styles.missingItem}>- {missingReferralFields.length - 8} more required item(s)</Text>
+                  )}
+                </>
+              ) : (
+                <Text style={styles.readyText}>Ready to save and submit for PESO review.</Text>
+              )}
+            </Card>
+          )}
 
           <ProfileSection title="Personal Information">
             <Input testID="prof-first" label="First Name *" value={form.first_name} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
@@ -361,7 +436,7 @@ export default function ProfileScreen() {
             <View style={{ height: Spacing.sm }} />
             <Button
               testID="submit-referral"
-              title="Submit for PESO Review"
+              title="Save and Submit for PESO Review"
               variant="secondary"
               onPress={submitForReview}
               loading={submitting}
@@ -456,6 +531,11 @@ const styles = StyleSheet.create({
   noticeTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
   noticeText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
   reviewNotes: { fontSize: FontSize.sm, color: '#92400E', lineHeight: 20, marginBottom: Spacing.md, fontWeight: '700' },
+  requirementsCard: { backgroundColor: '#FEF3C7', borderColor: Colors.warning, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
+  readyCard: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primarySoft, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
+  requirementsIntro: { fontSize: FontSize.xs, color: '#92400E', fontWeight: '900', marginBottom: 6 },
+  missingItem: { fontSize: FontSize.xs, color: '#92400E', lineHeight: 18, fontWeight: '700' },
+  readyText: { fontSize: FontSize.xs, color: Colors.primaryDark, lineHeight: 18, fontWeight: '900' },
   sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
   formTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },
   help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },

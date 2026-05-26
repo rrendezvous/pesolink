@@ -10,6 +10,36 @@ const OCR_LANG_PATH = path.resolve(__dirname, '..');
 const OCR_CACHE_PATH = path.resolve(__dirname, '..', '.tesseract-cache');
 
 const SURNAME_LABEL_BASELINE_Y = 0.200;
+const FILTERED_TESSERACT_NATIVE_WARNINGS = [
+  /Error in boxClipToRectangle: box outside rectangle/,
+  /Error in pixScanForForeground: invalid box/,
+];
+let stderrFilterDepth = 0;
+let originalStderrWrite = null;
+
+function startTesseractWarningFilter() {
+  if (!process?.stderr?.write) return () => {};
+  if (stderrFilterDepth === 0) {
+    originalStderrWrite = process.stderr.write;
+    process.stderr.write = function filteredTesseractStderr(chunk, ...args) {
+      const message = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk || '');
+      if (FILTERED_TESSERACT_NATIVE_WARNINGS.some((pattern) => pattern.test(message))) {
+        const callback = args.find((arg) => typeof arg === 'function');
+        if (callback) callback();
+        return true;
+      }
+      return originalStderrWrite.call(this, chunk, ...args);
+    };
+  }
+  stderrFilterDepth += 1;
+  return () => {
+    stderrFilterDepth = Math.max(0, stderrFilterDepth - 1);
+    if (stderrFilterDepth === 0 && originalStderrWrite) {
+      process.stderr.write = originalStderrWrite;
+      originalStderrWrite = null;
+    }
+  };
+}
 
 const PAGE1_REGION_SPECS = {
   surname: { region: [0.050, 0.170, 0.200, 0.028], mode: 'image' },
@@ -293,11 +323,15 @@ function applyDy(region, dy) {
 
 function toRectangle(pageBox, region) {
   const [x, y, width, height] = region;
+  const left = Math.max(0, Math.min(pageBox.width - 1, Math.round(pageBox.width * x)));
+  const top = Math.max(0, Math.min(pageBox.height - 1, Math.round(pageBox.height * y)));
+  const maxWidth = Math.max(1, pageBox.width - left);
+  const maxHeight = Math.max(1, pageBox.height - top);
   return {
-    left: Math.max(0, Math.round(pageBox.width * x)),
-    top: Math.max(0, Math.round(pageBox.height * y)),
-    width: Math.max(8, Math.round(pageBox.width * width)),
-    height: Math.max(8, Math.round(pageBox.height * height)),
+    left,
+    top,
+    width: Math.max(1, Math.min(maxWidth, Math.round(pageBox.width * width))),
+    height: Math.max(1, Math.min(maxHeight, Math.round(pageBox.height * height))),
   };
 }
 
@@ -440,6 +474,20 @@ function removeTableLines(crop) {
   return { ...crop, black };
 }
 
+function prepareOcrCrop(binaryImage, region, options = {}) {
+  return removeTableLines(cropBinary(binaryImage, region, options.expand ?? 0.003));
+}
+
+function countBlackPixels(crop) {
+  let black = 0;
+  for (let i = 0; i < crop.black.length; i += 1) black += crop.black[i];
+  return black;
+}
+
+function isBlankOcrCrop(crop, minBlackPixels = 10) {
+  return countBlackPixels(crop) < minBlackPixels;
+}
+
 function cropToPbm(crop, scale = 6, padding = 22) {
   const width = crop.width * scale + padding * 2;
   const height = crop.height * scale + padding * 2;
@@ -460,7 +508,7 @@ function cropToPbm(crop, scale = 6, padding = 22) {
 }
 
 function regionToPbm(binaryImage, region, options = {}) {
-  const crop = removeTableLines(cropBinary(binaryImage, region, options.expand ?? 0.003));
+  const crop = prepareOcrCrop(binaryImage, region, options);
   return cropToPbm(crop, options.scale ?? 6, options.padding ?? 22);
 }
 
@@ -526,8 +574,10 @@ async function recognizeImageRegion(worker, Tesseract, imageBuffer, pageBox, reg
   return normalizeRegionText(result.data?.text || '');
 }
 
-async function recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spec, debugCropsDir, name) {
-  const pbm = regionToPbm(binaryImage, region, spec);
+async function recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spec, debugCropsDir, name, preparedCrop = null) {
+  const crop = preparedCrop || prepareOcrCrop(binaryImage, region, spec);
+  if (isBlankOcrCrop(crop, spec.minBlackPixels ?? 10)) return '';
+  const pbm = cropToPbm(crop, spec.scale ?? 6, spec.padding ?? 22);
   if (debugCropsDir) {
     fs.mkdirSync(debugCropsDir, { recursive: true });
     fs.writeFileSync(path.join(debugCropsDir, `${name}.pbm`), pbm);
@@ -557,16 +607,21 @@ async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, bin
   for (const [name, spec] of Object.entries(specs)) {
     const region = applyDy(spec.region, dy);
     try {
-      if (options.debugCropsDir && binaryImage && spec.mode !== 'binary') {
+      const preparedCrop = binaryImage ? prepareOcrCrop(binaryImage, region, spec) : null;
+      if (preparedCrop && isBlankOcrCrop(preparedCrop, spec.minBlackPixels ?? 10)) {
+        regions[name] = '';
+        continue;
+      }
+      if (options.debugCropsDir && preparedCrop && spec.mode !== 'binary') {
         fs.mkdirSync(options.debugCropsDir, { recursive: true });
         fs.writeFileSync(
           path.join(options.debugCropsDir, `${name}.pbm`),
-          regionToPbm(binaryImage, region, { scale: spec.scale ?? 6, expand: spec.expand ?? 0.002 }),
+          cropToPbm(preparedCrop, spec.scale ?? 6, spec.padding ?? 22),
         );
       }
       let value = '';
       if (spec.mode === 'binary' && binaryImage) {
-        value = await recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spec, options.debugCropsDir, name);
+        value = await recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spec, options.debugCropsDir, name, preparedCrop);
         if (!value || value.length < 2) {
           value = await recognizeImageRegion(worker, Tesseract, imageBuffer, pageBox, region, spec.psm);
         }
@@ -588,6 +643,9 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
   let worker = null;
   let timeoutId = null;
   let timedOut = false;
+  const stopNativeWarningFilter = options.filterNativeWarnings === false
+    ? () => {}
+    : startTesseractWarningFilter();
   const timeoutMs = options.timeoutMs || OCR_TIMEOUT_MS;
   const timeout = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
@@ -647,6 +705,7 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
     if (worker && !timedOut) await worker.terminate().catch(() => {});
+    stopNativeWarningFilter();
   }
 }
 

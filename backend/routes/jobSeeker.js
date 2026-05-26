@@ -4,6 +4,7 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { validateReferralReadiness } = require('../services/nsrpProfileValidation');
 
 const router = express.Router();
 
@@ -34,8 +35,9 @@ router.get('/profile', async (req, res) => {
        WHERE jss.job_seeker_id = ?`,
       [profile.id]
     );
+    const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skills.length });
 
-    res.json({ profile, skills });
+    res.json({ profile, skills, referral_requirements: referralRequirements });
   } catch (err) {
     console.error('[Profile GET]', err);
     res.status(500).json({ error: 'Failed to fetch profile' });
@@ -119,8 +121,19 @@ router.post('/profile/submit-referral', async (req, res) => {
 
     const [rows] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
     const profile = rows[0];
-    if (!profile.profile_completed) {
-      return res.status(400).json({ error: 'Complete the required NSRP fields before submitting for PESO review' });
+    const [[skillCountRow]] = await db.query(
+      'SELECT COUNT(*) AS count FROM job_seeker_skills WHERE job_seeker_id = ?',
+      [jsId]
+    );
+    const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skillCountRow?.count || 0 });
+    if (!referralRequirements.isComplete) {
+      return res.status(400).json({
+        error: 'Complete the required NSRP fields before submitting for PESO review',
+        missing_fields: referralRequirements.missing_fields,
+        missing_count: referralRequirements.missing.length,
+        required_count: referralRequirements.required_count,
+        filled_count: referralRequirements.filled_count,
+      });
     }
 
     await db.query(

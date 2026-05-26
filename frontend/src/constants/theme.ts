@@ -1,6 +1,13 @@
 // ============================================================
 // PESO-Link MisOr - Color Palette (Strict)
 // ============================================================
+import { Platform } from 'react-native';
+
+const platformShadow = (
+  webBoxShadow: string,
+  elevation: number,
+) => (Platform.OS === 'web' ? { boxShadow: webBoxShadow } : { boxShadow: webBoxShadow, elevation });
+
 export const Colors = {
   primary: '#047857',        // Primary Green
   primaryDark: '#065F46',    // Deep Emerald
@@ -40,20 +47,14 @@ export const Radius = {
 };
 
 export const Shadow = {
-  card: {
-    shadowColor: '#0F2F26',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  raised: {
-    shadowColor: '#022C22',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    elevation: 4,
-  },
+  card: platformShadow(
+    '0px 4px 10px rgba(15, 47, 38, 0.08)',
+    2,
+  ),
+  raised: platformShadow(
+    '0px 8px 16px rgba(2, 44, 34, 0.14)',
+    4,
+  ),
 };
 
 export const FontSize = {

@@ -93,6 +93,7 @@ export default function ManageJobSeekers() {
         ListEmptyComponent={<EmptyState message="No job seekers registered yet." />}
         renderItem={({ item }) => {
           const isActive = item.account_status === 'active';
+          const isProfileCompleted = !!item.profile_completed;
           return (
             <Card testID={`seeker-${item.id}`} style={styles.seekerCard}>
               <View style={styles.cardHeader}>
@@ -113,7 +114,7 @@ export default function ManageJobSeekers() {
                 <Row left="Account" right={String(item.account_status).toUpperCase()} />
                 <Row left="Registered" right={new Date(item.registered_at).toLocaleDateString()} />
               </View>
-              {item.profile_completed && item.referral_status !== 'referral_ready' && (
+              {isProfileCompleted && item.referral_status !== 'referral_ready' && (
                 <View style={{ marginTop: Spacing.sm }}>
                   <Button
                     testID={`referral-ready-${item.id}`}
@@ -123,7 +124,7 @@ export default function ManageJobSeekers() {
                   />
                 </View>
               )}
-              {item.profile_completed && item.referral_status !== 'needs_revision' && (
+              {isProfileCompleted && item.referral_status !== 'needs_revision' && (
                 <View style={{ marginTop: Spacing.sm }}>
                   <Button
                     testID={`revision-${item.id}`}

@@ -3,11 +3,25 @@
 // ============================================================
 import React, { useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ActivityIndicator, TouchableOpacity,
+  View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { Colors, Spacing, FontSize } from '../src/constants/theme';
+
+const caseShadow = Platform.OS === 'web'
+  ? { boxShadow: '0px 0px 30px rgba(56, 244, 163, 0.28)' }
+  : {
+      boxShadow: '0px 0px 30px rgba(56, 244, 163, 0.28)',
+      elevation: 8,
+    };
+
+const primaryButtonShadow = Platform.OS === 'web'
+  ? { boxShadow: '0px 8px 14px rgba(2, 44, 34, 0.24)' }
+  : {
+      boxShadow: '0px 8px 14px rgba(2, 44, 34, 0.24)',
+      elevation: 4,
+    };
 
 export default function Index() {
   const router = useRouter();
@@ -145,11 +159,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     overflow: 'hidden',
     zIndex: 2,
-    shadowColor: '#38F4A3',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.28,
-    shadowRadius: 30,
-    elevation: 8,
+    ...caseShadow,
   },
   caseBodyLarge: {
     width: 220,
@@ -218,11 +228,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#022C22',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    elevation: 4,
+    ...primaryButtonShadow,
   },
   primaryButtonText: {
     color: Colors.white,
