@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "init-db": "node init-db.js",
+    "ocr:smoke": "node scripts/ocr-smoke.js",
     "migrate:referral": "node migrate-referral-status.js",
     "migrate:application-status": "node migrate-application-status.js"
   },
