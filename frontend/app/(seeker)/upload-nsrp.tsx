@@ -41,6 +41,44 @@ const emptyExtracted = {
   nsrp_full_data: defaultNsrpFullData,
 };
 
+const hasMergeValue = (value: any) => {
+  if (typeof value === 'number') return value !== 0;
+  return String(value ?? '').trim().length > 0;
+};
+
+const mergeExtractedData = (previous: any, incoming: any) => {
+  if (!previous) {
+    return {
+      ...emptyExtracted,
+      ...(incoming || {}),
+      nsrp_full_data: {
+        ...defaultNsrpFullData,
+        ...(incoming?.nsrp_full_data || {}),
+      },
+    };
+  }
+  if (!incoming) return previous;
+
+  const merged: any = {
+    ...previous,
+    nsrp_full_data: {
+      ...defaultNsrpFullData,
+      ...(previous.nsrp_full_data || {}),
+    },
+  };
+
+  Object.keys(incoming).forEach((key) => {
+    if (key === 'nsrp_full_data') return;
+    if (hasMergeValue(incoming[key])) merged[key] = incoming[key];
+  });
+
+  Object.entries(incoming.nsrp_full_data || {}).forEach(([key, value]) => {
+    if (hasMergeValue(value)) merged.nsrp_full_data[key] = value;
+  });
+
+  return merged;
+};
+
 export default function UploadNSRP() {
   const router = useRouter();
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -51,6 +89,7 @@ export default function UploadNSRP() {
   const [ocrStatus, setOcrStatus] = useState('');
   const [fieldCount, setFieldCount] = useState(0);
   const [ocrMessage, setOcrMessage] = useState('');
+  const [pageType, setPageType] = useState('');
   const [rawText, setRawText] = useState('');
   const [ocrRegions, setOcrRegions] = useState<any | null>(null);
   const [showRawText, setShowRawText] = useState(false);
@@ -65,9 +104,16 @@ export default function UploadNSRP() {
     setOcrStatus('');
     setFieldCount(0);
     setOcrMessage('');
+    setPageType('');
     setRawText('');
     setOcrRegions(null);
     setShowRawText(false);
+  };
+
+  const clearAll = () => {
+    setImageBase64(null);
+    setImageUri(null);
+    resetReview();
   };
 
   const imageMimeType = (asset: ImagePicker.ImagePickerAsset) => {
@@ -85,7 +131,15 @@ export default function UploadNSRP() {
     }
     setImageBase64(`data:${imageMimeType(asset)};base64,${asset.base64}`);
     setImageUri(asset.uri);
-    resetReview();
+    if (!extracted) setUploadId(null);
+    setOcrSuccess(null);
+    setOcrStatus('');
+    setFieldCount(0);
+    setOcrMessage(extracted ? 'Selected image is ready to scan and merge into the current editable review.' : '');
+    setPageType('');
+    setRawText('');
+    setOcrRegions(null);
+    setShowRawText(false);
   };
 
   const getOcrRequestMessage = (err: any, stage: 'upload' | 'extract') => {
@@ -120,8 +174,9 @@ export default function UploadNSRP() {
 
   const getOcrStatusMessage = () => {
     if (ocrStatus === 'fields_extracted') {
+      const pageLabel = pageType === 'page2' ? 'page 2' : pageType === 'page1' ? 'page 1' : 'the NSRP form';
       return fieldCount > 0
-        ? `OCR extracted ${fieldCount} editable field${fieldCount === 1 ? '' : 's'}. Please review every field before saving.`
+        ? `OCR extracted ${fieldCount} editable field${fieldCount === 1 ? '' : 's'} from ${pageLabel}. Please review every field before saving.`
         : 'OCR extracted editable fields. Please review every field before saving.';
     }
     return ocrMessage || 'Please encode each NSRP field manually below.';
@@ -166,12 +221,11 @@ export default function UploadNSRP() {
       return;
     }
     setUploading(true);
-    setUploadId(null);
-    setExtracted(null);
     setOcrSuccess(null);
     setOcrStatus('');
     setFieldCount(0);
     setOcrMessage('');
+    setPageType('');
     setRawText('');
     setOcrRegions(null);
     setShowRawText(false);
@@ -190,24 +244,28 @@ export default function UploadNSRP() {
       const exRes = await api.post('/nsrp/extract', { upload_id: newUploadId }, { timeout: OCR_EXTRACT_TIMEOUT_MS });
       const nextStatus = exRes.data.ocr_status || (exRes.data.success ? 'fields_extracted' : 'no_text');
       const nextFieldCount = Number(exRes.data.field_count || 0);
-      setExtracted(exRes.data.extracted_data);
+      const nextPageType = exRes.data.page_type || '';
+      setExtracted((current: any) => mergeExtractedData(current, exRes.data.extracted_data));
       setRawText(exRes.data.raw_text || '');
       setOcrRegions(exRes.data.ocr_regions || null);
       setOcrSuccess(!!exRes.data.success);
       setOcrStatus(nextStatus);
       setFieldCount(nextFieldCount);
+      setPageType(nextPageType);
       setOcrMessage(exRes.data.notice || exRes.data.error_message || '');
       
       if (nextStatus === 'fields_extracted') {
-        Alert.alert('OCR Complete', 'Text was successfully extracted! Please scroll down to review and edit the fields before saving.');
+        const title = nextPageType === 'page2' ? 'Page 2 OCR Complete' : 'OCR Complete';
+        Alert.alert(title, 'Text was extracted into editable fields. Please scroll down to review and edit before saving.');
       }
 
     } catch (err) {
-      setExtracted(emptyExtracted);
+      setExtracted((current: any) => current || emptyExtracted);
       setOcrRegions(null);
       setOcrSuccess(false);
       setOcrStatus(getRequestFailureStatus(err));
       setFieldCount(0);
+      setPageType('');
       setOcrMessage(getOcrRequestMessage(err, stage));
     } finally {
       setUploading(false);
@@ -285,6 +343,17 @@ export default function UploadNSRP() {
                 disabled={!imageBase64}
               />
             </View>
+            {(imageBase64 || extracted) && (
+              <View style={{ marginTop: Spacing.sm }}>
+                <Button
+                  testID="clear-review"
+                  title="Start Over"
+                  variant="secondary"
+                  onPress={clearAll}
+                  disabled={uploading || extracting || confirming}
+                />
+              </View>
+            )}
           </Card>
 
           <Card style={styles.noticeCard}>

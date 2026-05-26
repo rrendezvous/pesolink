@@ -35,6 +35,7 @@ if (!imageArg || !fs.existsSync(imageArg)) {
   const fieldCount = countExtractedFields(parsed);
 
   console.log(`[smoke] page_box: ${ocr.pageBox ? `${ocr.pageBox.width}x${ocr.pageBox.height}` : 'unknown'}`);
+  console.log(`[smoke] page_type: ${ocr.pageType || ocr.regions.__page_type || 'unknown'}`);
   console.log(`[smoke] anchor_dy: ${Number(ocr.dy || 0).toFixed(4)}`);
   console.log(`[smoke] raw_text length: ${String(ocr.rawText || '').trim().length}`);
   console.log('[smoke] checkboxes:');

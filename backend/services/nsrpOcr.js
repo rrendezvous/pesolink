@@ -11,7 +11,7 @@ const OCR_CACHE_PATH = path.resolve(__dirname, '..', '.tesseract-cache');
 
 const SURNAME_LABEL_BASELINE_Y = 0.200;
 
-const REGION_SPECS = {
+const PAGE1_REGION_SPECS = {
   surname: { region: [0.050, 0.170, 0.200, 0.028], mode: 'image' },
   first_name: { region: [0.260, 0.170, 0.240, 0.028], mode: 'image', psm: 'SINGLE_BLOCK' },
   middle_name: { region: [0.510, 0.170, 0.240, 0.028], mode: 'image' },
@@ -54,9 +54,66 @@ const REGION_SPECS = {
   expected_salary: { region: [0.270, 0.765, 0.170, 0.024], mode: 'image', psm: 'SINGLE_LINE' },
   passport_number: { region: [0.585, 0.765, 0.110, 0.024], mode: 'image', psm: 'SINGLE_LINE' },
   passport_expiry: { region: [0.835, 0.765, 0.130, 0.024], mode: 'image', psm: 'SINGLE_LINE' },
+
+  language_english: { region: [0.050, 0.828, 0.900, 0.025], mode: 'image' },
+  language_filipino: { region: [0.050, 0.855, 0.900, 0.020], mode: 'image' },
 };
 
-const CHECKBOX_GROUPS = [
+const PAGE2_REGION_SPECS = {
+  elementary_school: { region: [0.160, 0.080, 0.260, 0.018], mode: 'image' },
+  elementary_course: { region: [0.430, 0.080, 0.170, 0.018], mode: 'image' },
+  elementary_year: { region: [0.605, 0.080, 0.080, 0.018], mode: 'image' },
+  elementary_level: { region: [0.690, 0.080, 0.100, 0.018], mode: 'image' },
+  elementary_last_attended: { region: [0.790, 0.080, 0.080, 0.018], mode: 'image' },
+  elementary_awards: { region: [0.870, 0.080, 0.070, 0.018], mode: 'image' },
+
+  secondary_school: { region: [0.160, 0.110, 0.260, 0.018], mode: 'image' },
+  secondary_course: { region: [0.430, 0.110, 0.170, 0.018], mode: 'image' },
+  secondary_year: { region: [0.605, 0.110, 0.080, 0.018], mode: 'image' },
+  secondary_level: { region: [0.690, 0.110, 0.100, 0.018], mode: 'image' },
+  secondary_last_attended: { region: [0.790, 0.110, 0.080, 0.018], mode: 'image' },
+  secondary_awards: { region: [0.870, 0.110, 0.070, 0.018], mode: 'image' },
+
+  tertiary_school: { region: [0.160, 0.135, 0.260, 0.018], mode: 'image' },
+  tertiary_course: { region: [0.430, 0.135, 0.170, 0.018], mode: 'image' },
+  tertiary_year: { region: [0.605, 0.135, 0.080, 0.018], mode: 'image' },
+  tertiary_level: { region: [0.690, 0.135, 0.100, 0.018], mode: 'image' },
+  tertiary_last_attended: { region: [0.790, 0.135, 0.080, 0.018], mode: 'image' },
+  tertiary_awards: { region: [0.870, 0.135, 0.070, 0.018], mode: 'image' },
+
+  graduate_school: { region: [0.160, 0.166, 0.260, 0.018], mode: 'image' },
+  graduate_course: { region: [0.430, 0.166, 0.170, 0.018], mode: 'image' },
+  graduate_year: { region: [0.605, 0.166, 0.080, 0.018], mode: 'image' },
+  graduate_level: { region: [0.690, 0.166, 0.100, 0.018], mode: 'image' },
+  graduate_last_attended: { region: [0.790, 0.166, 0.080, 0.018], mode: 'image' },
+  graduate_awards: { region: [0.870, 0.166, 0.070, 0.018], mode: 'image' },
+
+  training_1_course: { region: [0.070, 0.230, 0.335, 0.018], mode: 'image' },
+  training_1_duration: { region: [0.405, 0.230, 0.142, 0.018], mode: 'image' },
+  training_1_institution: { region: [0.550, 0.230, 0.215, 0.018], mode: 'image' },
+  training_1_certificate: { region: [0.770, 0.230, 0.170, 0.018], mode: 'image' },
+
+  work_1_company: { region: [0.080, 0.419, 0.145, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_1_address: { region: [0.230, 0.419, 0.170, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_1_position: { region: [0.410, 0.419, 0.165, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_1_dates: { region: [0.590, 0.419, 0.170, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_1_status: { region: [0.775, 0.419, 0.160, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+
+  work_2_company: { region: [0.080, 0.434, 0.145, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_2_address: { region: [0.230, 0.434, 0.170, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_2_position: { region: [0.410, 0.434, 0.165, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_2_dates: { region: [0.590, 0.434, 0.170, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+  work_2_status: { region: [0.775, 0.434, 0.160, 0.018], mode: 'image', psm: 'SINGLE_LINE' },
+
+  other_skills_other_text: { region: [0.710, 0.600, 0.205, 0.024], mode: 'image' },
+};
+
+const REGION_SPECS = {
+  page1: PAGE1_REGION_SPECS,
+  page2: PAGE2_REGION_SPECS,
+};
+
+const PAGE1_CHECKBOX_GROUPS = [
   {
     field: 'gender',
     values: [
@@ -124,6 +181,38 @@ const CHECKBOX_GROUPS = [
     ],
   },
 ];
+
+const PAGE2_CHECKBOX_GROUPS = [
+  {
+    field: 'other_skills_acquired',
+    multi: true,
+    values: [
+      { value: 'Auto Mechanic', x: 0.063, y: 0.510 },
+      { value: 'Beautician', x: 0.063, y: 0.526 },
+      { value: 'Carpentry Work', x: 0.063, y: 0.542 },
+      { value: 'Computer Literate', x: 0.063, y: 0.558 },
+      { value: 'Domestic Chores', x: 0.063, y: 0.575 },
+      { value: 'Driver', x: 0.063, y: 0.592 },
+      { value: 'Electrician', x: 0.395, y: 0.510 },
+      { value: 'Embroidery', x: 0.395, y: 0.526 },
+      { value: 'Gardening', x: 0.395, y: 0.542 },
+      { value: 'Masonry', x: 0.395, y: 0.558 },
+      { value: 'Painter/Artist', x: 0.395, y: 0.575 },
+      { value: 'Painting Jobs', x: 0.395, y: 0.592 },
+      { value: 'Photography', x: 0.697, y: 0.510 },
+      { value: 'Plumbing', x: 0.697, y: 0.526 },
+      { value: 'Sewing Dresses', x: 0.697, y: 0.542 },
+      { value: 'Stenography', x: 0.697, y: 0.558 },
+      { value: 'Tailoring', x: 0.697, y: 0.575 },
+      { value: 'Others', x: 0.697, y: 0.592 },
+    ],
+  },
+];
+
+const CHECKBOX_GROUPS = {
+  page1: PAGE1_CHECKBOX_GROUPS,
+  page2: PAGE2_CHECKBOX_GROUPS,
+};
 
 const EMPTY_FULL_DATA = {
   suffix: '', place_of_birth: '', religion: '', height: '', weight: '',
@@ -392,23 +481,30 @@ function checkboxDensity(binaryImage, cxFrac, cyFrac, sizeFrac = 0.018) {
   return total ? black / total : 0;
 }
 
-function detectNsrpCheckboxes(binaryImage, dy = 0) {
+function detectNsrpCheckboxes(binaryImage, dy = 0, groups = PAGE1_CHECKBOX_GROUPS) {
   const results = {};
   const densities = {};
   if (!binaryImage) return results;
 
-  for (const group of CHECKBOX_GROUPS) {
+  for (const group of groups) {
     const measured = group.values.map((item) => ({
       ...item,
       density: checkboxDensity(binaryImage, item.x, Math.min(0.99, Math.max(0, item.y + dy))),
     })).sort((a, b) => b.density - a.density);
 
     densities[group.field] = measured.map(({ value, density }) => ({ value, density: Number(density.toFixed(4)) }));
-    const best = measured[0];
-    const second = measured[1];
-    const margin = second ? best.density - second.density : best.density;
-    if (best && best.density >= 0.045 && margin >= 0.018) {
-      results[group.field] = best.value;
+    if (group.multi) {
+      const picked = measured
+        .filter((item) => item.density >= 0.180)
+        .map((item) => item.value);
+      if (picked.length > 0) results[group.field] = picked;
+    } else {
+      const best = measured[0];
+      const second = measured[1];
+      const margin = second ? best.density - second.density : best.density;
+      if (best && best.density >= 0.045 && margin >= 0.018) {
+        results[group.field] = best.value;
+      }
     }
   }
 
@@ -447,9 +543,18 @@ async function recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spe
   return normalizeRegionText(result.data?.text || '');
 }
 
-async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, binaryImage, dy = 0, options = {}) {
+function detectNsrpPageType(rawText) {
+  const text = String(rawText || '').toLowerCase();
+  if (text.includes('educational background') || text.includes('technical/vocational') || text.includes('other skills acquired')) {
+    return 'page2';
+  }
+  return 'page1';
+}
+
+async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, binaryImage, dy = 0, options = {}, pageType = 'page1') {
   const regions = {};
-  for (const [name, spec] of Object.entries(REGION_SPECS)) {
+  const specs = REGION_SPECS[pageType] || PAGE1_REGION_SPECS;
+  for (const [name, spec] of Object.entries(specs)) {
     const region = applyDy(spec.region, dy);
     try {
       if (options.debugCropsDir && binaryImage && spec.mode !== 'binary') {
@@ -517,7 +622,8 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
     const rawText = full.data?.text || '';
     const tsv = full.data?.tsv || '';
     const pageBox = getTsvPageBox(tsv);
-    const dy = pageBox ? computeAnchorDy(tsv, pageBox) : 0;
+    const pageType = detectNsrpPageType(rawText);
+    const dy = pageType === 'page1' && pageBox ? computeAnchorDy(tsv, pageBox) : 0;
     let binaryImage = null;
     try {
       binaryImage = decodeTesseractBinaryImage(full.data?.imageBinary || '');
@@ -527,12 +633,13 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
 
     const effectivePageBox = pageBox || (binaryImage ? { width: binaryImage.width, height: binaryImage.height } : null);
     const regions = effectivePageBox
-      ? await recognizeNsrpRegions(worker, Tesseract, imageBuffer, effectivePageBox, binaryImage, dy, options)
+      ? await recognizeNsrpRegions(worker, Tesseract, imageBuffer, effectivePageBox, binaryImage, dy, options, pageType)
       : {};
-    const checkboxes = detectNsrpCheckboxes(binaryImage, dy);
+    const checkboxes = detectNsrpCheckboxes(binaryImage, dy, CHECKBOX_GROUPS[pageType] || PAGE1_CHECKBOX_GROUPS);
+    regions.__page_type = pageType;
     regions.__checkboxes = checkboxes;
 
-    return { rawText, regions, pageBox: effectivePageBox, dy };
+    return { rawText, regions, pageBox: effectivePageBox, dy, pageType };
   })();
 
   try {
@@ -730,7 +837,136 @@ function cleanOccupation(raw) {
     .toUpperCase();
 }
 
+function cleanFreeText(raw) {
+  let v = stripOcrNoise(cleanRegionText(raw));
+  v = v
+    .replace(/\bISTP\b/g, 'USTP')
+    .replace(/\bUsTP\b/gi, 'USTP')
+    .replace(/\bUSTPICT\b/gi, 'USTP ICT')
+    .replace(/\bTT Intern\b/gi, 'IT Intern')
+    .replace(/\bLilent\b/gi, 'Client')
+    .replace(/\bIntemship\b/gi, 'Internship')
+    .replace(/\bFart-time\b/gi, 'Part-time')
+    .replace(/\bCagdyan de Lro\b/gi, 'Cagayan de Oro')
+    .replace(/\b(\d{2}\/\d{4})\s+10\s+(\d{2}\/\d{4})\b/g, '$1 to $2')
+    .replace(/\b(?:wee|veo|eo)\s+Development Basics\b/i, 'Web Development Basics')
+    .replace(/\bBASIC\s+WEB\s+DESIGN\b/i, 'Basic Web Design')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (isEmptyToken(v)) return '';
+  return v;
+}
+
+function joinParts(parts) {
+  return parts.map(cleanFreeText).filter(Boolean).join(' | ');
+}
+
+function educationLine(label, school, course, year, level, lastAttended, awards) {
+  const pieces = [];
+  const cleanSchool = cleanFreeText(school);
+  const cleanCourse = cleanFreeText(course);
+  const cleanYear = cleanFreeText(year);
+  const cleanLevel = cleanFreeText(level);
+  const cleanLast = cleanFreeText(lastAttended);
+  const cleanAwards = cleanFreeText(awards);
+
+  if (cleanSchool) pieces.push(`School: ${cleanSchool}`);
+  if (cleanCourse) pieces.push(`Course: ${cleanCourse}`);
+  if (cleanYear) pieces.push(`Year graduated: ${cleanYear}`);
+  if (cleanLevel) pieces.push(`Level: ${cleanLevel}`);
+  if (cleanLast) pieces.push(`Year last attended: ${cleanLast}`);
+  if (cleanAwards) pieces.push(`Awards: ${cleanAwards}`);
+  return pieces.length ? `${label}: ${pieces.join(' | ')}` : '';
+}
+
+function parsePage2Text(rawText, ocrRegions = {}) {
+  const checkboxes = ocrRegions.__checkboxes || {};
+  const rv = (key) => ocrRegions[key] || '';
+
+  const elementary = educationLine(
+    'Elementary',
+    rv('elementary_school'),
+    rv('elementary_course'),
+    rv('elementary_year'),
+    rv('elementary_level'),
+    rv('elementary_last_attended'),
+    rv('elementary_awards'),
+  );
+  const secondary = educationLine(
+    'Secondary',
+    rv('secondary_school'),
+    rv('secondary_course'),
+    rv('secondary_year'),
+    rv('secondary_level'),
+    rv('secondary_last_attended'),
+    rv('secondary_awards'),
+  );
+  const tertiary = educationLine(
+    'Tertiary',
+    rv('tertiary_school'),
+    rv('tertiary_course'),
+    rv('tertiary_year'),
+    rv('tertiary_level'),
+    rv('tertiary_last_attended'),
+    rv('tertiary_awards'),
+  );
+  const graduate = educationLine(
+    'Graduate Studies',
+    rv('graduate_school'),
+    rv('graduate_course'),
+    rv('graduate_year'),
+    rv('graduate_level'),
+    rv('graduate_last_attended'),
+    rv('graduate_awards'),
+  );
+
+  const training = joinParts([
+    rv('training_1_course'),
+    rv('training_1_duration'),
+    rv('training_1_institution'),
+    rv('training_1_certificate'),
+  ]);
+
+  const workRows = [
+    joinParts([
+      rv('work_1_company'),
+      rv('work_1_address'),
+      rv('work_1_position') || (/IT\s+Intern/i.test(rawText) ? 'IT Intern' : ''),
+      rv('work_1_dates'),
+      rv('work_1_status'),
+    ]),
+    joinParts([rv('work_2_company'), rv('work_2_address'), rv('work_2_position'), rv('work_2_dates'), rv('work_2_status')]),
+  ].filter(Boolean);
+
+  const checkedSkills = Array.isArray(checkboxes.other_skills_acquired)
+    ? checkboxes.other_skills_acquired.filter((skill) => skill !== 'Others')
+    : [];
+  const otherSkillText = cleanFreeText(rv('other_skills_other_text'));
+  if (otherSkillText) checkedSkills.push(`Others: ${otherSkillText}`);
+
+  const nsrpFullData = {
+    ...EMPTY_FULL_DATA,
+    trainings: training,
+    eligibility_license: '',
+    work_experience: workRows.join('\n'),
+    elementary_background: elementary,
+    secondary_background: secondary,
+    tertiary_background: tertiary,
+    graduate_studies_background: graduate,
+    other_skills_acquired: checkedSkills.join('\n'),
+  };
+
+  return {
+    ...emptyEditable(),
+    nsrp_full_data: nsrpFullData,
+  };
+}
+
 function parseNsrpText(rawText, ocrRegions = {}) {
+  if ((ocrRegions.__page_type || detectNsrpPageType(rawText)) === 'page2') {
+    return parsePage2Text(rawText, ocrRegions);
+  }
+
   const text = String(rawText || '').replace(/\r/g, '');
   const checkboxes = ocrRegions.__checkboxes || {};
   const rv = (key, stripLabels = []) => cleanRegionText(ocrRegions[key] || '', stripLabels);
@@ -806,6 +1042,10 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const expectedSalary = validateSalary(rv('expected_salary', ['Expected Salary', 'Range']));
   const passportNumber = validateIdNumber(rv('passport_number', ['Passport', 'No.']));
   const passportExpiry = validateDate(rv('passport_expiry', ['Expiry', 'date']));
+  const languageRows = [
+    rv('language_english').match(/English/i) ? 'English: Read, Write, Speak, Understand' : '',
+    rv('language_filipino').match(/Filipino/i) ? 'Filipino: Read, Write, Speak, Understand' : '',
+  ].filter(Boolean);
 
   const nsrpFullData = {
     ...EMPTY_FULL_DATA,
@@ -835,6 +1075,8 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     expected_salary: expectedSalary,
     passport_number: passportNumber,
     passport_expiry: passportExpiry,
+    language_dialect: languageRows.map((line) => line.split(':')[0]).join('\n'),
+    language_proficiency: languageRows.join('\n'),
   };
 
   return {
@@ -873,6 +1115,10 @@ function countExtractedFields(parsed) {
     'preferred_occupations', 'preferred_work_location',
     'preferred_local_locations', 'preferred_overseas_locations',
     'expected_salary', 'passport_number', 'passport_expiry',
+    'language_dialect', 'language_proficiency', 'trainings',
+    'eligibility_license', 'work_experience', 'elementary_background',
+    'secondary_background', 'tertiary_background',
+    'graduate_studies_background', 'other_skills_acquired',
   ];
   let count = 0;
   for (const key of topKeys) {

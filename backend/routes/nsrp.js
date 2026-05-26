@@ -37,7 +37,7 @@ async function getJobSeekerId(userId) {
 
 function hasUsableRegionText(ocrRegions) {
   return Object.entries(ocrRegions || {})
-    .some(([key, value]) => key !== '__checkboxes' && typeof value === 'string' && value.trim().length > 0);
+    .some(([key, value]) => !key.startsWith('__') && typeof value === 'string' && value.trim().length > 0);
 }
 
 function ocrFailureStatus(errorMessage) {
@@ -132,10 +132,12 @@ router.post('/extract', async (req, res) => {
   let rawText = '';
   let ocrRegions = {};
   let ocrError = null;
+  let pageType = '';
   try {
     const ocrResult = await nsrpOcr.recognizeNsrpImage(Tesseract, imageBuffer);
     rawText = ocrResult.rawText || '';
     ocrRegions = ocrResult.regions || {};
+    pageType = ocrResult.pageType || ocrRegions.__page_type || '';
   } catch (err) {
     ocrError = err.message || 'OCR failed';
     console.warn('[NSRP OCR]', ocrError);
@@ -143,13 +145,14 @@ router.post('/extract', async (req, res) => {
 
   if ((!rawText || rawText.trim().length === 0) && !hasUsableRegionText(ocrRegions)) {
     const ocrStatus = ocrFailureStatus(ocrError);
-    await storeOcrResult(upload_id, { raw_text: '', regions: ocrRegions, parsed: emptyEditable, ocr_status: ocrStatus });
+    await storeOcrResult(upload_id, { raw_text: '', regions: ocrRegions, parsed: emptyEditable, ocr_status: ocrStatus, page_type: pageType });
     return res.json({
       success: false,
       extracted_data: emptyEditable,
       raw_text: '',
       ocr_regions: ocrRegions,
       ocr_status: ocrStatus,
+      page_type: pageType,
       field_count: 0,
       notice: ocrStatus === 'timeout'
         ? 'OCR timed out before the backend finished reading the form. Please try a clearer compressed image or encode manually below.'
@@ -162,7 +165,7 @@ router.post('/extract', async (req, res) => {
   const fieldCount = nsrpOcr.countExtractedFields(parsed);
   const ocrStatus = fieldCount > 0 ? 'fields_extracted' : 'no_fields';
 
-  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount });
+  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType });
 
   return res.json({
     success: fieldCount > 0,
@@ -170,6 +173,7 @@ router.post('/extract', async (req, res) => {
     raw_text: rawText,
     ocr_regions: ocrRegions,
     ocr_status: ocrStatus,
+    page_type: pageType,
     field_count: fieldCount,
     notice: fieldCount > 0
       ? 'OCR is assistive only. Extracted text has been placed into editable fields. Please review, edit, and manually confirm every field before saving. OCR does not validate, rank, screen, recommend, or decide for any applicant.'
