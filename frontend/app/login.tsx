@@ -6,7 +6,7 @@ import {
   View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Input, Card } from '../src/components/ui';
+import { Button, Input } from '../src/components/ui';
 import { api, getApiError } from '../src/api/client';
 import { useAuth } from '../src/context/AuthContext';
 import { Colors, Spacing, FontSize, Radius } from '../src/constants/theme';
@@ -101,13 +101,6 @@ export default function Login() {
           <Text style={styles.linkText} onPress={() => router.push('/register')} testID="go-register">
             New job seeker? <Text style={styles.link}>Create an account</Text>
           </Text>
-
-          <Card style={styles.demoCard}>
-            <Text style={styles.demoTitle}>Demo Accounts</Text>
-            <Text style={styles.demoLine}>Admin: admin@peso.gov.ph / Admin@123</Text>
-            <Text style={styles.demoLine}>Seeker: juan.cruz@example.com / Test@123</Text>
-            <Text style={styles.demoLine}>Employer: hr@techcorp.ph / Test@123</Text>
-          </Card>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -162,7 +155,4 @@ const styles = StyleSheet.create({
   modeNote: { color: Colors.gray, fontSize: FontSize.xs, marginBottom: Spacing.lg, lineHeight: 16 },
   linkText: { textAlign: 'center', color: Colors.textDark, fontSize: FontSize.sm, marginTop: Spacing.lg },
   link: { color: Colors.primary, fontWeight: '800' },
-  demoCard: { marginTop: Spacing.xl, backgroundColor: Colors.white },
-  demoTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
-  demoLine: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });
