@@ -1,22 +1,70 @@
 import React from 'react';
-import { Stack } from 'expo-router';
-import { Colors } from '../../src/constants/theme';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, FontSize } from '../../src/constants/theme';
 
 export default function EmployerLayout() {
   return (
-    <Stack
+    <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: Colors.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        contentStyle: { backgroundColor: Colors.lightBg },
+        headerShown: false,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.gray,
+        tabBarStyle: {
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 8,
+          borderTopWidth: 0,
+          backgroundColor: Colors.white,
+          shadowColor: '#0F2F26',
+          shadowOpacity: 0.06,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: -3 },
+          elevation: 6,
+        },
+        tabBarItemStyle: { paddingVertical: 2, marginHorizontal: 2 },
+        tabBarLabelStyle: { fontSize: FontSize.xs, fontWeight: '700' },
+        tabBarHideOnKeyboard: true,
       }}
     >
-      <Stack.Screen name="dashboard" options={{ title: 'Employer Dashboard' }} />
-      <Stack.Screen name="manage-jobs" options={{ title: 'My Job Posts' }} />
-      <Stack.Screen name="job-form" options={{ title: 'Create / Edit Job' }} />
-      <Stack.Screen name="applicants" options={{ title: 'Job Applicants' }} />
-      <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
-    </Stack>
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="manage-jobs"
+        options={{
+          title: 'Jobs',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'briefcase' : 'briefcase-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="applicants"
+        options={{
+          title: 'Applicants',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'people' : 'people-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Alerts',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      {/* Hidden: job form should be accessed via Manage Jobs / Post flow, keep route but hide */}
+      <Tabs.Screen name="job-form" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
+    </Tabs>
   );
 }

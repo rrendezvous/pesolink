@@ -64,7 +64,7 @@ export default function EmployerDashboard() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={{ ...styles.content, flexGrow: 1, paddingBottom: Spacing.xxl + 80 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       testID="employer-dashboard"
     >
@@ -106,22 +106,7 @@ export default function EmployerDashboard() {
           <StatCard label="Applicants" value={totalApplicants} />
         </View>
 
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionList}>
-          <ActionButton testID="action-manage" label="Manage Job Posts" onPress={() => router.push('/(employer)/manage-jobs')} />
-          <ActionButton
-            testID="action-new"
-            label="Post New Job"
-            onPress={() => {
-              if (isPending) {
-                Alert.alert('Approval Required', 'Your account must be approved by PESO admin before posting jobs.');
-                return;
-              }
-              router.push('/(employer)/job-form');
-            }}
-          />
-          <ActionButton testID="action-notif" label={`Notifications${unread > 0 ? ` (${unread})` : ''}`} onPress={() => router.push('/(employer)/notifications')} />
-        </View>
+        {/* Quick Actions removed: Manage and Post are available under Jobs tab in bottom navigation */}
 
         <Text style={styles.sectionTitle}>Recent Job Posts</Text>
         {jobs.length === 0 ? (

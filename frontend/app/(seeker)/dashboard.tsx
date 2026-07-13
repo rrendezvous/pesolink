@@ -122,12 +122,7 @@ export default function SeekerDashboard() {
           <StatCard label="Referral" value={getReferralShort(referralStatus)} sub="status" />
         </View>
 
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionList}>
-          <ActionButton testID="action-profile" label="NSRP Profile and Skills" onPress={() => router.push('/(seeker)/profile')} />
-          <ActionButton testID="action-upload" label="Upload NSRP Form (OCR)" onPress={() => router.push('/(seeker)/upload-nsrp')} />
-          <ActionButton testID="action-notifications" label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onPress={() => router.push('/(seeker)/notifications')} />
-        </View>
+        {/* Quick Actions moved to Profile / Jobs via bottom navigation; removed to avoid duplication */}
 
         <Text style={styles.sectionTitle}>Recent Applications</Text>
         {applications.length === 0 ? (
