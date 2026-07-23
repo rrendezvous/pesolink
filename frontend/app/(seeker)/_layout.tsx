@@ -73,6 +73,15 @@ export default function SeekerLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="logout"
+        options={{
+          title: 'Exit',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'log-out' : 'log-out-outline'} size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

@@ -68,6 +68,15 @@ export default function EmployerLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="logout"
+        options={{
+          title: 'Exit',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'log-out' : 'log-out-outline'} size={size} color={color} />
+          ),
+        }}
+      />
       {/* Hidden: job form should be accessed via Manage Jobs / Post flow, keep route but hide */}
       <Tabs.Screen name="job-form" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
     </Tabs>

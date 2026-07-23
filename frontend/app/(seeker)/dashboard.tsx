@@ -8,13 +8,10 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
-import { confirmAction } from '../../src/utils/confirm';
 
 export default function SeekerDashboard() {
   const router = useRouter();
-  const { user, logout } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [skills, setSkills] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
@@ -45,19 +42,6 @@ export default function SeekerDashboard() {
     setRefreshing(false);
   };
 
-  const handleLogout = () => {
-    confirmAction(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      async () => {
-        await logout();
-        router.replace('/');
-      },
-      'Sign out',
-      true,
-    );
-  };
-
   const displayName = `${profile?.first_name || 'Job Seeker'} ${profile?.last_name || ''}`.trim();
   const referralStatus = profile?.referral_status || 'draft';
 
@@ -73,9 +57,6 @@ export default function SeekerDashboard() {
           <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Overview</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="seeker-logout" style={styles.avatar}>
-          <Text style={styles.avatarText}>Exit</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.body}>

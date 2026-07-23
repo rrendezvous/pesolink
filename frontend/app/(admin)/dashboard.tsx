@@ -6,6 +6,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
@@ -48,23 +49,24 @@ export default function AdminDashboard() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-      testID="admin-dashboard"
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>PESO-Link MisOr</Text>
-          <Text style={styles.headerTitle}>Admin Console</Text>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        testID="admin-dashboard"
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.kicker}>PESO-Link MisOr</Text>
+            <Text style={styles.headerTitle}>Admin Console</Text>
+          </View>
+          <TouchableOpacity onPress={handleLogout} testID="admin-logout" style={styles.exitButton}>
+            <Text style={styles.exitText}>Exit</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="admin-logout" style={styles.exitButton}>
-          <Text style={styles.exitText}>Exit</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.body}>
+        <View style={styles.body}>
         <View style={styles.officeCard}>
           <Text style={styles.officeLabel}>Employment Registration and Validation Support</Text>
           <Text style={styles.officeName}>PESO Misamis Oriental</Text>
@@ -83,15 +85,16 @@ export default function AdminDashboard() {
 
         {/* Management actions removed; use the bottom tab navigation to reach each section. */}
 
-        <View style={styles.noteCard}>
-          <Text style={styles.noteTitle}>Scope Reminder</Text>
-          <Text style={styles.noteText}>
-            OCR is optional and assistive. PESO Referral-Ready means the NSRP profile was reviewed for referral support.
-            Skill comparison remains rule-based only and does not make hiring decisions.
-          </Text>
+          <View style={styles.noteCard}>
+            <Text style={styles.noteTitle}>Scope Reminder</Text>
+            <Text style={styles.noteText}>
+              OCR is optional and assistive. PESO Referral-Ready means the NSRP profile was reviewed for referral support.
+              Skill comparison remains rule-based only and does not make hiring decisions.
+            </Text>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -119,12 +122,13 @@ function ActionButton({
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: Colors.primaryDark },
   container: { flex: 1, backgroundColor: Colors.primaryDark },
   content: { backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
   header: {
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -132,8 +136,18 @@ const styles = StyleSheet.create({
   },
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
-  exitButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center' },
-  exitText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
+  exitButton: {
+    minWidth: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderSoft,
+  },
+  exitText: { color: Colors.gray, fontSize: FontSize.sm, fontWeight: '800' },
   body: { padding: Spacing.md },
   officeCard: {
     backgroundColor: Colors.primary,

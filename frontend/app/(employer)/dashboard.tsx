@@ -10,11 +10,10 @@ import { Card, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
-import { confirmAction } from '../../src/utils/confirm';
 
 export default function EmployerDashboard() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [unread, setUnread] = useState(0);
@@ -43,19 +42,6 @@ export default function EmployerDashboard() {
     setRefreshing(false);
   };
 
-  const handleLogout = () => {
-    confirmAction(
-      'Sign out',
-      'Are you sure?',
-      async () => {
-        await logout();
-        router.replace('/');
-      },
-      'Sign out',
-      true,
-    );
-  };
-
   const isPending = profile?.approval_status === 'pending';
   const isRejected = profile?.approval_status === 'rejected';
   const totalApplicants = jobs.reduce((sum, j) => sum + (j.applicant_count || 0), 0);
@@ -73,9 +59,6 @@ export default function EmployerDashboard() {
           <Text style={styles.kicker}>PESO-Link MisOr</Text>
           <Text style={styles.headerTitle}>Overview</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="emp-logout" style={styles.avatar}>
-          <Text style={styles.avatarText}>Exit</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.body}>
