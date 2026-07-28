@@ -1,8 +1,36 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../src/context/AuthContext';
+import { confirmAction } from '../../src/utils/confirm';
 import { Colors, FontSize } from '../../src/constants/theme';
+
+function LogoutTabButton({ children, ...props }: any) {
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => {
+        confirmAction(
+          'Sign out',
+          'Are you sure you want to sign out?',
+          async () => {
+            await logout();
+            router.replace('/');
+          },
+          'Sign out',
+          true,
+        );
+      }}
+    >
+      {children}
+    </TouchableOpacity>
+  );
+}
 
 export default function EmployerLayout() {
   const insets = useSafeAreaInsets();
@@ -75,6 +103,7 @@ export default function EmployerLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'log-out' : 'log-out-outline'} size={size} color={color} />
           ),
+          tabBarButton: (props) => <LogoutTabButton {...props} />,
         }}
       />
       {/* Hidden: job form should be accessed via Manage Jobs / Post flow, keep route but hide */}

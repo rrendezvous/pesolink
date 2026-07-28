@@ -23,6 +23,17 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
     }
     const jobSeeker = jsRows[0];
 
+    // Check duplicate first so applicants who already applied get the correct 409 response,
+    // even if their profile is not currently marked referral_ready or completed.
+    const [existing] = await conn.query(
+      'SELECT id FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
+      [job_post_id, jobSeeker.id]
+    );
+    if (existing.length > 0) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'You have already applied to this job' });
+    }
+
     if (!jobSeeker.profile_completed) {
       await conn.rollback();
       return res.status(400).json({ error: 'Please complete your NSRP profile before applying' });
@@ -44,16 +55,6 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
     if (job.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Job not found or not active' });
-    }
-
-    // Check duplicate
-    const [existing] = await conn.query(
-      'SELECT id FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
-      [job_post_id, jobSeeker.id]
-    );
-    if (existing.length > 0) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'You have already applied to this job' });
     }
 
     const [result] = await conn.query(
