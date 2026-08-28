@@ -26,7 +26,14 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', { email: email.trim(), password });
+      const requestedRole = loginMode === 'Job Seeker'
+        ? 'job_seeker'
+        : loginMode.toLowerCase();
+      const res = await api.post('/auth/login', {
+        email: email.trim(),
+        password,
+        role: requestedRole,
+      });
       await login(res.data.token, res.data.user);
       const role = res.data.user.role;
       if (role === 'job_seeker') router.replace('/(seeker)/dashboard');

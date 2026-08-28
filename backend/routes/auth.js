@@ -82,9 +82,13 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+  const { email, password, role } = req.body;
+  const allowedRoles = ['job_seeker', 'employer', 'admin'];
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: 'Email, password and role are required' });
+  }
+  if (!allowedRoles.includes(role)) {
+    return res.status(400).json({ error: 'Invalid account role' });
   }
 
   try {
@@ -101,6 +105,10 @@ router.post('/login', async (req, res) => {
 
     if (user.account_status === 'suspended') {
       return res.status(403).json({ error: 'Account suspended. Contact PESO admin.' });
+    }
+
+    if (user.role !== role) {
+      return res.status(403).json({ error: 'Selected login role does not match this account.' });
     }
 
     const token = jwt.sign(

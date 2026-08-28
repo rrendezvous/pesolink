@@ -28,8 +28,13 @@ class TestAuth:
 
     def test_login_invalid(self):
         r = requests.post(f"{BASE_URL}/api/auth/login",
-                          json={"email": "admin@peso.gov.ph", "password": "wrong"})
+                          json={"email": "admin@peso.gov.ph", "password": "wrong", "role": "admin"})
         assert r.status_code == 401
+
+    def test_login_rejects_mismatched_role(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": "juan.cruz@example.com", "password": "Test@123", "role": "employer"})
+        assert r.status_code == 403
 
     def test_me_admin(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/auth/me", headers=headers(admin_token))

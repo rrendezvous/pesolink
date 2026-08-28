@@ -70,7 +70,7 @@ class TestAdminCreateEmployer:
 
         # New employer can log in immediately (auto-approved + active)
         rl = requests.post(f"{BASE_URL}/api/auth/login",
-                           json={"email": email, "password": "Test@123"})
+                           json={"email": email, "password": "Test@123", "role": "employer"})
         assert rl.status_code == 200, rl.text
         u = rl.json()["user"]
         assert u["role"] == "employer"
@@ -139,7 +139,7 @@ class TestDeactivateReactivate:
     def test_deactivated_seeker_cannot_login(self):
         r = requests.post(f"{BASE_URL}/api/auth/login",
                           json={"email": TestDeactivateReactivate.seeker_email,
-                                "password": "Test@123"})
+                                "password": "Test@123", "role": "job_seeker"})
         assert r.status_code == 403, f"deactivated seeker logged in: {r.status_code} {r.text}"
 
     def test_reactivate(self, admin_token):
@@ -151,7 +151,7 @@ class TestDeactivateReactivate:
         # login works again
         rl = requests.post(f"{BASE_URL}/api/auth/login",
                            json={"email": TestDeactivateReactivate.seeker_email,
-                                 "password": "Test@123"})
+                           "password": "Test@123", "role": "job_seeker"})
         assert rl.status_code == 200, rl.text
         assert rl.json()["user"].get("account_status") == "active"
 
