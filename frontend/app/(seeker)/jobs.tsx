@@ -17,6 +17,7 @@ export default function JobBrowse() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [locationFilter, setLocationFilter] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
@@ -24,6 +25,7 @@ export default function JobBrowse() {
       const params: any = {};
       if (search) params.search = search;
       if (typeFilter) params.job_type = typeFilter;
+      if (locationFilter) params.location = locationFilter;
       const res = await api.get('/jobs', { params });
       setJobs(res.data.jobs || []);
     } catch (err) {
@@ -31,7 +33,7 @@ export default function JobBrowse() {
     }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, [search, typeFilter]));
+  useFocusEffect(useCallback(() => { load(); }, [search, typeFilter, locationFilter]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -59,6 +61,12 @@ export default function JobBrowse() {
             <Chip key={t} testID={`filter-${t}`} label={t} active={typeFilter === t} onPress={() => setTypeFilter(t)} />
           ))}
         </View>
+        <Input
+          testID="location-filter"
+          value={locationFilter}
+          onChangeText={setLocationFilter}
+          placeholder="Filter by location (optional)"
+        />
       </View>
 
       <FlatList
