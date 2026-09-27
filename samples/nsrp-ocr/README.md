@@ -1,5 +1,7 @@
 # NSRP OCR Sample Images
 
+These sample files are included in the repository so the OCR demo and smoke test remain reproducible without requiring external uploads.
+
 Use these images when demonstrating or testing the Upload NSRP OCR feature.
 
 - `nsrp-page-1-sample.jpg`: personal information, contact details, job preference, and profile fields.

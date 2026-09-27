@@ -61,7 +61,11 @@ export default function AdminLayout() {
       />
       <Tabs.Screen
         name="employer-approvals"
-        options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
+        options={{
+          href: null,
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
       />
       <Tabs.Screen
         name="manage-employers"
