@@ -41,8 +41,8 @@ export default function JobDetails() {
     try {
       await api.post('/applications', { job_post_id: Number(id), cover_letter: coverLetter || null });
       Alert.alert(
-        'Referral Submitted',
-        'Your PESO referral has been submitted and is pending review. PESO will validate and process your job-specific referral before employer review.',
+        'Application Submitted',
+        'Your application has been submitted successfully. You can track your application status under My Applications.',
         [{ text: 'OK', onPress: () => router.replace('/(seeker)/my-applications') }],
       );
     } catch (err) {
