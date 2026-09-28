@@ -57,7 +57,7 @@ export default function EmployerLayout() {
         },
         tabBarItemStyle: { paddingVertical: 2, marginHorizontal: 2 },
         tabBarLabelStyle: { fontSize: FontSize.xs, fontWeight: '700' },
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: false,
       }}
     >
       <Tabs.Screen
@@ -107,7 +107,7 @@ export default function EmployerLayout() {
         }}
       />
       {/* Hidden: job form should be accessed via Manage Jobs / Post flow, keep route but hide */}
-      <Tabs.Screen name="job-form" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
+      <Tabs.Screen name="job-form" options={{ href: null }} />
     </Tabs>
   );
 }

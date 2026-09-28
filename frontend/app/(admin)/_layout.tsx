@@ -29,7 +29,7 @@ export default function AdminLayout() {
         },
         tabBarItemStyle: { paddingVertical: 2, marginHorizontal: 2 },
         tabBarLabelStyle: { fontSize: FontSize.xs, fontWeight: '700' },
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: false,
       }}
     >
       <Tabs.Screen
@@ -63,8 +63,6 @@ export default function AdminLayout() {
         name="employer-approvals"
         options={{
           href: null,
-          tabBarButton: () => null,
-          tabBarItemStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen

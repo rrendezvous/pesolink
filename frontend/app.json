@@ -7,14 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "peso-link-misor",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "android": {
       "package": "com.pesolinkhq.misor",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
-      },
-      "edgeToEdgeEnabled": true
+        "backgroundColor": "#000000"
+      }
     },
     "plugins": [
       "expo-router",
@@ -26,7 +24,11 @@
           "resizeMode": "contain",
           "backgroundColor": "#000"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

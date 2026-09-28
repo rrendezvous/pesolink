@@ -57,7 +57,7 @@ export default function SeekerLayout() {
         },
         tabBarItemStyle: { paddingVertical: 2, marginHorizontal: 2 },
         tabBarLabelStyle: { fontSize: FontSize.xs, fontWeight: '700' },
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: false,
       }}
     >
       <Tabs.Screen
@@ -79,9 +79,9 @@ export default function SeekerLayout() {
         }}
       />
       {/* Hidden routes: keep them available in navigation but hide from tab bar */}
-      <Tabs.Screen name="upload-nsrp" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
-      <Tabs.Screen name="my-applications" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
-      <Tabs.Screen name="job/[id]" options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
+      <Tabs.Screen name="upload-nsrp" options={{ href: null }} />
+      <Tabs.Screen name="my-applications" options={{ href: null }} />
+      <Tabs.Screen name="job/[id]" options={{ href: null }} />
       {/* Removed 'Applications' tab: accessed from dashboard 'My Applications' button */}
       <Tabs.Screen
         name="notifications"
