@@ -82,6 +82,31 @@ class TestAuth:
                          headers={"Authorization": "Bearer bad.token.here"})
         assert r.status_code == 401
 
+    def test_me_rejects_suspended_account(self, admin_token, seeker_token):
+        me = requests.get(f"{BASE_URL}/api/auth/me", headers=headers(seeker_token))
+        assert me.status_code == 200, me.text
+        current_user = me.json()["user"]
+
+        list_seekers = requests.get(f"{BASE_URL}/api/admin/job-seekers", headers=headers(admin_token))
+        assert list_seekers.status_code == 200, list_seekers.text
+        seeker_record = next(item for item in list_seekers.json()["job_seekers"] if item["user_id"] == current_user["id"])
+
+        deactivated = requests.put(
+            f"{BASE_URL}/api/admin/job-seekers/{seeker_record['id']}/deactivate",
+            headers=headers(admin_token),
+            json={"reason": "test suspension"},
+        )
+        assert deactivated.status_code == 200, deactivated.text
+
+        check = requests.get(f"{BASE_URL}/api/auth/me", headers=headers(seeker_token))
+        assert check.status_code == 403, check.text
+
+        reactivated = requests.put(
+            f"{BASE_URL}/api/admin/job-seekers/{seeker_record['id']}/reactivate",
+            headers=headers(admin_token),
+        )
+        assert reactivated.status_code == 200, reactivated.text
+
 
 # ---------------- Job Seeker profile ----------------
 class TestJobSeeker:
