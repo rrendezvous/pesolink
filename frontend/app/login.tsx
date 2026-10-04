@@ -105,9 +105,11 @@ export default function Login() {
             style={{ marginTop: Spacing.md }}
           />
 
-          <Text style={styles.linkText} onPress={() => router.push('/register')} testID="go-register">
-            New job seeker? <Text style={styles.link}>Create an account</Text>
-          </Text>
+          {loginMode === 'Job Seeker' && (
+            <Text style={styles.linkText} onPress={() => router.push('/register')} testID="go-register">
+              New job seeker? <Text style={styles.link}>Create an account</Text>
+            </Text>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl,
     paddingBottom: Spacing.xl,
   },
-  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '800', marginBottom: Spacing.md },
+  kicker: { color: Colors.cardHighlight, fontSize: FontSize.xl, fontWeight: '800', marginBottom: Spacing.md },
   title: { fontSize: FontSize.xxxl, fontWeight: '900', color: Colors.white },
   subtitle: { fontSize: FontSize.md, color: Colors.cardHighlight, marginTop: 6, lineHeight: 22 },
   sheet: {
