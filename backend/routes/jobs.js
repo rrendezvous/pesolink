@@ -5,6 +5,8 @@ const express = require('express');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
+const { requiredMatchesFor } = require('../services/nsrpReview');
+
 const router = express.Router();
 
 // GET /api/jobs - list active jobs with search/filter
@@ -68,8 +70,9 @@ router.get('/:id', authenticate, async (req, res) => {
 
     // Check if current job seeker already applied
     if (req.user.role === 'job_seeker') {
-      const [js] = await db.query('SELECT id FROM job_seekers WHERE user_id = ?', [req.user.id]);
+      const [js] = await db.query('SELECT id, nsrp_status FROM job_seekers WHERE user_id = ?', [req.user.id]);
       if (js.length > 0) {
+        job.my_nsrp_status = js[0].nsrp_status;
         const [app] = await db.query(
           'SELECT id, application_status, referral_status, referral_notes, applied_at FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
           [req.params.id, js[0].id]
@@ -118,8 +121,12 @@ router.get('/:id/match', authenticate, async (req, res) => {
     const matched = requiredSkills.filter((s) => seekerSkillIds.has(s.id));
     const unmatched = requiredSkills.filter((s) => !seekerSkillIds.has(s.id));
 
+    // Temporary minimum (MIN_SKILL_MATCHES) for applying with PESO referral, capped at the job's skill count.
+    const requiredMatches = requiredMatchesFor(requiredSkills.length);
     res.json({
       notice: 'Rule-based skill comparison only. No ranking or recommendation.',
+      required_matches: requiredMatches,
+      meets_minimum: matched.length >= requiredMatches,
       total_required: requiredSkills.length,
       matched_count: matched.length,
       unmatched_count: unmatched.length,

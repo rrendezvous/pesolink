@@ -253,6 +253,44 @@ class TestApplicationStatuses:
             assert rv.status_code in (200, 204), f"status {st} rejected: {rv.text}"
 
 
+# ---------------- One-time PESO NSRP verification ----------------
+class TestNsrpVerification:
+    def test_profile_exposes_nsrp_status(self, seeker_token):
+        r = requests.get(f"{BASE_URL}/api/job-seeker/profile", headers=headers(seeker_token))
+        assert r.status_code == 200
+        assert r.json()["profile"]["nsrp_status"] in {
+            "not_submitted", "submitted", "for_review", "verified", "needs_revision"}
+
+    def test_unverified_seeker_cannot_apply(self, seeker_token):
+        profile = requests.get(f"{BASE_URL}/api/job-seeker/profile", headers=headers(seeker_token)).json()["profile"]
+        if profile["nsrp_status"] == "verified":
+            pytest.skip("Seeker is already PESO-verified")
+        applied = {a["job_post_id"] for a in requests.get(
+            f"{BASE_URL}/api/applications/my-applications", headers=headers(seeker_token)).json()["applications"]}
+        jobs = requests.get(f"{BASE_URL}/api/jobs", headers=headers(seeker_token)).json()["jobs"]
+        target = next((j for j in jobs if j["id"] not in applied), None)
+        if not target:
+            pytest.skip("No job left to apply to")
+        r = requests.post(f"{BASE_URL}/api/applications", headers=headers(seeker_token),
+                          json={"job_post_id": target["id"]})
+        assert r.status_code == 400
+        assert r.json().get("code") == "NSRP_NOT_VERIFIED"
+
+    def test_admin_nsrp_status_requires_note_to_return(self, admin_token):
+        seekers = requests.get(f"{BASE_URL}/api/admin/job-seekers", headers=headers(admin_token)).json()["job_seekers"]
+        waiting = [s for s in seekers if s["nsrp_status"] in ("submitted", "for_review")]
+        if not waiting:
+            pytest.skip("No NSRP profile waiting for PESO")
+        r = requests.put(f"{BASE_URL}/api/admin/job-seekers/{waiting[0]['id']}/nsrp-status",
+                         headers=headers(admin_token), json={"nsrp_status": "needs_revision"})
+        assert r.status_code == 400
+
+    def test_stats_include_nsrp_counts(self, admin_token):
+        r = requests.get(f"{BASE_URL}/api/admin/stats", headers=headers(admin_token))
+        assert r.status_code == 200
+        assert "pending_nsrp_reviews" in r.json() and "verified_nsrp_profiles" in r.json()
+
+
 # ---------------- NSRP real OCR (with graceful failure) ----------------
 class TestNSRPOCR:
     def test_upload_and_extract_unreadable_image_returns_200(self, seeker_token):

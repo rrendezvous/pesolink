@@ -57,8 +57,16 @@ CREATE TABLE job_seekers (
   employment_status ENUM('unemployed', 'underemployed', 'employed'),
   preferred_occupation VARCHAR(255),
   nsrp_full_data JSON,
-  -- TRUE when all required NSRP fields are filled; the gate for requesting PESO referral.
+  -- TRUE when all required NSRP fields are filled; the gate for submitting the NSRP to PESO.
   profile_completed BOOLEAN DEFAULT FALSE,
+  -- One-time PESO verification of the NSRP profile; verified seekers apply to any job as PESO-Referred.
+  nsrp_status ENUM('not_submitted', 'submitted', 'for_review', 'verified', 'needs_revision') NOT NULL DEFAULT 'not_submitted',
+  nsrp_review_notes TEXT NULL,
+  nsrp_reviewed_by INT NULL,
+  nsrp_reviewed_at TIMESTAMP NULL,
+  nsrp_submitted_at TIMESTAMP NULL,
+  -- Fingerprint of the NSRP data PESO verified; any change sends the profile back for re-checking.
+  nsrp_reviewed_hash CHAR(64) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -149,8 +157,9 @@ CREATE TABLE job_required_skills (
 );
 
 -- 9. job_applications (PESO-Link referral records: one per job seeker per job post)
---    referral_status    - set by PESO Admin: submitted -> for_review -> peso_referred | rejected, or closed
---    application_status - set by the employer after PESO endorsement: for_review -> for_interview -> hired | rejected
+--    referral_status    - peso_referred when a PESO-verified job seeker applies (see job_seekers.nsrp_status);
+--                         closed when withdrawn. submitted/for_review/rejected remain for older per-job records.
+--    application_status - set by the employer for PESO-referred applicants: for_review -> for_interview -> hired | rejected
 CREATE TABLE job_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   job_post_id INT NOT NULL,

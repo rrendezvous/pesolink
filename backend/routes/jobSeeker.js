@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted } = require('../services/nsrpProfileValidation');
+const { NSRP_STATUS_LABELS, notifyAdminsOfSubmission } = require('../services/nsrpReview');
 
 const router = express.Router();
 
@@ -97,14 +98,63 @@ router.post('/profile', async (req, res) => {
       ]
     );
 
-    // "Profile complete" means all required NSRP fields are filled - the gate for requesting PESO referral.
+    // "Profile complete" means all required NSRP fields are filled - the gate for submitting the NSRP to PESO.
+    // A change to a PESO-verified profile sends it back to PESO for re-checking.
     const referralRequirements = await refreshProfileCompleted(db, jsId);
 
     const [updated] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
-    res.json({ message: 'Profile updated', profile: updated[0], referral_requirements: referralRequirements });
+    res.json({
+      message: 'Profile updated',
+      profile: updated[0],
+      referral_requirements: referralRequirements,
+      nsrp_status_changed_to: referralRequirements.nsrp_status_changed_to,
+    });
   } catch (err) {
     console.error('[Profile POST]', err);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// POST /api/job-seeker/profile/submit-nsrp - send the completed NSRP profile to PESO for one-time verification
+router.post('/profile/submit-nsrp', async (req, res) => {
+  try {
+    const jsId = await getJobSeekerId(req.user.id);
+    if (!jsId) return res.status(404).json({ error: 'Profile not found' });
+
+    const requirements = await refreshProfileCompleted(db, jsId);
+    if (!requirements.isComplete) {
+      return res.status(400).json({
+        error: 'Complete the required NSRP profile fields before submitting to PESO',
+        missing_fields: requirements.missing_fields,
+      });
+    }
+
+    const [rows] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
+    const seeker = rows[0];
+    if (!['not_submitted', 'needs_revision'].includes(seeker.nsrp_status)) {
+      return res.status(409).json({
+        error: `Your NSRP profile is already ${NSRP_STATUS_LABELS[seeker.nsrp_status]}`,
+        nsrp_status: seeker.nsrp_status,
+      });
+    }
+
+    await db.query(
+      "UPDATE job_seekers SET nsrp_status = 'submitted', nsrp_submitted_at = NOW(), nsrp_review_notes = NULL WHERE id = ?",
+      [jsId]
+    );
+    await notifyAdminsOfSubmission(
+      db,
+      seeker,
+      seeker.nsrp_status === 'needs_revision' ? 'NSRP Profile Resubmitted' : 'New NSRP Profile Submitted',
+      seeker.nsrp_status === 'needs_revision'
+        ? 'revised and resubmitted their NSRP profile for PESO verification.'
+        : 'submitted their NSRP profile for PESO verification.'
+    );
+
+    res.json({ message: 'NSRP profile submitted to PESO for verification', nsrp_status: 'submitted' });
+  } catch (err) {
+    console.error('[Submit NSRP]', err);
+    res.status(500).json({ error: 'Failed to submit NSRP profile' });
   }
 });
 
@@ -136,7 +186,7 @@ router.post('/skills', async (req, res) => {
       );
     }
     // Skills are one of the NSRP review requirements, so completeness can change here too.
-    await refreshProfileCompleted(conn, jsId);
+    const requirements = await refreshProfileCompleted(conn, jsId);
     await conn.commit();
 
     const [savedSkills] = await db.query(
@@ -146,7 +196,7 @@ router.post('/skills', async (req, res) => {
        WHERE jss.job_seeker_id = ?`,
       [jsId]
     );
-    res.json({ message: 'Skills updated', skills: savedSkills });
+    res.json({ message: 'Skills updated', skills: savedSkills, nsrp_status_changed_to: requirements.nsrp_status_changed_to });
   } catch (err) {
     await conn.rollback();
     console.error('[Skills POST]', err);
@@ -166,8 +216,8 @@ router.delete('/skills/:skillId', async (req, res) => {
       'DELETE FROM job_seeker_skills WHERE job_seeker_id = ? AND skill_id = ?',
       [jsId, req.params.skillId]
     );
-    await refreshProfileCompleted(db, jsId);
-    res.json({ message: 'Skill removed' });
+    const requirements = await refreshProfileCompleted(db, jsId);
+    res.json({ message: 'Skill removed', nsrp_status_changed_to: requirements.nsrp_status_changed_to });
   } catch (err) {
     console.error('[Skills DELETE]', err);
     res.status(500).json({ error: 'Failed to remove skill' });

@@ -61,9 +61,10 @@ Expected seed accounts:
 
 ```text
 Admin:        admin@peso.gov.ph / Admin@123
-Job Seeker 1: juan.cruz@example.com / Test@123
-Job Seeker 2: maria.santos@example.com / Test@123
-Job Seeker 3: pedro.reyes@example.com / Test@123
+Job Seeker 1: juan.cruz@example.com / Test@123     (NSRP submitted, waiting for PESO)
+Job Seeker 2: maria.santos@example.com / Test@123  (PESO-verified, applied to IT Support)
+Job Seeker 3: pedro.reyes@example.com / Test@123   (NSRP needs revision)
+Job Seeker 4: ana.bautista@example.com / Test@123  (PESO-verified, no applications yet)
 Employer 1:   hr@techcorp.ph / Test@123
 Employer 2:   hr@northstar.ph / Test@123
 Employer 3:   hr@bluemountain.ph / Test@123
@@ -209,7 +210,7 @@ Use this account to show:
 - Dashboard statistics
 - Employer management
 - Job seeker management
-- NSRP referral status review
+- NSRP verification (once per job seeker)
 - Job monitoring
 - Application monitoring
 
@@ -285,8 +286,8 @@ Admin@123
 5. Show approved and pending employer accounts.
 6. Open job seeker management.
 7. Open a job seeker's NSRP profile (monitoring view).
-8. Open Referrals and tap a request under Needs Action (it becomes For Review automatically).
-9. Review the NSRP profile and skill comparison, then Endorse as PESO-Referred or Reject with a reason.
+8. Open NSRP and tap a profile under Needs Action (it becomes For Review automatically).
+9. Check the NSRP profile, then Verify it or Return for Revision with a note.
 10. Open job monitoring.
 11. Show that jobs can be soft-closed.
 
@@ -326,7 +327,10 @@ developer
 
 10. Open a job detail page.
 11. Show matched skills and missing required skills.
-12. Tap Request PESO Referral (the required NSRP fields must be complete).
+12. Tap Apply with PESO Referral (needs a PESO-verified NSRP profile and at least 3 matching skills).
+    Juan can apply only after the admin demo verifies him. Saving OCR or profile changes on a verified
+    profile sends it back to PESO, so to show one-tap applying without re-verifying, log in as
+    ana.bautista@example.com and apply to Food Kiosk Cook.
 13. Open My Applications.
 14. Open Notifications.
 

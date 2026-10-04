@@ -1,5 +1,7 @@
 'use strict';
 
+const { syncNsrpStatusAfterEdit } = require('./nsrpReview');
+
 function parseFullData(value) {
   if (!value) return {};
   if (typeof value === 'object') return value;
@@ -62,7 +64,8 @@ function validateReferralReadiness(profile = {}, options = {}) {
   };
 }
 
-// Recompute job_seekers.profile_completed from the full NSRP readiness check.
+// Recompute job_seekers.profile_completed from the full NSRP readiness check, and send a
+// changed PESO-verified profile back to PESO for re-checking.
 // `queryable` is the db pool or an open transaction connection.
 async function refreshProfileCompleted(queryable, jobSeekerId) {
   const [rows] = await queryable.query('SELECT * FROM job_seekers WHERE id = ?', [jobSeekerId]);
@@ -73,6 +76,7 @@ async function refreshProfileCompleted(queryable, jobSeekerId) {
   );
   const result = validateReferralReadiness(rows[0], { selectedSkillCount: skillCountRow?.count || 0 });
   await queryable.query('UPDATE job_seekers SET profile_completed = ? WHERE id = ?', [result.isComplete, jobSeekerId]);
+  result.nsrp_status_changed_to = await syncNsrpStatusAfterEdit(queryable, jobSeekerId, result);
   return result;
 }
 

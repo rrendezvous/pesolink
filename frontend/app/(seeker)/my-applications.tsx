@@ -1,5 +1,5 @@
 // ============================================================
-// My Applications - Job Seeker's PESO referral requests (list + detail with status history)
+// My Applications - Job Seeker's PESO-referred applications (list + detail with status history)
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
@@ -62,7 +62,7 @@ export default function MyApplications() {
       <View style={styles.header}>
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Application Status</Text>
-        <Text style={styles.headerSub}>Track your PESO referral requests. Tap one to see its full history.</Text>
+        <Text style={styles.headerSub}>Track your PESO-referred applications. Tap one to see its full history.</Text>
       </View>
 
       <FlatList
@@ -70,7 +70,7 @@ export default function MyApplications() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        ListEmptyComponent={<EmptyState message="No referral requests yet. Browse jobs and tap Request PESO Referral." />}
+        ListEmptyComponent={<EmptyState message="No applications yet. Once PESO verifies your NSRP profile, browse jobs and tap Apply with PESO Referral." />}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => openDetail(item)} testID={`my-app-${item.id}`} activeOpacity={0.85} style={styles.card}>
             <View style={styles.cardTop}>
@@ -87,10 +87,10 @@ export default function MyApplications() {
             <View style={styles.statusPanel}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.statusLabel}>
-                  {currentStatus(item).stage === 'Employer' ? 'With employer' : 'PESO referral review'}
+                  {currentStatus(item).stage === 'Employer' ? 'With employer' : 'Referral record'}
                 </Text>
                 <Text style={styles.date}>
-                  Requested {new Date(item.applied_at).toLocaleDateString()}
+                  Applied {new Date(item.applied_at).toLocaleDateString()}
                   {item.updated_at ? ` / Updated ${new Date(item.updated_at).toLocaleDateString()}` : ''}
                 </Text>
               </View>
@@ -117,7 +117,7 @@ export default function MyApplications() {
                   <View style={styles.pesoBox}>
                     <Text style={styles.pesoTitle}>PESO-Referred</Text>
                     <Text style={styles.pesoText}>
-                      PESO Misamis Oriental endorsed this application to the employer. This is not a hiring decision.
+                      Sent to the employer with your PESO-verified NSRP profile. This is not a hiring decision.
                     </Text>
                   </View>
                 )}
@@ -147,7 +147,7 @@ export default function MyApplications() {
                   />
                 )}
                 {!!detail.application.contact_person && <Row left="Employer Contact" right={detail.application.contact_person} />}
-                <Row left="Requested" right={new Date(detail.application.applied_at).toLocaleString()} />
+                <Row left="Applied" right={new Date(detail.application.applied_at).toLocaleString()} />
                 {detail.application.job_status === 'closed' && <Row left="Job Post" right="Closed" />}
 
                 {!!detail.application.cover_letter && (
@@ -187,7 +187,7 @@ export default function MyApplications() {
                   <Button
                     testID="view-job"
                     title={canRequestAgain(detail.application.referral_status) && detail.application.job_status !== 'closed'
-                      ? 'Update Profile or Request Again'
+                      ? 'View Job and Apply Again'
                       : 'View Job Post'}
                     onPress={viewJob}
                   />

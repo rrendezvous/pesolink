@@ -216,7 +216,7 @@ router.post('/confirm', async (req, res) => {
         nsrpFullData, jsId,
       ],
     );
-    await refreshProfileCompleted(conn, jsId);
+    const requirements = await refreshProfileCompleted(conn, jsId);
 
     if (upload_id) {
       await conn.query(
@@ -226,7 +226,10 @@ router.post('/confirm', async (req, res) => {
     }
 
     await conn.commit();
-    res.json({ message: 'NSRP data confirmed and saved to profile' });
+    res.json({
+      message: 'NSRP data confirmed and saved to profile',
+      nsrp_status_changed_to: requirements.nsrp_status_changed_to,
+    });
   } catch (err) {
     await conn.rollback();
     console.error('[NSRP Confirm]', err);

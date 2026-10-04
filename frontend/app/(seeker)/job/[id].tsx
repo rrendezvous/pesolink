@@ -1,5 +1,5 @@
 // ============================================================
-// Job Details + Skill Match + PESO Referral Request (combined)
+// Job Details + Skill Match + Apply with PESO Referral (combined)
 // ============================================================
 import React, { useEffect, useState } from 'react';
 import {
@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Input, Card, StatusBadge, EmptyState, Row } from '../../../src/components/ui';
 import { formatDate } from '../../../src/components/NsrpProfileView';
 import { api, getApiError } from '../../../src/api/client';
-import { canRequestAgain, currentStatus } from '../../../src/utils/referral';
+import { canRequestAgain, currentStatus, nsrpStatusMessage } from '../../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius } from '../../../src/constants/theme';
 
 export default function JobDetails() {
@@ -38,28 +38,29 @@ export default function JobDetails() {
     })();
   }, [id]);
 
-  const handleRequestReferral = async () => {
+  const handleApply = async () => {
     setApplying(true);
     try {
-      await api.post('/applications', { job_post_id: Number(id), cover_letter: coverLetter || null });
+      const { data } = await api.post('/applications', { job_post_id: Number(id), cover_letter: coverLetter || null });
       Alert.alert(
-        'Referral Request Submitted',
-        'PESO Misamis Oriental will review your NSRP profile. If endorsed, your application is forwarded to the employer. Track the status under My Applications.',
+        'Application Sent',
+        `${data.message}. The employer will update your status. Track it under My Applications.`,
         [{ text: 'OK', onPress: () => router.replace('/(seeker)/my-applications') }],
       );
     } catch (err: any) {
-      const missing = err?.response?.data?.missing_fields;
-      if (Array.isArray(missing) && missing.length) {
-        Alert.alert(
-          'Complete Your NSRP Profile',
-          `Complete these required NSRP fields before requesting PESO referral:\n\n${missing.slice(0, 8).join('\n')}${missing.length > 8 ? `\n+ ${missing.length - 8} more` : ''}`,
-          [
-            { text: 'Later', style: 'cancel' },
-            { text: 'Open Profile', onPress: () => router.push('/(seeker)/profile') },
-          ],
-        );
+      const code = err?.response?.data?.code;
+      if (code === 'NSRP_NOT_VERIFIED') {
+        Alert.alert('NSRP Profile Not Yet Verified', getApiError(err), [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open Profile', onPress: () => router.push('/(seeker)/profile') },
+        ]);
+      } else if (code === 'SKILL_MINIMUM') {
+        Alert.alert('Not Enough Matching Skills', getApiError(err), [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Update Skills', onPress: () => router.push('/(seeker)/profile') },
+        ]);
       } else {
-        Alert.alert('Request Failed', getApiError(err));
+        Alert.alert('Application Failed', getApiError(err));
       }
     } finally {
       setApplying(false);
@@ -74,7 +75,9 @@ export default function JobDetails() {
   }
 
   const myRequest = job.my_application;
-  const showRequestForm = !myRequest || canRequestAgain(myRequest.referral_status);
+  const canApplyHere = !myRequest || canRequestAgain(myRequest.referral_status);
+  const nsrpStatus: string = job.my_nsrp_status || 'not_submitted';
+  const meetsMinimum = !match || match.meets_minimum !== false;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -131,6 +134,13 @@ export default function JobDetails() {
           <Card style={styles.sectionCard}>
             <Text style={styles.section}>Rule-Based Skill Comparison</Text>
             <Text style={styles.disclaimer}>{match.notice}</Text>
+            {match.required_matches > 0 && (
+              <Text style={[styles.minimumNote, !match.meets_minimum && styles.minimumNoteShort]}>
+                {match.meets_minimum
+                  ? `Meets the minimum of ${match.required_matches} matching skills for applying with PESO referral.`
+                  : `Applying with PESO referral needs at least ${match.required_matches} matching skills. You have ${match.matched_count}.`}
+              </Text>
+            )}
             <View style={styles.matchRow}>
               <MatchBox label="Matched" value={match.matched_count} active />
               <MatchBox label="Missing" value={match.unmatched_count} />
@@ -166,11 +176,11 @@ export default function JobDetails() {
 
         {myRequest && (
           <Card style={styles.sectionCard}>
-            <Text style={styles.section}>Your PESO Referral</Text>
+            <Text style={styles.section}>Your Application</Text>
             <View style={styles.applicationStatus}>
               <StatusBadge status={currentStatus(myRequest).status} />
               <Text style={styles.statusNote}>{referralNote(myRequest.referral_status)}</Text>
-              <Text style={styles.statusNote}>Requested on {new Date(myRequest.applied_at).toLocaleDateString()}</Text>
+              <Text style={styles.statusNote}>Applied on {new Date(myRequest.applied_at).toLocaleDateString()}</Text>
               {!!myRequest.referral_notes && (
                 <Text style={styles.pesoNote}>PESO note: {myRequest.referral_notes}</Text>
               )}
@@ -178,24 +188,50 @@ export default function JobDetails() {
           </Card>
         )}
 
-        {showRequestForm && (
+        {canApplyHere && nsrpStatus === 'verified' && (
           <Card style={styles.sectionCard}>
-            <Text style={styles.section}>{myRequest ? 'Request PESO Referral Again' : 'Request PESO Referral'}</Text>
+            <Text style={styles.section}>Apply with PESO Referral</Text>
             <Text style={styles.helpText}>
-              {myRequest
-                ? 'Update your NSRP profile based on the PESO note, then request again.'
-                : 'PESO Misamis Oriental reviews your NSRP profile and, if endorsed, forwards your application to the employer.'}
+              Your NSRP profile is PESO-verified. Your application goes straight to {job.company_name} labelled PESO-Referred.
             </Text>
-            <Input
-              testID="cover-letter"
-              label="Cover Letter (optional)"
-              value={coverLetter}
-              onChangeText={setCoverLetter}
-              placeholder="Add a short note for PESO and the employer."
-              multiline
-              numberOfLines={4}
-            />
-            <Button testID="apply-btn" title="Request PESO Referral" onPress={handleRequestReferral} loading={applying} />
+            {meetsMinimum ? (
+              <>
+                <Input
+                  testID="cover-letter"
+                  label="Cover Letter (optional)"
+                  value={coverLetter}
+                  onChangeText={setCoverLetter}
+                  placeholder="Add a short note for the employer."
+                  multiline
+                  numberOfLines={4}
+                />
+                <Button testID="apply-btn" title="Apply with PESO Referral" onPress={handleApply} loading={applying} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.pesoNote}>
+                  You need at least {match.required_matches} of this job&apos;s required skills in your NSRP profile to apply with PESO referral.
+                </Text>
+                <Button title="Update My Skills" variant="secondary" style={{ marginTop: Spacing.md }} onPress={() => router.push('/(seeker)/profile')} />
+              </>
+            )}
+          </Card>
+        )}
+
+        {canApplyHere && nsrpStatus !== 'verified' && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>Apply with PESO Referral</Text>
+            <View style={styles.applicationStatus}>
+              <StatusBadge status={nsrpStatus as any} />
+              <Text style={styles.statusNote}>{nsrpStatusMessage(nsrpStatus)}</Text>
+            </View>
+            {['not_submitted', 'needs_revision'].includes(nsrpStatus) && (
+              <Button
+                title={nsrpStatus === 'needs_revision' ? 'Fix and Resubmit NSRP Profile' : 'Submit NSRP Profile to PESO'}
+                onPress={() => router.push('/(seeker)/profile')}
+                style={{ marginTop: Spacing.md }}
+              />
+            )}
           </Card>
         )}
 
@@ -214,9 +250,9 @@ export default function JobDetails() {
 }
 
 function referralNote(referralStatus?: string) {
-  if (referralStatus === 'peso_referred') return 'Endorsed by PESO. The employer updates this status.';
-  if (referralStatus === 'rejected') return 'PESO did not endorse this request.';
-  if (referralStatus === 'closed') return 'This referral request was closed.';
+  if (referralStatus === 'peso_referred') return 'Sent to the employer as PESO-Referred. The employer updates this status.';
+  if (referralStatus === 'rejected') return 'PESO did not endorse this earlier request. You can apply again.';
+  if (referralStatus === 'closed') return 'This earlier request was closed. You can apply again.';
   return 'Waiting on PESO Misamis Oriental.';
 }
 
@@ -321,6 +357,8 @@ const styles = StyleSheet.create({
   statusNote: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
   helpText: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: 4, marginBottom: Spacing.md },
   pesoNote: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.sm },
+  minimumNote: { color: Colors.primaryDark, fontSize: FontSize.xs, fontWeight: '800', marginTop: Spacing.sm },
+  minimumNoteShort: { color: '#92400E' },
   postedText: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.xs },
   employerNote: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: Spacing.sm },
 });

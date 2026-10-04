@@ -1,6 +1,6 @@
 // ============================================================
 // PESO-Referred Applicants + Status Update (combined)
-// Applicants appear here only after PESO Admin endorses their referral request.
+// Only PESO-referred applicants appear here: job seekers whose NSRP profile PESO Admin verified.
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
@@ -53,7 +53,7 @@ export default function Applicants() {
         data={applicants}
         keyExtractor={(item) => String(item.application_id)}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<EmptyState message="No PESO-referred applicants yet. Applicants appear here after PESO Misamis Oriental endorses their referral request." />}
+        ListEmptyComponent={<EmptyState message="No PESO-referred applicants yet. Job seekers whose NSRP profile is verified by PESO Misamis Oriental appear here when they apply." />}
         renderItem={({ item }) => (
           <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
@@ -97,7 +97,7 @@ export default function Applicants() {
           <View style={styles.modalCard}>
             <ScrollView>
               <Text style={styles.modalTitle}>Applicant Details</Text>
-              <Text style={styles.modalSubtle}>Endorsed by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
+              <Text style={styles.modalSubtle}>NSRP profile verified by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
               {selected && (
                 <>
                   <Row left="Name" right={`${selected.first_name} ${selected.last_name}`} />
@@ -111,7 +111,7 @@ export default function Applicants() {
                   <Row left="Preferred Job" right={selected.preferred_occupation || 'N/A'} />
                   <Row left="Referral Status" right="PESO-Referred" style={styles.readyText} />
                   {!!selected.referral_reviewed_at && (
-                    <Row left="Endorsed" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
+                    <Row left="Applied" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
                   )}
                   {!!selected.referral_notes && <Row left="PESO Note" right={selected.referral_notes} />}
                   <Row

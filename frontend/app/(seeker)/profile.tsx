@@ -6,8 +6,9 @@ import {
   View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Input, Card, Chip } from '../../src/components/ui';
+import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { nsrpStatusMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const GENDERS = ['male', 'female', 'other'];
@@ -104,6 +105,8 @@ export default function ProfileScreen() {
   const [nsrpFullData, setNsrpFullData] = useState(defaultNsrpFullData);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
+  const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
+  const [submitting, setSubmitting] = useState(false);
 
   const goToDashboard = () => {
     router.replace('/(seeker)/dashboard');
@@ -138,6 +141,7 @@ export default function ProfileScreen() {
         setNsrpFullData(normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData }));
         setAllSkills(s.data.skills);
         setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
+        setNsrp({ status: prof.nsrp_status || 'not_submitted', notes: prof.nsrp_review_notes });
       } catch (err) {
         Alert.alert('Error', getApiError(err));
       } finally {
@@ -159,16 +163,55 @@ export default function ProfileScreen() {
     });
   };
 
-  const saveProfileDraft = async () => {
+  // Saves the profile and skills. Returns the new NSRP status if saving changed it
+  // (a changed PESO-verified profile goes back to PESO for re-checking).
+  const saveProfileDraft = async (): Promise<string | null> => {
     const res = await api.post('/job-seeker/profile', {
         ...form,
         years_of_experience: parseInt(form.years_of_experience, 10) || 0,
         nsrp_full_data: nsrpFullData,
       });
-    await api.post('/job-seeker/skills', {
+    const skillsRes = await api.post('/job-seeker/skills', {
       skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
     });
-    return res;
+    const changedTo = res.data.nsrp_status_changed_to || skillsRes.data.nsrp_status_changed_to || null;
+    if (changedTo) setNsrp({ status: changedTo, notes: null });
+    return changedTo;
+  };
+
+  const sentBackMessage = (changedTo: string | null) => {
+    if (changedTo === 'submitted') {
+      return 'Your NSRP profile changed, so it was sent back to PESO for re-checking. You can apply with PESO referral again once PESO verifies it.';
+    }
+    if (changedTo === 'not_submitted') {
+      return 'Some required NSRP items are now missing. Complete them and submit your profile to PESO again.';
+    }
+    return null;
+  };
+
+  const handleSubmitToPeso = async () => {
+    if (!form.first_name || !form.last_name) {
+      Alert.alert('Required', 'First and last name are required.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await saveProfileDraft();
+      await api.post('/job-seeker/profile/submit-nsrp');
+      setNsrp({ status: 'submitted', notes: null });
+      Alert.alert(
+        'Sent to PESO',
+        'Your NSRP profile was sent to PESO Misamis Oriental for verification. You will be notified when PESO verifies it, then you can apply to jobs with one tap.',
+      );
+    } catch (err: any) {
+      const missing = err?.response?.data?.missing_fields;
+      Alert.alert(
+        'Not Submitted',
+        Array.isArray(missing) && missing.length ? `Complete these first:\n\n${missing.slice(0, 8).join('\n')}` : getApiError(err),
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -178,8 +221,8 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      await saveProfileDraft();
-      Alert.alert('Saved', 'Profile updated successfully.', [
+      const changedTo = await saveProfileDraft();
+      Alert.alert('Saved', sentBackMessage(changedTo) || 'Profile updated successfully.', [
         { text: 'OK', onPress: goToDashboard },
       ]);
     } catch (err) {
@@ -222,19 +265,38 @@ export default function ProfileScreen() {
           <Card style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>Your NSRP-Based Profile</Text>
             <Text style={styles.noticeText}>
-              This one profile is used for every PESO referral request you make. PESO reviews it per job before endorsing you to the employer.
+              This one profile is used for every job you apply to. PESO verifies it once; after that you can apply to any job with PESO referral in one tap.
             </Text>
             <Button testID="profile-upload-shortcut" title="Use OCR Assistant" variant="secondary" onPress={() => router.push('/(seeker)/upload-nsrp')} />
           </Card>
 
+          <Card style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>PESO Verification</Text>
+            <View style={styles.nsrpStatusRow}>
+              <StatusBadge status={nsrp.status as any} />
+            </View>
+            <Text style={styles.noticeText}>{nsrpStatusMessage(nsrp.status)}</Text>
+            {!!nsrp.notes && <Text style={styles.pesoNote}>PESO note: {nsrp.notes}</Text>}
+            {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
+              <Button
+                testID="submit-nsrp"
+                title={nsrp.status === 'needs_revision' ? 'Save and Resubmit to PESO' : 'Save and Submit to PESO'}
+                onPress={handleSubmitToPeso}
+                loading={submitting}
+                disabled={missingReferralFields.length > 0}
+                style={{ marginTop: Spacing.md }}
+              />
+            )}
+          </Card>
+
           <Card style={missingReferralFields.length ? styles.requirementsCard : styles.readyCard}>
-            <Text style={styles.noticeTitle}>Required for PESO Referral</Text>
+            <Text style={styles.noticeTitle}>Required NSRP Items</Text>
             <Text style={styles.noticeText}>
               {filledReferralCount}/{requiredReferralCount} required items complete.
             </Text>
             {missingReferralFields.length > 0 ? (
               <>
-                <Text style={styles.requirementsIntro}>Complete these to request PESO referral:</Text>
+                <Text style={styles.requirementsIntro}>Complete these before submitting to PESO:</Text>
                 {missingReferralFields.slice(0, 8).map((field) => (
                   <Text key={field} style={styles.missingItem}>- {field}</Text>
                 ))}
@@ -243,7 +305,7 @@ export default function ProfileScreen() {
                 )}
               </>
             ) : (
-              <Text style={styles.readyText}>Complete. Save your profile, then request PESO referral from any job post.</Text>
+              <Text style={styles.readyText}>All required items are filled in.</Text>
             )}
           </Card>
 
@@ -481,6 +543,8 @@ const styles = StyleSheet.create({
   readyCard: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primarySoft, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
   requirementsIntro: { fontSize: FontSize.xs, color: '#92400E', fontWeight: '900', marginBottom: 6 },
   missingItem: { fontSize: FontSize.xs, color: '#92400E', lineHeight: 18, fontWeight: '700' },
+  nsrpStatusRow: { flexDirection: 'row', marginBottom: Spacing.sm },
+  pesoNote: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.sm },
   readyText: { fontSize: FontSize.xs, color: Colors.primaryDark, lineHeight: 18, fontWeight: '900' },
   sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
   formTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },

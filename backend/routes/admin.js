@@ -4,10 +4,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { validateReferralReadiness, parseFullData } = require('../services/nsrpProfileValidation');
-const {
-  REFERRAL_LABELS, OPEN_REFERRAL_STATUSES, recordHistory, notify, closeOpenReferralsForJob, buildSkillComparison,
-} = require('../services/referral');
+const { validateReferralReadiness, refreshProfileCompleted, parseFullData } = require('../services/nsrpProfileValidation');
+const { notify, closeOpenReferralsForJob, buildSkillComparison } = require('../services/referral');
+const { NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES, nsrpFingerprint } = require('../services/nsrpReview');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -186,13 +185,13 @@ router.put('/employers/:id/reject', async (req, res) => {
   }
 });
 
-// GET /api/admin/job-seekers
+// GET /api/admin/job-seekers - NSRP profiles waiting for PESO verification first
 router.get('/job-seekers', async (req, res) => {
   try {
     const [seekers] = await db.query(
       `SELECT js.*, u.email, u.account_status, u.created_at AS registered_at
        FROM job_seekers js JOIN users u ON u.id = js.user_id
-       ORDER BY js.created_at DESC`
+       ORDER BY FIELD(js.nsrp_status, 'for_review', 'submitted') DESC, js.nsrp_submitted_at ASC, js.created_at DESC`
     );
     res.json({ job_seekers: seekers });
   } catch (err) {
@@ -205,9 +204,11 @@ router.get('/job-seekers', async (req, res) => {
 router.get('/job-seekers/:id/profile', async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT js.*, u.email, u.account_status, u.created_at AS registered_at
+      `SELECT js.*, u.email, u.account_status, u.created_at AS registered_at,
+              reviewer.email AS nsrp_reviewed_by_email
        FROM job_seekers js
        JOIN users u ON u.id = js.user_id
+       LEFT JOIN users reviewer ON reviewer.id = js.nsrp_reviewed_by
        WHERE js.id = ?`,
       [req.params.id]
     );
@@ -240,6 +241,85 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
   } catch (err) {
     console.error('[Admin Seeker Profile]', err);
     res.status(500).json({ error: 'Failed to fetch job seeker profile' });
+  }
+});
+
+// PUT /api/admin/job-seekers/:id/nsrp-status - PESO Admin's one-time NSRP verification
+//   for_review     - recorded when PESO opens a submitted profile (no-op otherwise)
+//   verified       - the job seeker can apply to any job as PESO-Referred
+//   needs_revision - returned with a reason; the job seeker fixes the profile and resubmits
+// Only profiles waiting on PESO (submitted / for_review) can be decided. A verified profile goes back
+// to PESO automatically when the job seeker changes it.
+router.put('/job-seekers/:id/nsrp-status', async (req, res) => {
+  const { nsrp_status: next, notes } = req.body;
+  if (!['for_review', 'verified', 'needs_revision'].includes(next)) {
+    return res.status(400).json({ error: 'nsrp_status must be for_review, verified, or needs_revision' });
+  }
+  const reason = String(notes || '').trim();
+  if (next === 'needs_revision' && !reason) {
+    return res.status(400).json({ error: 'Please tell the job seeker what needs to be revised' });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM job_seekers WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Job seeker not found' });
+    }
+    const seeker = rows[0];
+    const current = seeker.nsrp_status;
+
+    if (next === 'for_review' && current !== 'submitted') {
+      await conn.rollback();
+      return res.json({ message: 'NSRP profile is not waiting to be opened', nsrp_status: current });
+    }
+    if (!NSRP_OPEN_STATUSES.includes(current)) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `This NSRP profile is ${NSRP_STATUS_LABELS[current]}, so there is nothing to decide`,
+      });
+    }
+    if (next === 'verified') {
+      const requirements = await refreshProfileCompleted(conn, seeker.id);
+      if (!requirements.isComplete) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: 'The NSRP profile is missing required items and cannot be verified',
+          missing_fields: requirements.missing_fields,
+        });
+      }
+    }
+
+    await conn.query(
+      `UPDATE job_seekers
+       SET nsrp_status = ?, nsrp_review_notes = ?, nsrp_reviewed_by = ?, nsrp_reviewed_at = NOW(), nsrp_reviewed_hash = ?
+       WHERE id = ?`,
+      [next, reason || null, req.user.id, next === 'verified' ? await nsrpFingerprint(conn, seeker.id) : seeker.nsrp_reviewed_hash, seeker.id]
+    );
+
+    const message = {
+      for_review: ['NSRP Profile For Review', 'PESO Misamis Oriental is now reviewing your NSRP profile.'],
+      verified: [
+        'NSRP Profile PESO-Verified',
+        `PESO Misamis Oriental verified your NSRP profile.${reason ? ` Note: ${reason}` : ''} You can now apply to jobs with PESO referral. Changing your NSRP profile later sends it back to PESO for re-checking.`,
+      ],
+      needs_revision: [
+        'NSRP Profile Needs Revision',
+        `PESO Misamis Oriental returned your NSRP profile. What to fix: ${reason}. Update your profile and submit it again.`,
+      ],
+    }[next];
+    await notify(conn, seeker.user_id, message[0], message[1], 'nsrp_review', seeker.id, 'job_seeker');
+
+    await conn.commit();
+    res.json({ message: `NSRP profile marked ${NSRP_STATUS_LABELS[next]}`, nsrp_status: next });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Admin NSRP Status]', err);
+    res.status(500).json({ error: 'Failed to update NSRP status' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -368,7 +448,7 @@ router.get('/jobs', async (req, res) => {
   }
 });
 
-// GET /api/admin/applications - PESO referral requests across all job posts
+// GET /api/admin/applications - PESO-referred applications across all job posts (monitoring)
 router.get('/applications', async (req, res) => {
   try {
     const [apps] = await db.query(
@@ -379,7 +459,7 @@ router.get('/applications', async (req, res) => {
        JOIN employers e ON e.id = jp.employer_id
        JOIN job_seekers js ON js.id = ja.job_seeker_id
        JOIN users u ON u.id = js.user_id
-       ORDER BY FIELD(ja.referral_status, 'submitted', 'for_review') DESC, ja.updated_at DESC`
+       ORDER BY ja.updated_at DESC`
     );
     res.json({ applications: apps });
   } catch (err) {
@@ -388,7 +468,7 @@ router.get('/applications', async (req, res) => {
   }
 });
 
-// GET /api/admin/applications/:id - referral request with the applicant's full NSRP profile
+// GET /api/admin/applications/:id - application with the applicant's full NSRP profile (monitoring)
 router.get('/applications/:id', async (req, res) => {
   try {
     const [apps] = await db.query(
@@ -449,118 +529,6 @@ router.get('/applications/:id', async (req, res) => {
   }
 });
 
-// PUT /api/admin/applications/:id/referral-status - PESO Admin's referral decision
-//   for_review    - recorded when PESO opens the request (no-op once already reviewed)
-//   peso_referred - endorse: the applicant becomes visible to the employer
-//   rejected      - not endorsed (reason required); the job seeker may fix the profile and request again
-//   closed        - request no longer needed
-// Only undecided requests (submitted / for_review) can change; after endorsement the employer owns the record.
-router.put('/applications/:id/referral-status', async (req, res) => {
-  const { referral_status: next, notes } = req.body;
-  if (!['for_review', 'peso_referred', 'rejected', 'closed'].includes(next)) {
-    return res.status(400).json({ error: 'referral_status must be for_review, peso_referred, rejected, or closed' });
-  }
-  const reason = String(notes || '').trim();
-  if (next === 'rejected' && !reason) {
-    return res.status(400).json({ error: 'Please give the job seeker a reason for the rejection' });
-  }
-
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    const [apps] = await conn.query(
-      `SELECT ja.*, jp.job_title, e.user_id AS employer_user_id, e.company_name,
-              js.user_id AS seeker_user_id, js.first_name, js.last_name
-       FROM job_applications ja
-       JOIN job_posts jp ON jp.id = ja.job_post_id
-       JOIN employers e ON e.id = jp.employer_id
-       JOIN job_seekers js ON js.id = ja.job_seeker_id
-       WHERE ja.id = ? FOR UPDATE`,
-      [req.params.id]
-    );
-    if (apps.length === 0) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Referral request not found' });
-    }
-    const app = apps[0];
-    const current = app.referral_status;
-
-    if (next === 'for_review' && current !== 'submitted') {
-      await conn.rollback();
-      return res.json({ message: 'Referral request already reviewed', referral_status: current });
-    }
-    if (!OPEN_REFERRAL_STATUSES.includes(current)) {
-      await conn.rollback();
-      return res.status(400).json({
-        error: `This referral request is already ${REFERRAL_LABELS[current]} and can no longer be changed`,
-      });
-    }
-
-    await conn.query(
-      `UPDATE job_applications
-       SET referral_status = ?, referral_notes = ?, referral_reviewed_by = ?, referral_reviewed_at = NOW()
-           ${next === 'peso_referred' ? ", application_status = 'for_review'" : ''}
-       WHERE id = ?`,
-      [next, reason || null, req.user.id, app.id]
-    );
-    await recordHistory(conn, {
-      applicationId: app.id,
-      type: 'referral',
-      oldStatus: current,
-      newStatus: next,
-      changedBy: req.user.id,
-      notes: {
-        for_review: 'PESO is reviewing the NSRP profile',
-        peso_referred: `Endorsed to ${app.company_name}${reason ? ` - ${reason}` : ''}`,
-        rejected: reason,
-        closed: reason || 'Closed by PESO Admin',
-      }[next],
-    });
-
-    const job = `"${app.job_title}"`;
-    const seekerMessage = {
-      for_review: [
-        'Referral Request For Review',
-        `PESO Misamis Oriental is now reviewing your NSRP profile for ${job}.`,
-      ],
-      peso_referred: [
-        'Application PESO-Referred',
-        `PESO Misamis Oriental endorsed your application for ${job} to ${app.company_name}. This is not a hiring decision; the employer will update your status.`,
-      ],
-      rejected: [
-        'Referral Request Not Endorsed',
-        `PESO did not endorse your referral request for ${job}. Reason: ${reason}. You may update your NSRP profile and request again.`,
-      ],
-      closed: [
-        'Referral Request Closed',
-        `Your PESO referral request for ${job} was closed.${reason ? ` Note: ${reason}` : ''}`,
-      ],
-    }[next];
-    await notify(conn, app.seeker_user_id, seekerMessage[0], seekerMessage[1], 'referral_status', app.id);
-
-    // Routing step: the employer first learns about the applicant at endorsement.
-    if (next === 'peso_referred') {
-      await notify(
-        conn,
-        app.employer_user_id,
-        'New PESO-Referred Applicant',
-        `PESO Misamis Oriental endorsed ${app.first_name} ${app.last_name} for ${job}.${reason ? ` Note: ${reason}` : ''}`,
-        'peso_referral',
-        app.id
-      );
-    }
-
-    await conn.commit();
-    res.json({ message: `Referral request marked ${REFERRAL_LABELS[next]}`, referral_status: next });
-  } catch (err) {
-    await conn.rollback();
-    console.error('[Admin Referral Status]', err);
-    res.status(500).json({ error: 'Failed to update referral request' });
-  } finally {
-    conn.release();
-  }
-});
-
 // GET /api/admin/stats - simple counts: total users, total jobs, total applications
 router.get('/stats', async (req, res) => {
   try {
@@ -573,9 +541,12 @@ router.get('/stats', async (req, res) => {
     const [[jobCount]] = await db.query('SELECT COUNT(*) AS count FROM job_posts');
     const [[activeJobCount]] = await db.query("SELECT COUNT(*) AS count FROM job_posts WHERE status = 'active'");
     const [[appCount]] = await db.query('SELECT COUNT(*) AS count FROM job_applications');
-    const [[pendingReferralCount]] = await db.query(
-      'SELECT COUNT(*) AS count FROM job_applications WHERE referral_status IN (?)',
-      [OPEN_REFERRAL_STATUSES]
+    const [[pendingNsrpCount]] = await db.query(
+      'SELECT COUNT(*) AS count FROM job_seekers WHERE nsrp_status IN (?)',
+      [NSRP_OPEN_STATUSES]
+    );
+    const [[verifiedNsrpCount]] = await db.query(
+      "SELECT COUNT(*) AS count FROM job_seekers WHERE nsrp_status = 'verified'"
     );
     const [[endorsedCount]] = await db.query(
       "SELECT COUNT(*) AS count FROM job_applications WHERE referral_status = 'peso_referred'"
@@ -585,7 +556,8 @@ router.get('/stats', async (req, res) => {
     );
 
     res.json({
-      pending_referral_requests: pendingReferralCount.count,
+      pending_nsrp_reviews: pendingNsrpCount.count,
+      verified_nsrp_profiles: verifiedNsrpCount.count,
       peso_referred_applications: endorsedCount.count,
       complete_nsrp_profiles: completeProfileCount.count,
       total_users: userCount.count,

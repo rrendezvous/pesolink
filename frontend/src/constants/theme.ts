@@ -76,6 +76,9 @@ export const StatusColors = {
   hired: { bg: '#DCFCE7', text: '#166534', border: '#16A34A' },
   rejected: { bg: '#FEE2E2', text: '#991B1B', border: '#DC2626' },
   closed: { bg: '#E5E7EB', text: '#374151', border: '#9CA3AF' },
+  not_submitted: { bg: Colors.surfaceMuted, text: Colors.textDark, border: Colors.grayLight },
+  verified: { bg: Colors.primary, text: Colors.white, border: Colors.primaryDark },
+  needs_revision: { bg: '#FEF3C7', text: '#92400E', border: '#D97706' },
 };
 
 export const StatusLabels = {
@@ -87,4 +90,7 @@ export const StatusLabels = {
   hired: 'Hired',
   rejected: 'Rejected',
   closed: 'Closed',
+  not_submitted: 'Not Submitted',
+  verified: 'PESO-Verified',
+  needs_revision: 'Needs Revision',
 };

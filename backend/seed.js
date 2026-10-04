@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('./db');
 const { syncSkills } = require('./seed-skills');
+const { nsrpFingerprint } = require('./services/nsrpReview');
 
 // Fill in the NSRP extended fields that are not stored as job_seekers columns.
 function nsrpData(overrides) {
@@ -83,6 +84,8 @@ async function run() {
         work_experience: 'Freelance Web Developer, 2020-2022',
       }),
       skills: ['Web Development', 'JavaScript', 'Python', 'Database Management', 'English Proficiency'],
+      // Submitted NSRP profile waiting for PESO verification - use admin to demo verifying it.
+      nsrp: { status: 'submitted' },
     },
     {
       email: 'maria.santos@example.com',
@@ -106,7 +109,8 @@ async function run() {
         language_dialect: 'English, Tagalog, Cebuano',
         work_experience: 'Part-time Office Assistant, 2021-present',
       }),
-      skills: ['Microsoft Office', 'Customer Service', 'Bookkeeping', 'Communication', 'English Proficiency'],
+      skills: ['Microsoft Office', 'Customer Service', 'Bookkeeping', 'Communication', 'English Proficiency', 'Computer Literacy'],
+      nsrp: { status: 'verified', notes: 'NSRP details checked against the submitted form.' },
     },
     {
       email: 'pedro.reyes@example.com',
@@ -133,9 +137,10 @@ async function run() {
         work_experience: 'Electrician Helper, Gingoog Builders, 2016-2023',
       }),
       skills: ['Electrical Wiring', 'Carpentry', 'Welding', 'Cebuano Proficiency'],
+      nsrp: { status: 'needs_revision', notes: 'Please add your SSS number and the year you finished your TESDA training.' },
     },
     {
-      // Complete NSRP profile with no referral requests yet - use this account to demo requesting PESO referral.
+      // PESO-verified NSRP profile with no applications yet - use this account to demo one-tap applying.
       email: 'ana.bautista@example.com',
       password: 'Test@123',
       first_name: 'Ana', middle_name: 'Ramos', last_name: 'Bautista',
@@ -158,7 +163,8 @@ async function run() {
         eligibility_license: 'TESDA Cookery NC II',
         work_experience: 'Kitchen Helper (OJT), 2019',
       }),
-      skills: ['Cooking', 'Baking', 'Food and Beverage Service', 'Cebuano Proficiency'],
+      skills: ['Cooking', 'Baking', 'Food and Beverage Service', 'Cebuano Proficiency', 'Teamwork'],
+      nsrp: { status: 'verified' },
     },
   ];
 
@@ -190,6 +196,21 @@ async function run() {
         );
       }
     }
+
+    // One-time PESO verification of the NSRP profile
+    const reviewed = ['verified', 'needs_revision'].includes(s.nsrp.status);
+    await db.query(
+      `UPDATE job_seekers
+       SET nsrp_status = ?, nsrp_review_notes = ?, nsrp_submitted_at = NOW(),
+           nsrp_reviewed_by = ?, nsrp_reviewed_at = ?, nsrp_reviewed_hash = ?
+       WHERE id = ?`,
+      [
+        s.nsrp.status, s.nsrp.notes || null,
+        reviewed ? adminUser.insertId : null, reviewed ? new Date() : null,
+        s.nsrp.status === 'verified' ? await nsrpFingerprint(db, jsRes.insertId) : null,
+        jsRes.insertId,
+      ]
+    );
   }
   console.log('[Seed] Job seekers created.');
 
@@ -352,32 +373,20 @@ async function run() {
   }
   console.log('[Seed] Job posts created.');
 
-  // 8. Sample PESO referral requests
+  // 8. Sample PESO-referred application (Maria's NSRP profile is PESO-verified)
   const [seekers] = await db.query('SELECT id, user_id, first_name, last_name FROM job_seekers ORDER BY id');
-  const history = (appId, type, oldStatus, newStatus, by, notes) => db.query(
-    `INSERT INTO application_status_history (application_id, status_type, old_status, new_status, changed_by, notes)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [appId, type, oldStatus, newStatus, by, notes]
-  );
-  // Juan requests referral for Junior Dev - waiting for PESO review (not yet visible to TechCorp)
-  const [juanApp] = await db.query(
-    `INSERT INTO job_applications (job_post_id, job_seeker_id, cover_letter, application_status, referral_status)
-     VALUES (?, ?, ?, 'submitted', 'submitted')`,
-    [jobIds[0], seekers[0].id, 'I am a passionate IT graduate eager to learn and contribute.']
-  );
-  await history(juanApp.insertId, 'referral', null, 'submitted', seekers[0].user_id, 'PESO referral requested');
-
-  // Maria's IT Support request: PESO reviewed and endorsed it; TechCorp is reviewing
   const [maApp] = await db.query(
     `INSERT INTO job_applications
        (job_post_id, job_seeker_id, cover_letter, application_status, referral_status,
-        referral_reviewed_by, referral_reviewed_at)
-     VALUES (?, ?, ?, 'for_review', 'peso_referred', ?, NOW())`,
+        referral_notes, referral_reviewed_by, referral_reviewed_at)
+     VALUES (?, ?, ?, 'for_review', 'peso_referred', 'NSRP profile verified by PESO', ?, NOW())`,
     [jobIds[1], seekers[1].id, 'I would love to bring my organized work approach to your IT support team.', adminUser.insertId]
   );
-  await history(maApp.insertId, 'referral', null, 'submitted', seekers[1].user_id, 'PESO referral requested');
-  await history(maApp.insertId, 'referral', 'submitted', 'for_review', adminUser.insertId, 'PESO is reviewing the NSRP profile');
-  await history(maApp.insertId, 'referral', 'for_review', 'peso_referred', adminUser.insertId, 'Endorsed to TechCorp Solutions Inc.');
+  await db.query(
+    `INSERT INTO application_status_history (application_id, status_type, old_status, new_status, changed_by, notes)
+     VALUES (?, 'referral', NULL, 'peso_referred', ?, 'Applied with PESO referral - NSRP profile verified by PESO')`,
+    [maApp.insertId, seekers[1].user_id]
+  );
 
   console.log('[Seed] Sample applications created.');
 
@@ -389,17 +398,17 @@ async function run() {
   );
   await db.query(
     `INSERT INTO notifications (user_id, title, message, type, is_read)
-     VALUES (?, 'Application PESO-Referred', 'PESO Misamis Oriental endorsed your application for "IT Support Staff" to TechCorp Solutions Inc.', 'referral_status', FALSE)`,
+     VALUES (?, 'NSRP Profile PESO-Verified', 'PESO Misamis Oriental verified your NSRP profile. You can now apply to jobs with PESO referral.', 'nsrp_review', FALSE)`,
     [seekers[1].user_id]
   );
 
   console.log('[Seed] Notifications created.');
   console.log('\n========== SEED COMPLETE ==========');
   console.log('Admin:        admin@peso.gov.ph / Admin@123');
-  console.log('Job Seeker 1: juan.cruz@example.com / Test@123');
-  console.log('Job Seeker 2: maria.santos@example.com / Test@123');
-  console.log('Job Seeker 3: pedro.reyes@example.com / Test@123');
-  console.log('Job Seeker 4: ana.bautista@example.com / Test@123 (complete NSRP profile, no referral requests yet)');
+  console.log('Job Seeker 1: juan.cruz@example.com / Test@123 (NSRP submitted, waiting for PESO)');
+  console.log('Job Seeker 2: maria.santos@example.com / Test@123 (PESO-verified, applied to IT Support)');
+  console.log('Job Seeker 3: pedro.reyes@example.com / Test@123 (NSRP needs revision)');
+  console.log('Job Seeker 4: ana.bautista@example.com / Test@123 (PESO-verified, no applications yet)');
   console.log('Employer 1:   hr@techcorp.ph / Test@123 (approved)');
   console.log('Employer 2:   hr@northstar.ph / Test@123 (approved)');
   console.log('Employer 3:   hr@bluemountain.ph / Test@123 (pending approval)');

@@ -8,7 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { currentStatus } from '../../src/utils/referral';
+import { currentStatus, NSRP_STATUS_LABELS, nsrpStatusMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function SeekerDashboard() {
@@ -45,6 +45,9 @@ export default function SeekerDashboard() {
 
   const displayName = `${profile?.first_name || 'Job Seeker'} ${profile?.last_name || ''}`.trim();
   const profileComplete = !!profile?.profile_completed;
+  const nsrpStatus: string = profile?.nsrp_status || 'not_submitted';
+  const verified = nsrpStatus === 'verified';
+  const needsAction = ['not_submitted', 'needs_revision'].includes(nsrpStatus);
   const referredCount = applications.filter((a) => a.referral_status === 'peso_referred').length;
 
   return (
@@ -65,18 +68,18 @@ export default function SeekerDashboard() {
         <Card style={styles.welcomeCard}>
           <Text style={styles.welcomeName}>Hello, {displayName}!</Text>
           <Text style={styles.welcomeSub}>
-            {profileComplete
-              ? 'Your NSRP profile is complete. You can request PESO referral for any job post.'
-              : 'Complete the required NSRP profile fields to request PESO referral.'}
+            {nsrpStatusMessage(nsrpStatus)}
           </Text>
-          <View style={[styles.referralBadge, profileComplete ? styles.badgeComplete : styles.badgeIncomplete]}>
-            <Text style={[styles.referralBadgeText, profileComplete && { color: Colors.white }]}>
-              {profileComplete ? 'NSRP Profile Complete' : 'NSRP Profile Incomplete'}
+          <View style={[styles.referralBadge, verified ? styles.badgeComplete : styles.badgeIncomplete]}>
+            <Text style={[styles.referralBadgeText, verified && { color: Colors.white }]}>
+              NSRP: {NSRP_STATUS_LABELS[nsrpStatus] || nsrpStatus}
             </Text>
           </View>
-          {!profile?.profile_completed && (
+          {needsAction && (
             <TouchableOpacity testID="complete-profile" onPress={() => router.push('/(seeker)/profile')} style={styles.noticePill}>
-              <Text style={styles.noticePillText}>Complete NSRP Profile</Text>
+              <Text style={styles.noticePillText}>
+                {nsrpStatus === 'needs_revision' ? 'Fix and Resubmit NSRP Profile' : profileComplete ? 'Submit NSRP Profile to PESO' : 'Complete NSRP Profile'}
+              </Text>
             </TouchableOpacity>
           )}
         </Card>
@@ -105,9 +108,13 @@ export default function SeekerDashboard() {
 
         {/* Quick Actions moved to Profile / Jobs via bottom navigation; removed to avoid duplication */}
 
-        <Text style={styles.sectionTitle}>Recent Referral Requests</Text>
+        <Text style={styles.sectionTitle}>Recent Applications</Text>
         {applications.length === 0 ? (
-          <EmptyState message="No referral requests yet. Find a job and tap Request PESO Referral." />
+          <EmptyState
+            message={verified
+              ? 'No applications yet. Find a job and tap Apply with PESO Referral.'
+              : 'No applications yet. Once PESO verifies your NSRP profile, find a job and tap Apply with PESO Referral.'}
+          />
         ) : (
           <Card style={styles.applicationsCard}>
             {applications.slice(0, 3).map((a) => (
@@ -118,7 +125,7 @@ export default function SeekerDashboard() {
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.applicationTitle}>{a.job_title}</Text>
                   <Text style={styles.applicationCompany}>{a.company_name}</Text>
-                  <Text style={styles.applicationDate}>Requested {new Date(a.applied_at).toLocaleDateString()}</Text>
+                  <Text style={styles.applicationDate}>Applied {new Date(a.applied_at).toLocaleDateString()}</Text>
                 </View>
                 <StatusBadge status={currentStatus(a).status} />
               </TouchableOpacity>

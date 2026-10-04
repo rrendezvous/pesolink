@@ -2,7 +2,8 @@
 
 // ============================================================
 // PESO referral workflow helpers
-// Referral status (PESO Admin):  submitted -> for_review -> peso_referred | rejected, or closed
+// PESO verifies the NSRP profile once (see nsrpReview.js); a verified seeker's application is created
+// as peso_referred. submitted / for_review / rejected remain only on older per-job records.
 // Application status (employer): for_review -> for_interview -> hired | rejected (after PESO-Referred only)
 // ============================================================
 

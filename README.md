@@ -29,13 +29,14 @@ The submitted system is not:
 - Optionally scan NSRP form page 1 and page 2 using OCR.
 - Review and edit all OCR-filled fields before saving.
 - Save selected skills for rule-based job comparison.
-- View the required NSRP fields checklist (all required fields unlock PESO referral requests).
+- View the required NSRP fields checklist, then submit the NSRP profile to PESO for a one-time verification.
 - Browse active job postings.
 - Search and filter jobs by keyword and job type.
 - View job details, requirements, application instructions, optional application email, employer details, and skill comparison.
-- Request PESO referral for a selected job once the required NSRP profile fields are complete.
-- Request referral again for the same job after PESO rejects (with a reason) or closes the request.
-- Track referral requests and application status with a full status history.
+- Once PESO-verified, apply to any job with one tap (Apply with PESO Referral); the application reaches the employer as PESO-Referred.
+- Temporary rule: at least 3 of the job's required skills must match (capped at the job's own skill count; `MIN_SKILL_MATCHES`, 0 turns it off) until PESO confirms its own rule.
+- Changing a verified NSRP profile sends it back to PESO for re-checking.
+- Track applications and employer status with a full status history.
 - View notifications.
 
 ### Employer
@@ -47,7 +48,7 @@ The submitted system is not:
 - Encode requirements/application instructions and an optional application email for direct applications.
 - Select required skills for rule-based comparison.
 - Soft-close job postings while keeping records for monitoring.
-- View PESO-referred applicants for own job postings (applicants appear only after PESO endorsement).
+- View PESO-referred applicants for own job postings (only job seekers whose NSRP profile PESO verified).
 - View applicant NSRP profile summary, contact information, PESO note, matched skills, missing required skills, and application status.
 - Manually update application status: For Review, For Interview, Hired, or Rejected.
 
@@ -60,33 +61,36 @@ The submitted system is not:
 - View and manage employer accounts.
 - View job seeker accounts.
 - Deactivate/reactivate job seeker accounts.
-- Monitor job seeker NSRP profiles (read-only) and deactivate accounts with invalid information.
-- Review PESO referral requests per job with the full NSRP profile, skill comparison, and history.
-- Endorse (PESO-Referred), reject (with a reason), or close referral requests.
+- Verify each job seeker's NSRP profile once (Verify, or Return for Revision with a note); changed profiles come back for re-checking.
+- Deactivate job seeker accounts with invalid information.
 - Monitor job postings.
 - Soft-close job postings (undecided referral requests for the job are closed automatically).
-- Search and filter all referral/application records.
+- Search and filter all applications.
 - View system notifications through the affected user accounts.
 
 ## Important Workflow Explanation
 
-The app follows the per-job PESO referral workflow described in the proposal (Sections 1.5, 2.5, 3.4.5, 3.5):
+PESO verifies each job seeker's NSRP profile once; verified job seekers then apply to any job with one tap.
+(This replaces the per-job PESO review described in proposal V11.49; the manuscript and compliance matrix are being updated to match.)
 
-1. **NSRP-Based Profile (one per job seeker, reused for every request)**
-   - The job seeker completes the required NSRP profile fields (manually or with optional OCR assistance).
-   - `profile_completed` is true only when all 19 required items are filled; this is the gate for requesting referral.
+1. **NSRP-Based Profile (one per job seeker)**
+   - The job seeker completes the 19 required NSRP items (manually or with optional OCR assistance) and taps **Submit to PESO**.
 
-2. **Referral Status - updated by PESO Admin**
-   - `submitted` - the job seeker requested PESO referral for a selected job post.
-   - `for_review` - recorded automatically when PESO Admin opens the request.
-   - `peso_referred` - PESO endorsed the applicant; the employer can now see the record and is notified.
-   - `rejected` - not endorsed; a reason is required and the job seeker may fix the profile and request again.
-   - `closed` - closed by PESO Admin, or automatically when the job post closes before a decision.
+2. **NSRP Status - updated by PESO Admin, once**
+   - `not_submitted` - incomplete or not yet sent to PESO.
+   - `submitted` - waiting for PESO.
+   - `for_review` - recorded automatically when PESO Admin opens the profile.
+   - `verified` - PESO-Verified; the job seeker can apply to any job.
+   - `needs_revision` - returned with a note; the job seeker fixes it and resubmits.
+   - Any change to a verified profile (fields or skills) sends it back to `submitted` for re-checking.
 
-3. **Application Status - updated by the employer, only after PESO-Referred**
+3. **Applying** - a verified job seeker taps **Apply with PESO Referral**. The application is created as `peso_referred` and the employer is notified right away.
+   - Temporary rule until PESO confirms its own: at least `MIN_SKILL_MATCHES` (default 3) of the job's required skills must match, capped at the job's own required-skill count. Set it to 0 to turn the rule off.
+
+4. **Application Status - updated by the employer**
    - `for_review`, `for_interview`, `hired`, `rejected`
 
-Employers never see referral requests that PESO has not endorsed. PESO-Referred and Hired are tracking labels, not automated decisions.
+PESO-Verified, PESO-Referred, and Hired are tracking labels, not automated decisions.
 
 ## OCR Workflow
 
@@ -129,7 +133,8 @@ Notifications are stored in the database and shown in app notification screens.
 Notification examples:
 
 - Employer account created or approved.
-- Referral request received (PESO Admin), For Review / PESO-Referred / Rejected / Closed (job seeker).
+- NSRP profile submitted, resubmitted, or changed after verification (PESO Admin).
+- NSRP For Review / PESO-Verified / Needs Revision / sent back for re-checking (job seeker).
 - New PESO-referred applicant (employer).
 - New job posted by an approved employer.
 - Application status updated.
@@ -367,7 +372,7 @@ These are created by `node seed.js`.
 3. Open employer management.
 4. Show admin-created employer account flow.
 5. Open job seeker management.
-6. Show NSRP profile referral status controls.
+6. Open NSRP Verification, open Juan's submitted profile (becomes For Review), and Verify it.
 7. Open monitor jobs and explain soft close.
 8. Open monitor applications.
 
@@ -376,7 +381,7 @@ These are created by `node seed.js`.
 1. Log in as a job seeker.
 2. Open dashboard.
 3. Open profile.
-4. Show PESO Review Requirements checklist.
+4. Show the PESO Verification card and required NSRP items checklist.
 5. Show selected skills.
 6. Open Upload NSRP.
 7. Scan page 1 or page 2 sample if demonstrating OCR.
@@ -385,7 +390,7 @@ These are created by `node seed.js`.
 10. Search/filter jobs.
 11. Open job details.
 12. Show rule-based matched/missing skills.
-13. Tap Request PESO Referral (blocked with a missing-fields list if the NSRP profile is incomplete).
+13. Tap Apply with PESO Referral (needs a PESO-verified NSRP profile and the temporary skill minimum).
 14. Open My Applications.
 15. Open Notifications.
 
@@ -416,6 +421,7 @@ Job seeker:
 
 - `GET /api/job-seeker/profile`
 - `POST /api/job-seeker/profile`
+- `POST /api/job-seeker/profile/submit-nsrp`
 - `POST /api/job-seeker/skills`
 - `DELETE /api/job-seeker/skills/:skillId`
 
@@ -433,7 +439,7 @@ Jobs:
 
 Applications:
 
-- `POST /api/applications` (request PESO referral for a job)
+- `POST /api/applications` (apply with PESO referral; PESO-verified NSRP profile required)
 - `GET /api/applications/my-applications`
 - `GET /api/applications/:id`
 
@@ -457,13 +463,13 @@ PESO Admin:
 - `PUT /api/admin/employers/:id/reject`
 - `GET /api/admin/job-seekers`
 - `GET /api/admin/job-seekers/:id/profile`
+- `PUT /api/admin/job-seekers/:id/nsrp-status`
 - `PUT /api/admin/job-seekers/:id/deactivate`
 - `PUT /api/admin/job-seekers/:id/reactivate`
 - `GET /api/admin/jobs`
 - `PUT /api/admin/jobs/:id/close`
 - `GET /api/admin/applications`
 - `GET /api/admin/applications/:id`
-- `PUT /api/admin/applications/:id/referral-status`
 
 Shared:
 
@@ -612,9 +618,9 @@ Use these statements during demo:
 
 - OCR is the emerging technology integration.
 - OCR is assistive and user-confirmed.
-- PESO decides the referral (PESO-Referred); the employer decides the application (For Interview, Hired).
+- PESO verifies the NSRP profile once; the employer decides the application (For Interview, Hired).
 - Skill comparison is rule-based matched/missing comparison only.
-- PESO-Referred is an endorsement, not a hiring decision.
+- PESO-Referred means the applicant's NSRP profile was verified by PESO; it is not a hiring decision.
 - Job posts are soft-closed, not deleted.
 - Notifications are in-app alerts.
 

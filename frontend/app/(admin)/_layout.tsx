@@ -55,7 +55,7 @@ export default function AdminLayout() {
       <Tabs.Screen
         name="manage-job-seekers"
         options={{
-          title: 'Seekers',
+          title: 'NSRP',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'people' : 'people-outline'} size={size} color={color} />
           ),

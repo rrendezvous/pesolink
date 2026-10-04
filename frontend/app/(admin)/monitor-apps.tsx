@@ -1,6 +1,6 @@
 // ============================================================
-// Admin: PESO Referral Requests (review, endorse, reject, close; monitor all records)
-// Opening an undecided request records "For Review" automatically.
+// Admin: Applications (monitor PESO-referred applications across all job posts)
+// PESO's decision happens once per job seeker on the NSRP Verification screen.
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
@@ -10,29 +10,26 @@ import { useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState, Input, Chip, Button, Row } from '../../src/components/ui';
 import { NsrpProfileView, NsrpRequirements, Section } from '../../src/components/NsrpProfileView';
 import { api, getApiError } from '../../src/api/client';
-import { confirmAction } from '../../src/utils/confirm';
-import {
-  REFERRAL_STATUS_LABELS, OPEN_REFERRAL_STATUSES, currentStatus, describeHistory,
-} from '../../src/utils/referral';
+import { REFERRAL_STATUS_LABELS, currentStatus, describeHistory } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
+// Filtered by where the application stands now (employer status, or the referral record if not referred).
 const FILTERS = [
-  { key: 'open', label: 'Needs Action' },
-  { key: 'peso_referred', label: 'PESO-Referred' },
+  { key: '', label: 'All' },
+  { key: 'for_review', label: 'For Review' },
+  { key: 'for_interview', label: 'For Interview' },
+  { key: 'hired', label: 'Hired' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'closed', label: 'Closed' },
-  { key: '', label: 'All' },
 ];
 
-export default function ReferralRequests() {
+export default function MonitorApplications() {
   const [apps, setApps] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('open');
+  const [filter, setFilter] = useState('');
   const [detail, setDetail] = useState<any | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -53,16 +50,10 @@ export default function ReferralRequests() {
 
   const openRequest = async (item: any) => {
     setDetail({ application: item });
-    setNote('');
     setLoadingDetail(true);
     try {
-      if (item.referral_status === 'submitted') {
-        // PESO has opened the request: record "For Review" and notify the job seeker.
-        await api.put(`/admin/applications/${item.id}/referral-status`, { referral_status: 'for_review' });
-      }
       const res = await api.get(`/admin/applications/${item.id}`);
       setDetail(res.data);
-      load();
     } catch (err) {
       Alert.alert('Error', getApiError(err));
       setDetail(null);
@@ -71,57 +62,24 @@ export default function ReferralRequests() {
     }
   };
 
-  const decide = (next: 'peso_referred' | 'rejected' | 'closed') => {
-    const app = detail?.application;
-    if (!app) return;
-    const reason = note.trim();
-    if (next === 'rejected' && !reason) {
-      Alert.alert('Reason Required', 'Type a reason so the job seeker knows what to fix before requesting again.');
-      return;
-    }
-    const name = `${detail.profile?.first_name || app.first_name} ${detail.profile?.last_name || app.last_name}`;
-    const copy = {
-      peso_referred: ['Endorse as PESO-Referred', `Endorse ${name} to ${app.company_name} for "${app.job_title}"? The employer will be able to see this applicant.`, 'Endorse'],
-      rejected: ['Reject Referral Request', `Reject ${name}'s referral request for "${app.job_title}"? They will see your reason and may request again.`, 'Reject'],
-      closed: ['Close Referral Request', `Close ${name}'s referral request for "${app.job_title}" without a decision?`, 'Close Request'],
-    }[next];
-    confirmAction(copy[0], copy[1], async () => {
-      setBusy(true);
-      try {
-        await api.put(`/admin/applications/${app.id}/referral-status`, { referral_status: next, notes: reason || null });
-        setDetail(null);
-        await load();
-        Alert.alert('Saved', `Referral request marked ${REFERRAL_STATUS_LABELS[next]}. The job seeker has been notified.`);
-      } catch (err) {
-        Alert.alert('Error', getApiError(err));
-      } finally {
-        setBusy(false);
-      }
-    }, copy[2], next !== 'peso_referred');
-  };
-
   const query = search.trim().toLowerCase();
   const visibleApps = apps.filter((a) => {
-    if (filter === 'open' && !OPEN_REFERRAL_STATUSES.includes(a.referral_status)) return false;
-    if (filter && filter !== 'open' && a.referral_status !== filter) return false;
+    if (filter && currentStatus(a).status !== filter) return false;
     if (!query) return true;
     return [`${a.first_name} ${a.last_name}`, a.job_title, a.company_name, a.seeker_email]
       .some((v) => String(v || '').toLowerCase().includes(query));
   });
-  const countFor = (key: string) => (key === 'open'
-    ? apps.filter((a) => OPEN_REFERRAL_STATUSES.includes(a.referral_status)).length
-    : key ? apps.filter((a) => a.referral_status === key).length : apps.length);
+  const countFor = (key: string) => (key ? apps.filter((a) => currentStatus(a).status === key).length : apps.length);
 
   const app = detail?.application;
-  const isOpen = app && OPEN_REFERRAL_STATUSES.includes(app.referral_status);
   const match = detail?.skill_comparison;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
-        <Text style={styles.headerTitle}>Referral Requests</Text>
-        <Text style={styles.headerSub}>Review NSRP profiles and route endorsed applicants to employers</Text>
+        <Text style={styles.headerTitle}>PESO-Referred Applications</Text>
+        <Text style={styles.headerSub}>Monitor PESO-referred applications and employer status updates</Text>
       </View>
 
       <View style={styles.filterCard}>
@@ -144,26 +102,25 @@ export default function ReferralRequests() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        ListEmptyComponent={<EmptyState message={apps.length ? 'No referral requests match this filter.' : 'No referral requests yet.'} />}
+        ListEmptyComponent={<EmptyState message={apps.length ? 'No applications match this filter.' : 'No applications yet.'} />}
         renderItem={({ item }) => {
           const { status, stage } = currentStatus(item);
-          const needsAction = OPEN_REFERRAL_STATUSES.includes(item.referral_status);
           return (
             <TouchableOpacity testID={`referral-${item.id}`} onPress={() => openRequest(item)} activeOpacity={0.85}>
-              <Card style={needsAction ? { ...styles.appCard, ...styles.appCardOpen } : styles.appCard}>
+              <Card style={styles.appCard}>
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.applicant}>{item.first_name} {item.last_name}</Text>
-                    <Text style={styles.company}>Referral for {item.job_title}</Text>
+                    <Text style={styles.company}>{item.job_title}</Text>
                     <Text style={styles.detail}>{item.company_name}{item.location ? ` / ${item.location}` : ''}</Text>
-                    <Text style={styles.date}>Requested {new Date(item.applied_at).toLocaleDateString()}</Text>
+                    <Text style={styles.date}>Applied {new Date(item.applied_at).toLocaleDateString()}</Text>
                   </View>
                   <View style={styles.badgeStack}>
                     <StatusBadge status={status} />
-                    <Text style={styles.stageText}>{stage === 'PESO' ? 'PESO review' : 'With employer'}</Text>
+                    <Text style={styles.stageText}>{stage === 'PESO' ? 'Referral record' : 'With employer'}</Text>
                   </View>
                 </View>
-                <Text style={styles.cardHint}>{needsAction ? 'Tap to review the NSRP profile and decide.' : 'Tap to view the referral record.'}</Text>
+                <Text style={styles.cardHint}>Tap to view the application and NSRP profile.</Text>
               </Card>
             </TouchableOpacity>
           );
@@ -180,7 +137,7 @@ export default function ReferralRequests() {
                     <Text style={styles.modalTitle}>
                       {[detail.profile?.first_name || app.first_name, detail.profile?.last_name || app.last_name].join(' ')}
                     </Text>
-                    <Text style={styles.modalSubtle}>Referral for {app.job_title} / {app.company_name}</Text>
+                    <Text style={styles.modalSubtle}>{app.job_title} / {app.company_name}</Text>
                   </View>
                   <StatusBadge status={currentStatus(app).status} />
                 </View>
@@ -193,7 +150,7 @@ export default function ReferralRequests() {
                     {app.referral_status === 'peso_referred' && (
                       <Row left="Employer Status" right={currentStatus(app).status.replace('_', ' ')} style={{ textTransform: 'capitalize' }} />
                     )}
-                    <Row left="Requested" right={new Date(app.applied_at).toLocaleString()} />
+                    <Row left="Applied" right={new Date(app.applied_at).toLocaleString()} />
                     {!!app.referral_reviewed_at && (
                       <Row
                         left="Last PESO Action"
@@ -222,7 +179,7 @@ export default function ReferralRequests() {
                     </Section>
                     {detail.profile && <NsrpProfileView profile={detail.profile} skills={detail.skills || []} />}
 
-                    <Section title="Referral History">
+                    <Section title="Status History">
                       {(detail.history || []).map((h: any) => (
                         <View key={h.id} style={styles.historyRow}>
                           <Text style={styles.historyStatus}>{describeHistory(h)}</Text>
@@ -232,25 +189,6 @@ export default function ReferralRequests() {
                       ))}
                     </Section>
 
-                    {isOpen && (
-                      <Section title="PESO Decision">
-                        <Input
-                          testID="referral-note"
-                          label="Note to job seeker (required to reject)"
-                          value={note}
-                          onChangeText={setNote}
-                          placeholder="e.g., Please add your barangay and preferred work location."
-                          multiline
-                          numberOfLines={3}
-                          autoCapitalize="sentences"
-                        />
-                        <Button testID="referral-endorse" title="Endorse as PESO-Referred" onPress={() => decide('peso_referred')} loading={busy} />
-                        <View style={{ height: Spacing.sm }} />
-                        <Button testID="referral-reject" title="Reject Request" variant="danger" onPress={() => decide('rejected')} loading={busy} />
-                        <View style={{ height: Spacing.sm }} />
-                        <Button testID="referral-close" title="Close Request" variant="secondary" onPress={() => decide('closed')} loading={busy} />
-                      </Section>
-                    )}
                   </>
                 )}
 
@@ -307,7 +245,6 @@ const styles = StyleSheet.create({
   },
   listContent: { padding: Spacing.md, paddingTop: Spacing.xs, paddingBottom: Spacing.xl },
   appCard: { borderRadius: Radius.lg },
-  appCardOpen: { borderColor: Colors.warning },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
   badgeStack: { alignItems: 'flex-end', gap: Spacing.xs },
   stageText: { fontSize: FontSize.xs, color: Colors.gray, fontWeight: '700' },

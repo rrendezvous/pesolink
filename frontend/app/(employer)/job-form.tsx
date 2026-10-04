@@ -152,7 +152,7 @@ export default function JobForm() {
             />
             <Text style={styles.helpText}>
               Shown to job seekers who prefer to apply directly. Direct email applications are outside PESO-Link tracking;
-              PESO referral requests are routed to you after PESO endorsement.
+              Applicants with a PESO-verified NSRP profile reach you as PESO-Referred.
             </Text>
 
             <Text style={styles.label}>Job Type</Text>

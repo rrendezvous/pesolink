@@ -80,14 +80,14 @@ export default function AdminDashboard() {
           <BigStatCard label="Employers" value={stats?.total_employers ?? '-'} />
           <BigStatCard label="Total Jobs" value={stats?.total_jobs ?? '-'} />
           <BigStatCard label="Active Jobs" value={stats?.active_jobs ?? '-'} />
-          <BigStatCard label="Referral Requests" value={stats?.total_applications ?? '-'} />
+          <BigStatCard label="Applications" value={stats?.total_applications ?? '-'} />
         </View>
 
-        <Text style={styles.sectionTitle}>NSRP Referral Routing</Text>
+        <Text style={styles.sectionTitle}>NSRP Verification</Text>
         <View style={styles.statsGrid}>
-          <BigStatCard label="Awaiting PESO Review" value={stats?.pending_referral_requests ?? '-'} />
-          <BigStatCard label="PESO-Referred" value={stats?.peso_referred_applications ?? '-'} />
-          <BigStatCard label="Complete NSRP Profiles" value={stats?.complete_nsrp_profiles ?? '-'} />
+          <BigStatCard label="NSRP Awaiting PESO" value={stats?.pending_nsrp_reviews ?? '-'} />
+          <BigStatCard label="PESO-Verified Seekers" value={stats?.verified_nsrp_profiles ?? '-'} />
+          <BigStatCard label="PESO-Referred Applications" value={stats?.peso_referred_applications ?? '-'} />
         </View>
 
         {/* Management actions removed; use the bottom tab navigation to reach each section. */}
@@ -95,8 +95,8 @@ export default function AdminDashboard() {
           <View style={styles.noteCard}>
             <Text style={styles.noteTitle}>Scope Reminder</Text>
             <Text style={styles.noteText}>
-              OCR is optional and assistive. PESO-Referred means PESO reviewed the NSRP profile and endorsed the applicant
-              to the employer; it is not a hiring decision. Skill comparison remains rule-based only.
+              OCR is optional and assistive. PESO verifies each job seeker&apos;s NSRP profile once; their applications then
+              reach employers as PESO-Referred. This is not a hiring decision. Skill comparison remains rule-based.
             </Text>
           </View>
         </View>
