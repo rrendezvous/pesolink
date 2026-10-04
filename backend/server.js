@@ -52,6 +52,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Keep older databases compatible with the per-job PESO referral workflow fields.
+require('./migrate-referral-workflow').ensureReferralWorkflowColumns()
+  .catch((err) => console.error('[Migration] Referral workflow columns check failed:', err.message));
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] PESO-Link MisOr backend running on http://0.0.0.0:${PORT}`);
   console.log(`[Server] Health: http://localhost:${PORT}/api/health`);

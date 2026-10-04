@@ -211,8 +211,10 @@ class TestApplicationStatuses:
         apps = r.json()["applications"]
         assert isinstance(apps, list)
         allowed = {"submitted", "pending", "for_review", "for_interview", "hired", "rejected", "closed"}
+        referral_allowed = {"submitted", "for_review", "peso_referred", "rejected", "closed"}
         for a in apps:
             assert a["application_status"] in allowed, f"unknown status: {a['application_status']}"
+            assert a["referral_status"] in referral_allowed, f"unknown referral status: {a['referral_status']}"
 
     def test_status_update_accepts_employer_statuses_and_rejects_unknown(self, employer_token):
         rj = requests.get(f"{BASE_URL}/api/employer/jobs",
@@ -236,8 +238,15 @@ class TestApplicationStatuses:
                           json={"status": "shortlisted"})
         assert ri.status_code == 400, f"shortlisted should be rejected, got {ri.status_code}"
 
+        # Referral-stage statuses belong to PESO Admin, not the employer (proposal 3.5.2 / 3.5.3).
+        for st in ["submitted", "pending", "closed"]:
+            rv = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
+                              headers=headers(employer_token),
+                              json={"status": st})
+            assert rv.status_code == 400, f"employer should not set {st}, got {rv.status_code}"
+
         # Employer application statuses are manually updated by employer, not system-decided.
-        for st in ["submitted", "pending", "for_review", "for_interview", "hired", "rejected", "closed"]:
+        for st in ["for_review", "for_interview", "hired", "rejected"]:
             rv = requests.put(f"{BASE_URL}/api/employer/applications/{app_id}/status",
                               headers=headers(employer_token),
                               json={"status": st, "notes": f"to {st}"})

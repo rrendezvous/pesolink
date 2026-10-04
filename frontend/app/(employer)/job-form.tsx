@@ -20,7 +20,7 @@ export default function JobForm() {
   const [form, setForm] = useState<any>({
     job_title: '', job_description: '', job_type: 'full-time',
     salary_min: '', salary_max: '', location: 'Cagayan de Oro City',
-    vacancies: '1', requirements: '', closing_date: '',
+    vacancies: '1', requirements: '', closing_date: '', application_email: '',
   });
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
@@ -46,7 +46,8 @@ export default function JobForm() {
             location: job.location || '',
             vacancies: String(job.vacancies || 1),
             requirements: job.requirements || '',
-            closing_date: job.closing_date ? new Date(job.closing_date).toISOString().split('T')[0] : '',
+            application_email: job.application_email || '',
+            closing_date: job.closing_date ? String(job.closing_date).slice(0, 10) : '',
           });
           setSelectedSkills(new Set((job.required_skills || []).map((s: any) => s.id)));
         }
@@ -73,6 +74,10 @@ export default function JobForm() {
       Alert.alert('Required', 'Job title and description are required.');
       return;
     }
+    if (form.application_email.trim() && !/^\S+@\S+\.\S+$/.test(form.application_email.trim())) {
+      Alert.alert('Invalid Email', 'Enter a valid application email, or leave it blank.');
+      return;
+    }
 
     setSaving(true);
     const payload = {
@@ -84,6 +89,7 @@ export default function JobForm() {
       location: form.location,
       vacancies: parseInt(form.vacancies, 10) || 1,
       requirements: form.requirements,
+      application_email: form.application_email.trim(),
       closing_date: form.closing_date || null,
       required_skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, required_level: 'beginner' })),
     };
@@ -119,7 +125,7 @@ export default function JobForm() {
         <View style={styles.header}>
           <Text style={styles.kicker}>EMPLOYER JOB POST</Text>
           <Text style={styles.headerTitle}>{isEdit ? 'Update Job' : 'Post New Job'}</Text>
-          <Text style={styles.headerSub}>Create structured vacancies for PESO job seeker application tracking.</Text>
+          <Text style={styles.headerSub}>Create structured vacancies for PESO referral routing and tracking.</Text>
         </View>
 
         <View style={styles.body}>
@@ -136,6 +142,18 @@ export default function JobForm() {
               numberOfLines={3}
               placeholder="Education, experience, documents, and how applicants should proceed..."
             />
+            <Input
+              testID="job-email"
+              label="Application Email (optional)"
+              value={form.application_email}
+              onChangeText={(v) => setField('application_email', v)}
+              keyboardType="email-address"
+              placeholder="e.g., careers@company.ph"
+            />
+            <Text style={styles.helpText}>
+              Shown to job seekers who prefer to apply directly. Direct email applications are outside PESO-Link tracking;
+              PESO referral requests are routed to you after PESO endorsement.
+            </Text>
 
             <Text style={styles.label}>Job Type</Text>
             <View style={styles.chipWrap}>
@@ -185,6 +203,7 @@ export default function JobForm() {
 }
 
 const styles = StyleSheet.create({
+  helpText: { fontSize: FontSize.xs, color: Colors.gray, lineHeight: 18, marginTop: -8, marginBottom: Spacing.md },
   container: { flex: 1, backgroundColor: Colors.lightBg },
   content: { paddingBottom: Spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },

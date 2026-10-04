@@ -49,7 +49,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -80,7 +80,14 @@ export default function AdminDashboard() {
           <BigStatCard label="Employers" value={stats?.total_employers ?? '-'} />
           <BigStatCard label="Total Jobs" value={stats?.total_jobs ?? '-'} />
           <BigStatCard label="Active Jobs" value={stats?.active_jobs ?? '-'} />
-          <BigStatCard label="Applications" value={stats?.total_applications ?? '-'} />
+          <BigStatCard label="Referral Requests" value={stats?.total_applications ?? '-'} />
+        </View>
+
+        <Text style={styles.sectionTitle}>NSRP Referral Routing</Text>
+        <View style={styles.statsGrid}>
+          <BigStatCard label="Awaiting PESO Review" value={stats?.pending_referral_requests ?? '-'} />
+          <BigStatCard label="PESO-Referred" value={stats?.peso_referred_applications ?? '-'} />
+          <BigStatCard label="Complete NSRP Profiles" value={stats?.complete_nsrp_profiles ?? '-'} />
         </View>
 
         {/* Management actions removed; use the bottom tab navigation to reach each section. */}
@@ -88,8 +95,8 @@ export default function AdminDashboard() {
           <View style={styles.noteCard}>
             <Text style={styles.noteTitle}>Scope Reminder</Text>
             <Text style={styles.noteText}>
-              OCR is optional and assistive. PESO Referral-Ready means the NSRP profile was reviewed for referral support.
-              Skill comparison remains rule-based only and does not make hiring decisions.
+              OCR is optional and assistive. PESO-Referred means PESO reviewed the NSRP profile and endorsed the applicant
+              to the employer; it is not a hiring decision. Skill comparison remains rule-based only.
             </Text>
           </View>
         </View>

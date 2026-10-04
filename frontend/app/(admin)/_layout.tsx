@@ -13,6 +13,8 @@ export default function AdminLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Keep every tab screen below the phone's status bar; headers share this green.
+        sceneStyle: { paddingTop: insets.top, backgroundColor: Colors.primaryDark },
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.gray,
         tabBarStyle: {
@@ -77,7 +79,7 @@ export default function AdminLayout() {
       <Tabs.Screen
         name="monitor-apps"
         options={{
-          title: 'Applications',
+          title: 'Referrals',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={size} color={color} />
           ),

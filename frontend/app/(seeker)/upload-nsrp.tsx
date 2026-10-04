@@ -304,7 +304,7 @@ export default function UploadNSRP() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.lightBg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.lightBg }} edges={['left', 'right']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

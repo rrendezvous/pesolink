@@ -1,5 +1,6 @@
 // ============================================================
-// Job Applicants + Status Update (combined)
+// PESO-Referred Applicants + Status Update (combined)
+// Applicants appear here only after PESO Admin endorses their referral request.
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
@@ -44,7 +45,7 @@ export default function Applicants() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
-        <Text style={styles.headerTitle}>Applicants</Text>
+        <Text style={styles.headerTitle}>PESO-Referred Applicants</Text>
         <Text style={styles.headerSub}>{jobTitle || 'Selected job post'}</Text>
       </View>
 
@@ -52,7 +53,7 @@ export default function Applicants() {
         data={applicants}
         keyExtractor={(item) => String(item.application_id)}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<EmptyState message="No applicants yet for this job." />}
+        ListEmptyComponent={<EmptyState message="No PESO-referred applicants yet. Applicants appear here after PESO Misamis Oriental endorses their referral request." />}
         renderItem={({ item }) => (
           <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
@@ -71,10 +72,8 @@ export default function Applicants() {
                 </View>
                 <View style={styles.badgeStack}>
                   <StatusBadge status={item.application_status} />
-                  <View style={[styles.referralPill, getReferralPillStyle(item.referral_status)]}>
-                    <Text style={[styles.referralPillText, item.referral_status === 'referral_ready' && styles.referralPillTextReady]}>
-                      {getReferralShort(item.referral_status)}
-                    </Text>
+                  <View style={[styles.referralPill, styles.referralPillReady]}>
+                    <Text style={[styles.referralPillText, styles.referralPillTextReady]}>PESO-Referred</Text>
                   </View>
                 </View>
               </View>
@@ -98,7 +97,7 @@ export default function Applicants() {
           <View style={styles.modalCard}>
             <ScrollView>
               <Text style={styles.modalTitle}>Applicant Details</Text>
-              <Text style={styles.modalSubtle}>Review NSRP profile summary before updating the application status.</Text>
+              <Text style={styles.modalSubtle}>Endorsed by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
               {selected && (
                 <>
                   <Row left="Name" right={`${selected.first_name} ${selected.last_name}`} />
@@ -110,11 +109,11 @@ export default function Applicants() {
                   <Row left="Experience" right={`${selected.years_of_experience || 0} yr`} />
                   <Row left="Employment" right={selected.employment_status || 'N/A'} />
                   <Row left="Preferred Job" right={selected.preferred_occupation || 'N/A'} />
-                  <Row
-                    left="PESO Review"
-                    right={getReferralLabel(selected.referral_status)}
-                    style={selected.referral_status === 'referral_ready' ? styles.readyText : undefined}
-                  />
+                  <Row left="Referral Status" right="PESO-Referred" style={styles.readyText} />
+                  {!!selected.referral_reviewed_at && (
+                    <Row left="Endorsed" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
+                  )}
+                  {!!selected.referral_notes && <Row left="PESO Note" right={selected.referral_notes} />}
                   <Row
                     left="Skill Comparison"
                     right={`${selected.matched_count || 0} matched / ${selected.missing_count || 0} missing`}
@@ -201,27 +200,6 @@ function SkillList({
   );
 }
 
-function getReferralLabel(status?: string) {
-  if (status === 'submitted') return 'Submitted to PESO';
-  if (status === 'needs_revision') return 'Needs Revision';
-  if (status === 'referral_ready') return 'PESO Referral-Ready';
-  return 'Draft';
-}
-
-function getReferralShort(status?: string) {
-  if (status === 'submitted') return 'PESO Review';
-  if (status === 'needs_revision') return 'Needs Revision';
-  if (status === 'referral_ready') return 'Referral-Ready';
-  return 'Draft';
-}
-
-function getReferralPillStyle(status?: string) {
-  if (status === 'referral_ready') return styles.referralPillReady;
-  if (status === 'needs_revision') return styles.referralPillWarning;
-  if (status === 'submitted') return styles.referralPillSubmitted;
-  return styles.referralPillDraft;
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.lightBg },
   header: {
@@ -244,9 +222,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   referralPillReady: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  referralPillWarning: { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' },
-  referralPillSubmitted: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primarySoft },
-  referralPillDraft: { backgroundColor: Colors.surface, borderColor: Colors.borderSoft },
   referralPillText: { color: Colors.textDark, fontSize: FontSize.xs, fontWeight: '900', textAlign: 'center' },
   referralPillTextReady: { color: Colors.white },
   matchSummary: {

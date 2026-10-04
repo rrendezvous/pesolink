@@ -13,6 +13,7 @@ import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 const GENDERS = ['male', 'female', 'other'];
 const CIVIL = ['single', 'married', 'widowed', 'separated'];
 const EMPLOYMENT = ['unemployed', 'underemployed', 'employed'];
+const YES_NO = ['yes', 'no'];
 
 const defaultNsrpFullData = {
   suffix: '',
@@ -92,9 +93,6 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [referralStatus, setReferralStatus] = useState('draft');
-  const [reviewNotes, setReviewNotes] = useState('');
   const [form, setForm] = useState<any>({
     first_name: '', middle_name: '', last_name: '',
     date_of_birth: '', gender: '', civil_status: '',
@@ -137,9 +135,7 @@ export default function ProfileScreen() {
           employment_status: prof.employment_status || '',
           preferred_occupation: prof.preferred_occupation || '',
         });
-        setNsrpFullData({ ...defaultNsrpFullData, ...parsedFullData });
-        setReferralStatus(prof.referral_status || 'draft');
-        setReviewNotes(prof.referral_review_notes || '');
+        setNsrpFullData(normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData }));
         setAllSkills(s.data.skills);
         setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
       } catch (err) {
@@ -169,8 +165,6 @@ export default function ProfileScreen() {
         years_of_experience: parseInt(form.years_of_experience, 10) || 0,
         nsrp_full_data: nsrpFullData,
       });
-    setReferralStatus(res.data.profile?.referral_status || 'draft');
-    setReviewNotes(res.data.profile?.referral_review_notes || '');
     await api.post('/job-seeker/skills', {
       skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
     });
@@ -192,37 +186,6 @@ export default function ProfileScreen() {
       Alert.alert('Error', getApiError(err));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const submitForReview = async () => {
-    const missing = getMissingReferralFields(form, nsrpFullData, selectedSkills);
-    if (missing.length > 0) {
-      Alert.alert(
-        'Complete Required Fields',
-        `Please complete these fields before submitting for PESO review:\n\n${missing.slice(0, 10).join('\n')}${missing.length > 10 ? `\n+ ${missing.length - 10} more` : ''}`
-      );
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await saveProfileDraft();
-      const res = await api.post('/job-seeker/profile/submit-referral');
-      setReferralStatus(res.data.referral_status || 'submitted');
-      setReviewNotes('');
-      Alert.alert('Submitted', 'Your NSRP profile has been submitted for PESO review.');
-    } catch (err: any) {
-      const missing = err?.response?.data?.missing_fields;
-      if (Array.isArray(missing) && missing.length > 0) {
-        Alert.alert(
-          'Complete Required Fields',
-          `Please complete these fields before submitting for PESO review:\n\n${missing.slice(0, 10).join('\n')}${missing.length > 10 ? `\n+ ${missing.length - 10} more` : ''}`
-        );
-      } else {
-        Alert.alert('Submit Failed', getApiError(err));
-      }
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -257,35 +220,32 @@ export default function ProfileScreen() {
 
         <View style={styles.body}>
           <Card style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Referral Status: {getReferralLabel(referralStatus)}</Text>
+            <Text style={styles.noticeTitle}>Your NSRP-Based Profile</Text>
             <Text style={styles.noticeText}>
-              {getReferralHelp(referralStatus)}
+              This one profile is used for every PESO referral request you make. PESO reviews it per job before endorsing you to the employer.
             </Text>
-            {!!reviewNotes && <Text style={styles.reviewNotes}>PESO note: {reviewNotes}</Text>}
             <Button testID="profile-upload-shortcut" title="Use OCR Assistant" variant="secondary" onPress={() => router.push('/(seeker)/upload-nsrp')} />
           </Card>
 
-          {(referralStatus === 'draft' || referralStatus === 'needs_revision') && (
-            <Card style={missingReferralFields.length ? styles.requirementsCard : styles.readyCard}>
-              <Text style={styles.noticeTitle}>PESO Review Requirements</Text>
-              <Text style={styles.noticeText}>
-                {filledReferralCount}/{requiredReferralCount} required items complete.
-              </Text>
-              {missingReferralFields.length > 0 ? (
-                <>
-                  <Text style={styles.requirementsIntro}>Complete these before submitting:</Text>
-                  {missingReferralFields.slice(0, 8).map((field) => (
-                    <Text key={field} style={styles.missingItem}>- {field}</Text>
-                  ))}
-                  {missingReferralFields.length > 8 && (
-                    <Text style={styles.missingItem}>- {missingReferralFields.length - 8} more required item(s)</Text>
-                  )}
-                </>
-              ) : (
-                <Text style={styles.readyText}>Ready to save and submit for PESO review.</Text>
-              )}
-            </Card>
-          )}
+          <Card style={missingReferralFields.length ? styles.requirementsCard : styles.readyCard}>
+            <Text style={styles.noticeTitle}>Required for PESO Referral</Text>
+            <Text style={styles.noticeText}>
+              {filledReferralCount}/{requiredReferralCount} required items complete.
+            </Text>
+            {missingReferralFields.length > 0 ? (
+              <>
+                <Text style={styles.requirementsIntro}>Complete these to request PESO referral:</Text>
+                {missingReferralFields.slice(0, 8).map((field) => (
+                  <Text key={field} style={styles.missingItem}>- {field}</Text>
+                ))}
+                {missingReferralFields.length > 8 && (
+                  <Text style={styles.missingItem}>- {missingReferralFields.length - 8} more required item(s)</Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.readyText}>Complete. Save your profile, then request PESO referral from any job post.</Text>
+            )}
+          </Card>
 
           <ProfileSection title="Personal Information">
             <Input testID="prof-first" label="First Name *" value={form.first_name} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
@@ -294,7 +254,7 @@ export default function ProfileScreen() {
             <Input testID="prof-suffix" label="Suffix" value={nsrpFullData.suffix} onChangeText={(v) => setFullDataField('suffix', v)} placeholder="e.g., Jr., III" />
             <Input testID="prof-dob" label="Date of Birth (YYYY-MM-DD)" value={form.date_of_birth} onChangeText={(v) => setField('date_of_birth', v)} placeholder="1998-05-15" />
             <Input testID="prof-birthplace" label="Place of Birth" value={nsrpFullData.place_of_birth} onChangeText={(v) => setFullDataField('place_of_birth', v)} autoCapitalize="words" />
-            <SelectField label="Gender" options={GENDERS} value={form.gender} onSelect={(v) => setField('gender', v)} testID="prof-gender" />
+            <SelectField label="Sex" options={GENDERS} value={form.gender} onSelect={(v) => setField('gender', v)} testID="prof-gender" />
             <SelectField label="Civil Status" options={CIVIL} value={form.civil_status} onSelect={(v) => setField('civil_status', v)} testID="prof-civil" />
             <Input testID="prof-religion" label="Religion" value={nsrpFullData.religion} onChangeText={(v) => setFullDataField('religion', v)} autoCapitalize="words" />
             <Input testID="prof-contact" label="Contact Number" value={form.contact_number} onChangeText={(v) => setField('contact_number', v)} keyboardType="phone-pad" />
@@ -324,7 +284,7 @@ export default function ProfileScreen() {
             <Input testID="prof-employment-type" label="Employment Type" value={nsrpFullData.employment_type} onChangeText={(v) => setFullDataField('employment_type', v)} placeholder="e.g., wage employed, self-employed, fresh graduate, resigned" />
             <View style={styles.twoColumn}>
               <View style={{ flex: 1 }}>
-                <Input testID="prof-looking-work" label="Actively Looking for Work?" value={nsrpFullData.looking_for_work} onChangeText={(v) => setFullDataField('looking_for_work', v)} placeholder="Yes / No" />
+                <SelectField label="Actively Looking for Work?" options={YES_NO} value={nsrpFullData.looking_for_work} onSelect={(v) => setFullDataField('looking_for_work', v)} testID="prof-looking-work" />
               </View>
               <View style={{ width: Spacing.sm }} />
               <View style={{ flex: 1 }}>
@@ -333,7 +293,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.twoColumn}>
               <View style={{ flex: 1 }}>
-                <Input testID="prof-willing-now" label="Willing to Work Immediately?" value={nsrpFullData.willing_to_work_immediately} onChangeText={(v) => setFullDataField('willing_to_work_immediately', v)} placeholder="Yes / No" />
+                <SelectField label="Willing to Work Immediately?" options={YES_NO} value={nsrpFullData.willing_to_work_immediately} onSelect={(v) => setFullDataField('willing_to_work_immediately', v)} testID="prof-willing-now" />
               </View>
               <View style={{ width: Spacing.sm }} />
               <View style={{ flex: 1 }}>
@@ -342,11 +302,11 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.twoColumn}>
               <View style={{ flex: 1 }}>
-                <Input testID="prof-4ps" label="4Ps Beneficiary?" value={nsrpFullData.four_ps_beneficiary} onChangeText={(v) => setFullDataField('four_ps_beneficiary', v)} placeholder="Yes / No" />
+                <SelectField label="4Ps Beneficiary?" options={YES_NO} value={nsrpFullData.four_ps_beneficiary} onSelect={(v) => setFullDataField('four_ps_beneficiary', v)} testID="prof-4ps" />
               </View>
               <View style={{ width: Spacing.sm }} />
               <View style={{ flex: 1 }}>
-                <Input testID="prof-household-id" label="Household ID No." value={nsrpFullData.household_id} onChangeText={(v) => setFullDataField('household_id', v)} />
+                <Input testID="prof-household-id" label="4Ps Household ID No." value={nsrpFullData.household_id} onChangeText={(v) => setFullDataField('household_id', v)} />
               </View>
             </View>
           </ProfileSection>
@@ -433,15 +393,6 @@ export default function ProfileScreen() {
 
           <View style={{ marginVertical: Spacing.md }}>
             <Button testID="prof-save" title="Save Profile" onPress={handleSave} loading={saving} />
-            <View style={{ height: Spacing.sm }} />
-            <Button
-              testID="submit-referral"
-              title="Save and Submit for PESO Review"
-              variant="secondary"
-              onPress={submitForReview}
-              loading={submitting}
-              disabled={referralStatus === 'submitted' || referralStatus === 'referral_ready'}
-            />
           </View>
         </View>
       </ScrollView>
@@ -449,18 +400,14 @@ export default function ProfileScreen() {
   );
 }
 
-function getReferralLabel(status: string) {
-  if (status === 'submitted') return 'Submitted for Review';
-  if (status === 'needs_revision') return 'Needs Revision';
-  if (status === 'referral_ready') return 'PESO Referral-Ready';
-  return 'Draft';
-}
-
-function getReferralHelp(status: string) {
-  if (status === 'submitted') return 'Your NSRP profile is waiting for PESO Admin review.';
-  if (status === 'needs_revision') return 'PESO Admin requested updates. Edit your profile, save, then submit again.';
-  if (status === 'referral_ready') return 'PESO reviewed your NSRP profile for referral support. This is not a hiring decision.';
-  return 'Save your NSRP profile, then submit it for PESO review when ready.';
+// Older profiles stored free-text answers ("Yes", "NO"); align them with the yes/no selectors.
+function normalizeYesNo(full: typeof defaultNsrpFullData) {
+  const next = { ...full };
+  (['looking_for_work', 'willing_to_work_immediately', 'four_ps_beneficiary'] as const).forEach((key) => {
+    const v = String(next[key] ?? '').trim().toLowerCase();
+    if (v === 'yes' || v === 'no') next[key] = v;
+  });
+  return next;
 }
 
 function parseFullData(value: any) {
@@ -530,7 +477,6 @@ const styles = StyleSheet.create({
   noticeCard: { backgroundColor: Colors.cardHighlight },
   noticeTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
   noticeText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
-  reviewNotes: { fontSize: FontSize.sm, color: '#92400E', lineHeight: 20, marginBottom: Spacing.md, fontWeight: '700' },
   requirementsCard: { backgroundColor: '#FEF3C7', borderColor: Colors.warning, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
   readyCard: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primarySoft, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
   requirementsIntro: { fontSize: FontSize.xs, color: '#92400E', fontWeight: '900', marginBottom: 6 },

@@ -71,7 +71,7 @@ router.get('/:id', authenticate, async (req, res) => {
       const [js] = await db.query('SELECT id FROM job_seekers WHERE user_id = ?', [req.user.id]);
       if (js.length > 0) {
         const [app] = await db.query(
-          'SELECT id, application_status, applied_at FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
+          'SELECT id, application_status, referral_status, referral_notes, applied_at FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
           [req.params.id, js[0].id]
         );
         job.my_application = app[0] || null;

@@ -4,11 +4,13 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { recordHistory, closeOpenReferralsForJob, buildSkillComparison } = require('../services/referral');
 
 const router = express.Router();
 router.use(authenticate, requireRole('employer'));
 
-const VALID_STATUSES = ['submitted', 'pending', 'for_review', 'for_interview', 'hired', 'rejected', 'closed'];
+// Employers only see and update PESO-referred applicants (the referral itself is PESO Admin's decision).
+const EMPLOYER_STATUSES = ['for_review', 'for_interview', 'hired', 'rejected'];
 
 async function getEmployer(userId) {
   const [rows] = await db.query('SELECT * FROM employers WHERE user_id = ?', [userId]);
@@ -26,21 +28,6 @@ async function requireApprovedEmployer(req, res) {
     return null;
   }
   return emp;
-}
-
-function buildSkillComparison(requiredSkills, seekerSkills) {
-  const seekerSkillIds = new Set(seekerSkills.map((skill) => skill.id));
-  const matched = requiredSkills.filter((skill) => seekerSkillIds.has(skill.id));
-  const missing = requiredSkills.filter((skill) => !seekerSkillIds.has(skill.id));
-
-  return {
-    total_required_skills: requiredSkills.length,
-    matched_count: matched.length,
-    missing_count: missing.length,
-    matched_skills: matched,
-    missing_required_skills: missing,
-    skill_comparison_notice: 'Rule-based skill comparison only. It lists matched and missing skills and does not decide hiring outcomes.',
-  };
 }
 
 // GET /api/employer/profile
@@ -93,7 +80,8 @@ router.get('/jobs', async (req, res) => {
 
     const [jobs] = await db.query(
       `SELECT jp.*,
-        (SELECT COUNT(*) FROM job_applications WHERE job_post_id = jp.id) AS applicant_count
+        (SELECT COUNT(*) FROM job_applications
+         WHERE job_post_id = jp.id AND referral_status = 'peso_referred') AS applicant_count
        FROM job_posts jp WHERE jp.employer_id = ? ORDER BY jp.posted_at DESC`,
       [emp.id]
     );
@@ -111,7 +99,7 @@ router.post('/jobs', async (req, res) => {
 
   const {
     job_title, job_description, job_type, salary_min, salary_max,
-    location, vacancies, requirements, closing_date, required_skills,
+    location, vacancies, requirements, closing_date, required_skills, application_email,
   } = req.body;
 
   if (!job_title || !job_description) {
@@ -124,12 +112,12 @@ router.post('/jobs', async (req, res) => {
     const [result] = await conn.query(
       `INSERT INTO job_posts
         (employer_id, job_title, job_description, job_type, salary_min, salary_max,
-         location, vacancies, requirements, closing_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+         location, vacancies, requirements, application_email, closing_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [
         emp.id, job_title, job_description, job_type || 'full-time',
         salary_min || null, salary_max || null, location || null,
-        vacancies || 1, requirements || null, closing_date || null,
+        vacancies || 1, requirements || null, application_email || null, closing_date || null,
       ]
     );
     const jobId = result.insertId;
@@ -176,7 +164,7 @@ router.put('/jobs/:id', async (req, res) => {
 
   const {
     job_title, job_description, job_type, salary_min, salary_max,
-    location, vacancies, requirements, closing_date, status, required_skills,
+    location, vacancies, requirements, closing_date, status, required_skills, application_email,
   } = req.body;
 
   const conn = await db.getConnection();
@@ -196,7 +184,7 @@ router.put('/jobs/:id', async (req, res) => {
     await conn.query(
       `UPDATE job_posts SET
          job_title=?, job_description=?, job_type=?, salary_min=?, salary_max=?,
-         location=?, vacancies=?, requirements=?, closing_date=?, status=?
+         location=?, vacancies=?, requirements=?, application_email=?, closing_date=?, status=?
        WHERE id=?`,
       [
         job_title || job.job_title,
@@ -207,6 +195,8 @@ router.put('/jobs/:id', async (req, res) => {
         location || job.location,
         vacancies || job.vacancies,
         requirements || job.requirements,
+        // Blank clears the optional email; omitted keeps it.
+        application_email === undefined ? job.application_email : (application_email || null),
         closing_date || job.closing_date,
         status || job.status,
         req.params.id,
@@ -238,19 +228,32 @@ router.put('/jobs/:id', async (req, res) => {
 
 // PUT /api/employer/jobs/:id/close - employer soft-closes a job post
 router.put('/jobs/:id/close', async (req, res) => {
-  try {
-    const emp = await requireApprovedEmployer(req, res);
-    if (!emp) return;
+  const emp = await requireApprovedEmployer(req, res);
+  if (!emp) return;
 
-    const [result] = await db.query(
-      "UPDATE job_posts SET status = 'closed' WHERE id = ? AND employer_id = ?",
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [jobs] = await conn.query(
+      'SELECT id, job_title FROM job_posts WHERE id = ? AND employer_id = ?',
       [req.params.id, emp.id]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Job not found' });
+    if (jobs.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    await conn.query("UPDATE job_posts SET status = 'closed' WHERE id = ?", [req.params.id]);
+    await closeOpenReferralsForJob(conn, jobs[0].id, req.user.id, jobs[0].job_title);
+
+    await conn.commit();
     res.json({ message: 'Job post closed; record retained for monitoring' });
   } catch (err) {
+    await conn.rollback();
     console.error('[Emp Job Close]', err);
     res.status(500).json({ error: 'Failed to close job post' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -268,16 +271,17 @@ router.get('/jobs/:id/applicants', async (req, res) => {
 
     const [applicants] = await db.query(
       `SELECT ja.id AS application_id, ja.application_status, ja.applied_at, ja.cover_letter,
+              ja.referral_status, ja.referral_notes, ja.referral_reviewed_at,
               js.id AS job_seeker_id, js.first_name, js.middle_name, js.last_name,
               js.contact_number, js.city, js.province, js.education_level, js.course,
               js.years_of_experience, js.employment_status, js.preferred_occupation,
-              js.profile_completed, js.referral_status,
+              js.profile_completed,
               u.email
        FROM job_applications ja
        JOIN job_seekers js ON js.id = ja.job_seeker_id
        JOIN users u ON u.id = js.user_id
-       WHERE ja.job_post_id = ?
-       ORDER BY ja.applied_at DESC`,
+       WHERE ja.job_post_id = ? AND ja.referral_status = 'peso_referred'
+       ORDER BY ja.referral_reviewed_at DESC`,
       [req.params.id]
     );
 
@@ -334,8 +338,8 @@ router.get('/jobs/:id/applicants', async (req, res) => {
 // PUT /api/employer/applications/:id/status
 router.put('/applications/:id/status', async (req, res) => {
   const { status, notes } = req.body;
-  if (!VALID_STATUSES.includes(status)) {
-    return res.status(400).json({ error: `Status must be one of: ${VALID_STATUSES.join(', ')}` });
+  if (!EMPLOYER_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Status must be one of: ${EMPLOYER_STATUSES.join(', ')}` });
   }
 
   const conn = await db.getConnection();
@@ -364,6 +368,10 @@ router.put('/applications/:id/status', async (req, res) => {
       await conn.rollback();
       return res.status(403).json({ error: 'Not authorized' });
     }
+    if (app.referral_status !== 'peso_referred') {
+      await conn.rollback();
+      return res.status(403).json({ error: 'Only PESO-referred applicants can be updated by the employer' });
+    }
 
     const oldStatus = app.application_status;
 
@@ -372,21 +380,21 @@ router.put('/applications/:id/status', async (req, res) => {
       [status, req.params.id]
     );
 
-    await conn.query(
-      `INSERT INTO application_status_history (application_id, old_status, new_status, changed_by, notes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [req.params.id, oldStatus, status, req.user.id, notes || null]
-    );
+    await recordHistory(conn, {
+      applicationId: req.params.id,
+      type: 'application',
+      oldStatus,
+      newStatus: status,
+      changedBy: req.user.id,
+      notes,
+    });
 
     // Notify job seeker (tracking visibility only — not a hiring decision)
     const statusLabel = {
-      submitted: 'submitted',
-      pending: 'pending review',
-      for_review: 'now under review',
+      for_review: 'now under review by the employer',
       for_interview: 'set for interview',
       hired: 'marked hired by the employer',
-      rejected: 'no longer being considered',
-      closed: 'closed',
+      rejected: 'no longer being considered by the employer',
     }[status];
     await conn.query(
       `INSERT INTO notifications (user_id, title, message, type, related_id, related_type)

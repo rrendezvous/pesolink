@@ -30,11 +30,11 @@ Job seekers can self-register, complete an NSRP-based profile, optionally use OC
 
 ### Employer
 
-Employers use accounts created or controlled by PESO Admin. Approved employers can create and update job postings, select required skills, provide requirements/application instructions, view applicants, see applicant NSRP profile summaries, see matched/missing skills, and update application tracking statuses.
+Employers use accounts created or controlled by PESO Admin. Approved employers can create and update job postings, select required skills, provide requirements/application instructions, view PESO-referred applicants (only after PESO endorsement), see applicant NSRP profile summaries, see matched/missing skills, and update application tracking statuses.
 
 ### PESO Admin
 
-PESO Admin users manage employer accounts, monitor job seekers, review NSRP profile readiness, manage referral-ready status, monitor job postings, soft-close posts, and monitor application records.
+PESO Admin users manage employer accounts, monitor job seekers and their NSRP profiles, review per-job PESO referral requests (endorse, reject with a reason, or close), monitor job postings, soft-close posts, and monitor referral/application records.
 
 ## Core Requirements
 
@@ -66,25 +66,30 @@ PESO Admin users manage employer accounts, monitor job seekers, review NSRP prof
 - The system shall never auto-save OCR data.
 - The system shall not use OCR to validate identity, screen applicants, rank applicants, recommend applicants, or make decisions.
 
-### PESO Profile Review Track
+### PESO Referral Requests (per job post)
 
-- The system shall allow job seekers to submit a complete NSRP profile for PESO review.
-- The system shall allow PESO Admin to mark the profile as `referral_ready` or `needs_revision`.
-- The system shall notify job seekers when PESO review status changes.
-- The system shall keep profile review separate from employer application tracking.
+- The system shall allow job seekers to request PESO referral for a selected job post once the required NSRP profile fields are complete.
+- The system shall use the job seeker's single NSRP-based profile for every referral request.
+- The system shall route each referral request to PESO Admin first; employers shall not see a request until PESO endorses it.
+- The system shall record `for_review` automatically when PESO Admin opens a submitted request.
+- The system shall allow PESO Admin to endorse (`peso_referred`), reject with a reason (`rejected`), or close (`closed`) a request.
+- The system shall close undecided requests automatically when the job post is closed.
+- The system shall allow a job seeker to request referral again for the same job after a request is rejected or closed.
+- The system shall notify PESO Admin of new requests, the job seeker of every referral status change, and the employer at endorsement.
 
-Profile review statuses:
+Referral statuses (PESO Admin):
 
-- `draft`
 - `submitted`
-- `needs_revision`
-- `referral_ready`
+- `for_review`
+- `peso_referred`
+- `rejected`
+- `closed`
 
 ### Job Posting Management
 
 - The system shall allow approved employers to create job postings.
 - The system shall allow approved employers to update job postings.
-- The system shall allow employers to provide requirements/application instructions.
+- The system shall allow employers to provide requirements/application instructions and an optional application email for direct (untracked) applications.
 - The system shall allow employers to select required skills for each job.
 - The system shall allow employers and PESO Admin to close job posts.
 - The system shall retain closed job posts for monitoring instead of hard-deleting them.
@@ -114,23 +119,19 @@ Job post statuses:
 
 ### Job Application Tracking
 
-- The system shall allow only PESO Referral-Ready job seekers to submit applications.
-- The system shall prevent duplicate applications to the same job.
-- The system shall allow job seekers to view submitted applications.
-- The system shall allow employers to view applicants for their own job posts.
-- The system shall allow employers to update application status.
+- The system shall keep one referral/application record per job seeker per job post (no duplicate open requests).
+- The system shall allow job seekers to view their referral requests with a combined referral + application status history.
+- The system shall allow employers to view only PESO-referred applicants for their own job posts.
+- The system shall allow employers to update the application status of PESO-referred applicants.
 - The system shall notify job seekers when application status changes.
-- The system shall allow PESO Admin to monitor application records.
+- The system shall allow PESO Admin to monitor all referral/application records.
 
-Application tracking statuses:
+Application statuses (employer, after PESO-Referred):
 
-- `submitted`
-- `pending`
 - `for_review`
 - `for_interview`
 - `hired`
 - `rejected`
-- `closed`
 
 These statuses are manually updated tracking labels and do not represent automated system decisions.
 

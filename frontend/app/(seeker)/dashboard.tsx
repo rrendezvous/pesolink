@@ -8,6 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { currentStatus } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function SeekerDashboard() {
@@ -43,7 +44,8 @@ export default function SeekerDashboard() {
   };
 
   const displayName = `${profile?.first_name || 'Job Seeker'} ${profile?.last_name || ''}`.trim();
-  const referralStatus = profile?.referral_status || 'draft';
+  const profileComplete = !!profile?.profile_completed;
+  const referredCount = applications.filter((a) => a.referral_status === 'peso_referred').length;
 
   return (
     <ScrollView
@@ -63,15 +65,13 @@ export default function SeekerDashboard() {
         <Card style={styles.welcomeCard}>
           <Text style={styles.welcomeName}>Hello, {displayName}!</Text>
           <Text style={styles.welcomeSub}>
-            {referralStatus === 'referral_ready'
-              ? 'Your NSRP profile is referral-ready for PESO employment support.'
-              : profile?.profile_completed
-                ? 'Submit your NSRP profile for PESO review to become referral-ready.'
-                : 'Complete your NSRP profile to start the PESO referral process.'}
+            {profileComplete
+              ? 'Your NSRP profile is complete. You can request PESO referral for any job post.'
+              : 'Complete the required NSRP profile fields to request PESO referral.'}
           </Text>
-          <View style={[styles.referralBadge, getReferralBadgeStyle(referralStatus)]}>
-            <Text style={[styles.referralBadgeText, referralStatus === 'referral_ready' && { color: Colors.white }]}>
-              {getReferralLabel(referralStatus)}
+          <View style={[styles.referralBadge, profileComplete ? styles.badgeComplete : styles.badgeIncomplete]}>
+            <Text style={[styles.referralBadgeText, profileComplete && { color: Colors.white }]}>
+              {profileComplete ? 'NSRP Profile Complete' : 'NSRP Profile Incomplete'}
             </Text>
           </View>
           {!profile?.profile_completed && (
@@ -85,14 +85,14 @@ export default function SeekerDashboard() {
           <ActionTile
             testID="action-jobs"
             label="Find Jobs"
-            icon="?"
+            icon="🔍"
             primary
             onPress={() => router.push('/(seeker)/jobs')}
           />
           <ActionTile
             testID="action-applications"
             label="My Applications"
-            icon="D"
+            icon="📋"
             onPress={() => router.push('/(seeker)/my-applications')}
           />
         </View>
@@ -100,14 +100,14 @@ export default function SeekerDashboard() {
         <View style={styles.statsRow}>
           <StatCard label="Profile" value={profile?.profile_completed ? 'OK' : 'Open'} sub={profile?.profile_completed ? 'Complete' : 'Incomplete'} />
           <StatCard label="Skills" value={skills.length} sub="encoded" />
-          <StatCard label="Referral" value={getReferralShort(referralStatus)} sub="status" />
+          <StatCard label="Referred" value={referredCount} sub="by PESO" />
         </View>
 
         {/* Quick Actions moved to Profile / Jobs via bottom navigation; removed to avoid duplication */}
 
-        <Text style={styles.sectionTitle}>Recent Applications</Text>
+        <Text style={styles.sectionTitle}>Recent Referral Requests</Text>
         {applications.length === 0 ? (
-          <EmptyState message="You haven't applied to any jobs yet." />
+          <EmptyState message="No referral requests yet. Find a job and tap Request PESO Referral." />
         ) : (
           <Card style={styles.applicationsCard}>
             {applications.slice(0, 3).map((a) => (
@@ -118,9 +118,9 @@ export default function SeekerDashboard() {
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.applicationTitle}>{a.job_title}</Text>
                   <Text style={styles.applicationCompany}>{a.company_name}</Text>
-                  <Text style={styles.applicationDate}>Applied {new Date(a.applied_at).toLocaleDateString()}</Text>
+                  <Text style={styles.applicationDate}>Requested {new Date(a.applied_at).toLocaleDateString()}</Text>
                 </View>
-                <StatusBadge status={a.application_status} />
+                <StatusBadge status={currentStatus(a).status} />
               </TouchableOpacity>
             ))}
           </Card>
@@ -128,27 +128,6 @@ export default function SeekerDashboard() {
       </View>
     </ScrollView>
   );
-}
-
-function getReferralLabel(status: string) {
-  if (status === 'submitted') return 'Submitted for Review';
-  if (status === 'needs_revision') return 'Needs Revision';
-  if (status === 'referral_ready') return 'PESO Referral-Ready';
-  return 'Draft';
-}
-
-function getReferralShort(status: string) {
-  if (status === 'submitted') return 'Review';
-  if (status === 'needs_revision') return 'Revise';
-  if (status === 'referral_ready') return 'Ready';
-  return 'Draft';
-}
-
-function getReferralBadgeStyle(status: string) {
-  if (status === 'referral_ready') return { backgroundColor: Colors.primary, borderColor: Colors.primary };
-  if (status === 'submitted') return { backgroundColor: '#FEF3C7', borderColor: Colors.warning };
-  if (status === 'needs_revision') return { backgroundColor: '#FEE2E2', borderColor: Colors.error };
-  return { backgroundColor: Colors.muted, borderColor: Colors.border };
 }
 
 function StatCard({ label, value, sub }: { label: string; value: any; sub: string }) {
@@ -182,8 +161,10 @@ function ActionButton({ label, onPress, testID }: { label: string; onPress: () =
 }
 
 const styles = StyleSheet.create({
+  badgeComplete: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  badgeIncomplete: { backgroundColor: '#FEF3C7', borderColor: Colors.warning },
   container: { flex: 1, backgroundColor: Colors.primaryDark },
-  content: { backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
+  content: { flexGrow: 1, backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
   header: {
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.lg,

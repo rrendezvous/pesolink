@@ -3,7 +3,7 @@
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, RefreshControl, FlatList,
+  View, Text, StyleSheet, TouchableOpacity, RefreshControl, FlatList, ScrollView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Input, EmptyState, Chip } from '../../src/components/ui';
@@ -11,6 +11,14 @@ import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
+
+// Cities and municipalities of Misamis Oriental (plus Cagayan de Oro) for quick location filtering.
+const MISOR_LOCATIONS = [
+  'Cagayan de Oro', 'Gingoog', 'El Salvador', 'Opol', 'Tagoloan', 'Villanueva', 'Jasaan',
+  'Balingasag', 'Claveria', 'Laguindingan', 'Alubijid', 'Initao', 'Manticao', 'Naawan',
+  'Lugait', 'Libertad', 'Gitagum', 'Balingoan', 'Talisayan', 'Medina', 'Magsaysay',
+  'Kinoguitan', 'Sugbongcogon', 'Binuangan', 'Lagonglong', 'Salay',
+];
 
 export default function JobBrowse() {
   const router = useRouter();
@@ -61,11 +69,24 @@ export default function JobBrowse() {
             <Chip key={t} testID={`filter-${t}`} label={t} active={typeFilter === t} onPress={() => setTypeFilter(t)} />
           ))}
         </View>
+        <Text style={styles.filterLabel}>Location</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Chip testID="loc-any" label="Any Location" active={!locationFilter} onPress={() => setLocationFilter('')} />
+          {MISOR_LOCATIONS.map((loc) => (
+            <Chip
+              key={loc}
+              testID={`loc-${loc}`}
+              label={loc}
+              active={locationFilter === loc}
+              onPress={() => setLocationFilter(locationFilter === loc ? '' : loc)}
+            />
+          ))}
+        </ScrollView>
         <Input
           testID="location-filter"
           value={locationFilter}
           onChangeText={setLocationFilter}
-          placeholder="Filter by location (optional)"
+          placeholder="Or type a location / barangay"
         />
       </View>
 
@@ -125,6 +146,7 @@ const styles = StyleSheet.create({
     ...Shadow.card,
   },
   filterChips: { flexDirection: 'row', flexWrap: 'wrap' },
+  filterLabel: { fontSize: FontSize.xs, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase', marginBottom: 6 },
   listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
   jobCard: {
     flexDirection: 'row',

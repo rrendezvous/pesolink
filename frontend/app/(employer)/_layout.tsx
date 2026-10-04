@@ -41,6 +41,8 @@ export default function EmployerLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Keep every tab screen below the phone's status bar; headers share this green.
+        sceneStyle: { paddingTop: insets.top, backgroundColor: Colors.primaryDark },
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.gray,
         tabBarStyle: {

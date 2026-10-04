@@ -1,13 +1,15 @@
 // ============================================================
-// Job Details + Skill Match + Apply (combined)
+// Job Details + Skill Match + PESO Referral Request (combined)
 // ============================================================
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, Input, Card, StatusBadge, EmptyState } from '../../../src/components/ui';
+import { Button, Input, Card, StatusBadge, EmptyState, Row } from '../../../src/components/ui';
+import { formatDate } from '../../../src/components/NsrpProfileView';
 import { api, getApiError } from '../../../src/api/client';
+import { canRequestAgain, currentStatus } from '../../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius } from '../../../src/constants/theme';
 
 export default function JobDetails() {
@@ -36,17 +38,29 @@ export default function JobDetails() {
     })();
   }, [id]);
 
-  const handleApply = async () => {
+  const handleRequestReferral = async () => {
     setApplying(true);
     try {
       await api.post('/applications', { job_post_id: Number(id), cover_letter: coverLetter || null });
       Alert.alert(
-        'Application Submitted',
-        'Your application has been submitted successfully. You can track your application status under My Applications.',
+        'Referral Request Submitted',
+        'PESO Misamis Oriental will review your NSRP profile. If endorsed, your application is forwarded to the employer. Track the status under My Applications.',
         [{ text: 'OK', onPress: () => router.replace('/(seeker)/my-applications') }],
       );
-    } catch (err) {
-      Alert.alert('Apply Failed', getApiError(err));
+    } catch (err: any) {
+      const missing = err?.response?.data?.missing_fields;
+      if (Array.isArray(missing) && missing.length) {
+        Alert.alert(
+          'Complete Your NSRP Profile',
+          `Complete these required NSRP fields before requesting PESO referral:\n\n${missing.slice(0, 8).join('\n')}${missing.length > 8 ? `\n+ ${missing.length - 8} more` : ''}`,
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Open Profile', onPress: () => router.push('/(seeker)/profile') },
+          ],
+        );
+      } else {
+        Alert.alert('Request Failed', getApiError(err));
+      }
     } finally {
       setApplying(false);
     }
@@ -59,7 +73,8 @@ export default function JobDetails() {
     return <EmptyState message="Job not found." />;
   }
 
-  const alreadyApplied = !!job.my_application;
+  const myRequest = job.my_application;
+  const showRequestForm = !myRequest || canRequestAgain(myRequest.referral_status);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -79,13 +94,26 @@ export default function JobDetails() {
             {job.location && <MetaBox label="Location" value={job.location} />}
             <MetaBox label="Type" value={job.job_type} />
             <MetaBox label="Vacancies" value={`${job.vacancies} ${job.vacancies > 1 ? 'slots' : 'slot'}`} />
-            {job.closing_date && <MetaBox label="Closes" value={new Date(job.closing_date).toLocaleDateString()} />}
+            {job.closing_date && <MetaBox label="Closes" value={formatDate(job.closing_date)} />}
           </View>
-          {job.salary_min && (
-            <Text style={styles.salary}>
-              PHP {Number(job.salary_min).toLocaleString()} - PHP {Number(job.salary_max).toLocaleString()}
-            </Text>
+          {(job.salary_min || job.salary_max) && (
+            <Text style={styles.salary}>{formatSalary(job.salary_min, job.salary_max)}</Text>
           )}
+          {job.posted_at && (
+            <Text style={styles.postedText}>Posted {new Date(job.posted_at).toLocaleDateString()}</Text>
+          )}
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Text style={styles.section}>Employer Details</Text>
+          <Row left="Company" right={job.company_name || 'N/A'} />
+          {!!job.business_type && <Row left="Industry" right={job.business_type} />}
+          {!!job.company_address && <Row left="Address" right={job.company_address} />}
+          {!!job.contact_person && <Row left="Contact Person" right={job.contact_person} />}
+          {!!job.contact_number && <Row left="Contact Number" right={job.contact_number} />}
+          <Text style={styles.employerNote}>
+            Applications are routed through PESO-Link MisOr. Track your status under My Applications.
+          </Text>
         </Card>
 
         <Card style={styles.sectionCard}>
@@ -136,37 +164,66 @@ export default function JobDetails() {
           </Card>
         )}
 
-        <Card style={styles.sectionCard}>
-          {alreadyApplied ? (
-            <View>
-              <Text style={styles.section}>Your Application</Text>
-              <View style={styles.applicationStatus}>
-                <Text style={styles.statusLabel}>Application Status</Text>
-                <StatusBadge status={job.my_application.application_status} />
-                <Text style={styles.statusNote}>
-                  Applied on {new Date(job.my_application.applied_at).toLocaleDateString()}
-                </Text>
-              </View>
+        {myRequest && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>Your PESO Referral</Text>
+            <View style={styles.applicationStatus}>
+              <StatusBadge status={currentStatus(myRequest).status} />
+              <Text style={styles.statusNote}>{referralNote(myRequest.referral_status)}</Text>
+              <Text style={styles.statusNote}>Requested on {new Date(myRequest.applied_at).toLocaleDateString()}</Text>
+              {!!myRequest.referral_notes && (
+                <Text style={styles.pesoNote}>PESO note: {myRequest.referral_notes}</Text>
+              )}
             </View>
-          ) : (
-            <>
-              <Text style={styles.section}>Apply for this Job</Text>
-              <Input
-                testID="cover-letter"
-                label="Cover Letter (optional)"
-                value={coverLetter}
-                onChangeText={setCoverLetter}
-                placeholder="Add a short note for the employer."
-                multiline
-                numberOfLines={4}
-              />
-              <Button testID="apply-btn" title="Submit Application" onPress={handleApply} loading={applying} />
-            </>
-          )}
-        </Card>
+          </Card>
+        )}
+
+        {showRequestForm && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>{myRequest ? 'Request PESO Referral Again' : 'Request PESO Referral'}</Text>
+            <Text style={styles.helpText}>
+              {myRequest
+                ? 'Update your NSRP profile based on the PESO note, then request again.'
+                : 'PESO Misamis Oriental reviews your NSRP profile and, if endorsed, forwards your application to the employer.'}
+            </Text>
+            <Input
+              testID="cover-letter"
+              label="Cover Letter (optional)"
+              value={coverLetter}
+              onChangeText={setCoverLetter}
+              placeholder="Add a short note for PESO and the employer."
+              multiline
+              numberOfLines={4}
+            />
+            <Button testID="apply-btn" title="Request PESO Referral" onPress={handleRequestReferral} loading={applying} />
+          </Card>
+        )}
+
+        {!!job.application_email && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>Apply Directly to the Employer</Text>
+            <Row left="Application Email" right={job.application_email} />
+            <Text style={styles.helpText}>
+              You may also email your application directly. Direct applications are handled outside PESO-Link and are not tracked here.
+            </Text>
+          </Card>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+function referralNote(referralStatus?: string) {
+  if (referralStatus === 'peso_referred') return 'Endorsed by PESO. The employer updates this status.';
+  if (referralStatus === 'rejected') return 'PESO did not endorse this request.';
+  if (referralStatus === 'closed') return 'This referral request was closed.';
+  return 'Waiting on PESO Misamis Oriental.';
+}
+
+function formatSalary(min: any, max: any) {
+  const fmt = (v: any) => `PHP ${Number(v).toLocaleString()}`;
+  if (min && max) return `${fmt(min)} - ${fmt(max)}`;
+  return min ? `From ${fmt(min)}` : `Up to ${fmt(max)}`;
 }
 
 function MetaBox({ label, value }: { label: string; value: string }) {
@@ -262,4 +319,8 @@ const styles = StyleSheet.create({
   },
   statusLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', marginBottom: Spacing.sm },
   statusNote: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
+  helpText: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: 4, marginBottom: Spacing.md },
+  pesoNote: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.sm },
+  postedText: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.xs },
+  employerNote: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: Spacing.sm },
 });

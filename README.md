@@ -29,13 +29,13 @@ The submitted system is not:
 - Optionally scan NSRP form page 1 and page 2 using OCR.
 - Review and edit all OCR-filled fields before saving.
 - Save selected skills for rule-based job comparison.
-- View PESO Review Requirements before submitting the profile.
-- Submit completed NSRP profile for PESO admin review.
+- View the required NSRP fields checklist (all required fields unlock PESO referral requests).
 - Browse active job postings.
 - Search and filter jobs by keyword and job type.
-- View job details, requirements, application instructions, employer details, and skill comparison.
-- Submit an application only after the NSRP profile is marked PESO Referral-Ready.
-- Track submitted applications.
+- View job details, requirements, application instructions, optional application email, employer details, and skill comparison.
+- Request PESO referral for a selected job once the required NSRP profile fields are complete.
+- Request referral again for the same job after PESO rejects (with a reason) or closes the request.
+- Track referral requests and application status with a full status history.
 - View notifications.
 
 ### Employer
@@ -44,12 +44,12 @@ The submitted system is not:
 - View employer dashboard and notifications.
 - Create job postings.
 - Update job postings.
-- Encode requirements/application instructions.
+- Encode requirements/application instructions and an optional application email for direct applications.
 - Select required skills for rule-based comparison.
 - Soft-close job postings while keeping records for monitoring.
-- View applicants for own job postings.
-- View applicant NSRP profile summary, contact information, PESO review status, matched skills, missing required skills, and application status.
-- Manually update application tracking status.
+- View PESO-referred applicants for own job postings (applicants appear only after PESO endorsement).
+- View applicant NSRP profile summary, contact information, PESO note, matched skills, missing required skills, and application status.
+- Manually update application status: For Review, For Interview, Hired, or Rejected.
 
 ### PESO Admin
 
@@ -60,41 +60,33 @@ The submitted system is not:
 - View and manage employer accounts.
 - View job seeker accounts.
 - Deactivate/reactivate job seeker accounts.
-- Review job seeker NSRP profile readiness.
-- Mark profiles as PESO Referral-Ready or Needs Revision.
+- Monitor job seeker NSRP profiles (read-only) and deactivate accounts with invalid information.
+- Review PESO referral requests per job with the full NSRP profile, skill comparison, and history.
+- Endorse (PESO-Referred), reject (with a reason), or close referral requests.
 - Monitor job postings.
-- Soft-close job postings.
-- Monitor application records.
+- Soft-close job postings (undecided referral requests for the job are closed automatically).
+- Search and filter all referral/application records.
 - View system notifications through the affected user accounts.
 
 ## Important Workflow Explanation
 
-The app uses a two-track model:
+The app follows the per-job PESO referral workflow described in the proposal (Sections 1.5, 2.5, 3.4.5, 3.5):
 
-1. **NSRP Profile Review Track**
-   - The job seeker completes an NSRP-based profile.
-   - The job seeker submits the profile for PESO review.
-   - PESO Admin reviews the profile and marks it as:
-     - `draft`
-     - `submitted`
-     - `needs_revision`
-     - `referral_ready`
-   - `referral_ready` means the NSRP profile was reviewed for employment facilitation support. It is not a hiring decision.
+1. **NSRP-Based Profile (one per job seeker, reused for every request)**
+   - The job seeker completes the required NSRP profile fields (manually or with optional OCR assistance).
+   - `profile_completed` is true only when all 19 required items are filled; this is the gate for requesting referral.
 
-2. **Job Application Tracking Track**
-   - After the profile is `referral_ready`, the job seeker can apply to job postings.
-   - Employers can review applicants and update the application tracking status.
-   - Application statuses are:
-     - `submitted`
-     - `pending`
-     - `for_review`
-     - `for_interview`
-     - `hired`
-     - `rejected`
-     - `closed`
-   - These statuses are manually updated for tracking. They are not automated decisions.
+2. **Referral Status - updated by PESO Admin**
+   - `submitted` - the job seeker requested PESO referral for a selected job post.
+   - `for_review` - recorded automatically when PESO Admin opens the request.
+   - `peso_referred` - PESO endorsed the applicant; the employer can now see the record and is notified.
+   - `rejected` - not endorsed; a reason is required and the job seeker may fix the profile and request again.
+   - `closed` - closed by PESO Admin, or automatically when the job post closes before a decision.
 
-This keeps PESO profile readiness separate from employer application outcomes.
+3. **Application Status - updated by the employer, only after PESO-Referred**
+   - `for_review`, `for_interview`, `hired`, `rejected`
+
+Employers never see referral requests that PESO has not endorsed. PESO-Referred and Hired are tracking labels, not automated decisions.
 
 ## OCR Workflow
 
@@ -137,9 +129,9 @@ Notifications are stored in the database and shown in app notification screens.
 Notification examples:
 
 - Employer account created or approved.
-- NSRP profile marked referral-ready or needs revision.
+- Referral request received (PESO Admin), For Review / PESO-Referred / Rejected / Closed (job seeker).
+- New PESO-referred applicant (employer).
 - New job posted by an approved employer.
-- New application received by employer.
 - Application status updated.
 - Job post soft-closed by PESO Admin.
 - Account deactivated/reactivated.
@@ -393,7 +385,7 @@ These are created by `node seed.js`.
 10. Search/filter jobs.
 11. Open job details.
 12. Show rule-based matched/missing skills.
-13. Submit application if account is referral-ready.
+13. Tap Request PESO Referral (blocked with a missing-fields list if the NSRP profile is incomplete).
 14. Open My Applications.
 15. Open Notifications.
 
@@ -406,8 +398,8 @@ These are created by `node seed.js`.
 5. Add requirements/application instructions.
 6. Select required skills.
 7. Open applicants.
-8. Show applicant NSRP profile summary.
-9. Show PESO Referral-Ready label.
+8. Show that only PESO-referred applicants appear, with the PESO note.
+9. Show applicant NSRP profile summary.
 10. Show matched/missing skills.
 11. Update application status.
 12. Open notifications.
@@ -424,7 +416,6 @@ Job seeker:
 
 - `GET /api/job-seeker/profile`
 - `POST /api/job-seeker/profile`
-- `POST /api/job-seeker/profile/submit-referral`
 - `POST /api/job-seeker/skills`
 - `DELETE /api/job-seeker/skills/:skillId`
 
@@ -442,7 +433,7 @@ Jobs:
 
 Applications:
 
-- `POST /api/applications`
+- `POST /api/applications` (request PESO referral for a job)
 - `GET /api/applications/my-applications`
 - `GET /api/applications/:id`
 
@@ -465,12 +456,14 @@ PESO Admin:
 - `PUT /api/admin/employers/:id/approve`
 - `PUT /api/admin/employers/:id/reject`
 - `GET /api/admin/job-seekers`
+- `GET /api/admin/job-seekers/:id/profile`
 - `PUT /api/admin/job-seekers/:id/deactivate`
 - `PUT /api/admin/job-seekers/:id/reactivate`
-- `PUT /api/admin/job-seekers/:id/referral-status`
 - `GET /api/admin/jobs`
 - `PUT /api/admin/jobs/:id/close`
 - `GET /api/admin/applications`
+- `GET /api/admin/applications/:id`
+- `PUT /api/admin/applications/:id/referral-status`
 
 Shared:
 
@@ -619,9 +612,9 @@ Use these statements during demo:
 
 - OCR is the emerging technology integration.
 - OCR is assistive and user-confirmed.
-- NSRP profile review is separate from employer application tracking.
+- PESO decides the referral (PESO-Referred); the employer decides the application (For Interview, Hired).
 - Skill comparison is rule-based matched/missing comparison only.
-- PESO Referral-Ready is not a hiring decision.
+- PESO-Referred is an endorsement, not a hiring decision.
 - Job posts are soft-closed, not deleted.
 - Notifications are in-app alerts.
 

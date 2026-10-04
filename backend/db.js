@@ -10,6 +10,9 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: parseInt(process.env.DB_PORT, 10),
+  // Return DATE columns (date_of_birth, closing_date) as 'YYYY-MM-DD' strings. Converting them to
+  // JS Dates shifts them to the previous day in UTC (e.g. Manila midnight), which the app then saved back.
+  dateStrings: ['DATE'],
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

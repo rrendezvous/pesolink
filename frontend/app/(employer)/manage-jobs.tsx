@@ -73,7 +73,7 @@ export default function ManageJobs() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>{item.job_title}</Text>
                 <Text style={styles.meta}>{item.job_type} / {item.location || 'N/A'}</Text>
-                <Text style={styles.meta}>{item.applicant_count || 0} applicant{item.applicant_count === 1 ? '' : 's'}</Text>
+                <Text style={styles.meta}>{item.applicant_count || 0} PESO-referred applicant{item.applicant_count === 1 ? '' : 's'}</Text>
               </View>
               <View style={[styles.statusPill, item.status === 'active' ? styles.statusActive : styles.statusInactive]}>
                 <Text style={styles.statusText}>{item.status}</Text>

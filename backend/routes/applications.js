@@ -1,13 +1,16 @@
 // ============================================================
 // Job Applications Routes (job seeker side)
+// A PESO-Link application is a PESO referral request for one job post.
 // ============================================================
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { refreshProfileCompleted } = require('../services/nsrpProfileValidation');
+const { recordHistory, notifyAdmins } = require('../services/referral');
 
 const router = express.Router();
 
-// POST /api/applications - apply to a job
+// POST /api/applications - request PESO referral for a job post
 router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
   const { job_post_id, cover_letter } = req.body;
   if (!job_post_id) return res.status(400).json({ error: 'job_post_id is required' });
@@ -23,31 +26,30 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
     }
     const jobSeeker = jsRows[0];
 
-    // Check duplicate first so applicants who already applied get the correct 409 response,
-    // even if their profile is not currently marked referral_ready or completed.
+    // One referral record per job seeker per job. A request PESO rejected or closed may be
+    // requested again (e.g. after fixing the NSRP profile); an open or endorsed one may not.
     const [existing] = await conn.query(
-      'SELECT id FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
+      'SELECT id, referral_status FROM job_applications WHERE job_post_id = ? AND job_seeker_id = ?',
       [job_post_id, jobSeeker.id]
     );
-    if (existing.length > 0) {
+    const previous = existing[0] || null;
+    if (previous && !['rejected', 'closed'].includes(previous.referral_status)) {
       await conn.rollback();
-      return res.status(409).json({ error: 'You have already applied to this job' });
+      return res.status(409).json({ error: 'You already have a PESO referral request for this job' });
     }
 
-    if (!jobSeeker.profile_completed) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Please complete your NSRP profile before applying' });
-    }
-
-    if (jobSeeker.referral_status !== 'referral_ready') {
+    // Gate from the paper: the required NSRP-based profile fields must be complete.
+    const requirements = await refreshProfileCompleted(conn, jobSeeker.id);
+    if (!requirements.isComplete) {
       await conn.rollback();
       return res.status(400).json({
-        error: 'Your NSRP profile must be marked PESO Referral-Ready before applying',
+        error: 'Complete the required NSRP profile fields before requesting PESO referral',
+        missing_fields: requirements.missing_fields,
       });
     }
 
     const [job] = await conn.query(
-      `SELECT jp.*, e.user_id AS employer_user_id, e.company_name
+      `SELECT jp.*, e.company_name
        FROM job_posts jp JOIN employers e ON e.id = jp.employer_id
        WHERE jp.id = ? AND jp.status = 'active'`,
       [job_post_id]
@@ -57,37 +59,59 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
       return res.status(404).json({ error: 'Job not found or not active' });
     }
 
-    const [result] = await conn.query(
-      `INSERT INTO job_applications (job_post_id, job_seeker_id, cover_letter, application_status)
-       VALUES (?, ?, ?, 'submitted')`,
-      [job_post_id, jobSeeker.id, cover_letter || null]
-    );
+    let applicationId;
+    if (previous) {
+      applicationId = previous.id;
+      await conn.query(
+        `UPDATE job_applications
+         SET referral_status = 'submitted', application_status = 'submitted', cover_letter = ?,
+             referral_notes = NULL, referral_reviewed_by = NULL, referral_reviewed_at = NULL
+         WHERE id = ?`,
+        [cover_letter || null, applicationId]
+      );
+      await recordHistory(conn, {
+        applicationId,
+        type: 'referral',
+        oldStatus: previous.referral_status,
+        newStatus: 'submitted',
+        changedBy: req.user.id,
+        notes: 'PESO referral requested again',
+      });
+    } else {
+      const [result] = await conn.query(
+        `INSERT INTO job_applications
+           (job_post_id, job_seeker_id, cover_letter, application_status, referral_status)
+         VALUES (?, ?, ?, 'submitted', 'submitted')`,
+        [job_post_id, jobSeeker.id, cover_letter || null]
+      );
+      applicationId = result.insertId;
+      await recordHistory(conn, {
+        applicationId,
+        type: 'referral',
+        oldStatus: null,
+        newStatus: 'submitted',
+        changedBy: req.user.id,
+        notes: 'PESO referral requested',
+      });
+    }
 
-    // History
-    await conn.query(
-      `INSERT INTO application_status_history (application_id, old_status, new_status, changed_by, notes)
-       VALUES (?, NULL, 'pending', ?, 'Application submitted')`,
-      [result.insertId, req.user.id]
-    );
-
-    // Notify employer
-    await conn.query(
-      `INSERT INTO notifications (user_id, title, message, type, related_id, related_type)
-       VALUES (?, ?, ?, 'application', ?, 'application')`,
-      [
-        job[0].employer_user_id,
-        'New Application Received',
-        `${jobSeeker.first_name} ${jobSeeker.last_name} applied for "${job[0].job_title}"`,
-        result.insertId,
-      ]
+    // Routed to PESO Admin first; the employer is notified only after PESO endorsement.
+    await notifyAdmins(
+      conn,
+      'New PESO Referral Request',
+      `${jobSeeker.first_name} ${jobSeeker.last_name} requested PESO referral for "${job[0].job_title}" (${job[0].company_name}).`,
+      applicationId
     );
 
     await conn.commit();
-    res.status(201).json({ message: 'Application submitted', application_id: result.insertId });
+    res.status(previous ? 200 : 201).json({
+      message: 'PESO referral request submitted',
+      application_id: applicationId,
+    });
   } catch (err) {
     await conn.rollback();
-    console.error('[Apply]', err);
-    res.status(500).json({ error: 'Failed to submit application' });
+    console.error('[Referral Request]', err);
+    res.status(500).json({ error: 'Failed to submit referral request' });
   } finally {
     conn.release();
   }
@@ -121,7 +145,8 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const [apps] = await db.query(
       `SELECT ja.*, jp.job_title, jp.job_description, jp.location, jp.job_type,
-              jp.salary_min, jp.salary_max, e.company_name, e.contact_person,
+              jp.salary_min, jp.salary_max, jp.status AS job_status, e.company_name, e.contact_person,
+              e.company_address,
               js.first_name, js.last_name, js.user_id AS seeker_user_id,
               e.user_id AS employer_user_id
        FROM job_applications ja
@@ -134,10 +159,10 @@ router.get('/:id', authenticate, async (req, res) => {
     if (apps.length === 0) return res.status(404).json({ error: 'Application not found' });
     const app = apps[0];
 
-    // Authorization: job seeker (owner), employer (job owner), or admin
+    // Authorization: job seeker (owner), employer (job owner, PESO-referred records only), or admin
     if (
       req.user.role === 'job_seeker' && app.seeker_user_id !== req.user.id ||
-      req.user.role === 'employer' && app.employer_user_id !== req.user.id
+      req.user.role === 'employer' && (app.employer_user_id !== req.user.id || app.referral_status !== 'peso_referred')
     ) {
       return res.status(403).json({ error: 'Not authorized to view this application' });
     }
@@ -147,7 +172,7 @@ router.get('/:id', authenticate, async (req, res) => {
        FROM application_status_history ash
        LEFT JOIN users u ON u.id = ash.changed_by
        WHERE ash.application_id = ?
-       ORDER BY ash.changed_at ASC`,
+       ORDER BY ash.changed_at ASC, ash.id ASC`,
       [req.params.id]
     );
 

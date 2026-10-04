@@ -57,15 +57,11 @@ CREATE TABLE job_seekers (
   employment_status ENUM('unemployed', 'underemployed', 'employed'),
   preferred_occupation VARCHAR(255),
   nsrp_full_data JSON,
+  -- TRUE when all required NSRP fields are filled; the gate for requesting PESO referral.
   profile_completed BOOLEAN DEFAULT FALSE,
-  referral_status ENUM('draft', 'submitted', 'needs_revision', 'referral_ready') DEFAULT 'draft',
-  referral_review_notes TEXT,
-  referral_reviewed_by INT,
-  referral_reviewed_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (referral_reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- 3. employers (with PESO Admin approval)
@@ -130,6 +126,7 @@ CREATE TABLE job_posts (
   location VARCHAR(255),
   vacancies INT DEFAULT 1,
   requirements TEXT,
+  application_email VARCHAR(255),  -- optional external application path (not tracked by PESO-Link)
   status ENUM('active', 'closed', 'draft') DEFAULT 'active',
   posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   closing_date DATE,
@@ -151,12 +148,18 @@ CREATE TABLE job_required_skills (
   UNIQUE KEY unique_job_skill (job_post_id, skill_id)
 );
 
--- 9. job_applications
+-- 9. job_applications (PESO-Link referral records: one per job seeker per job post)
+--    referral_status    - set by PESO Admin: submitted -> for_review -> peso_referred | rejected, or closed
+--    application_status - set by the employer after PESO endorsement: for_review -> for_interview -> hired | rejected
 CREATE TABLE job_applications (
   id INT AUTO_INCREMENT PRIMARY KEY,
   job_post_id INT NOT NULL,
   job_seeker_id INT NOT NULL,
   application_status ENUM('submitted', 'pending', 'for_review', 'for_interview', 'hired', 'rejected', 'closed') DEFAULT 'submitted',
+  referral_status ENUM('submitted', 'for_review', 'peso_referred', 'rejected', 'closed') NOT NULL DEFAULT 'submitted',
+  referral_notes TEXT,
+  referral_reviewed_by INT NULL,
+  referral_reviewed_at TIMESTAMP NULL,
   cover_letter TEXT,
   applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -169,6 +172,7 @@ CREATE TABLE job_applications (
 CREATE TABLE application_status_history (
   id INT AUTO_INCREMENT PRIMARY KEY,
   application_id INT NOT NULL,
+  status_type ENUM('referral', 'application') NOT NULL DEFAULT 'application',
   old_status VARCHAR(50),
   new_status VARCHAR(50) NOT NULL,
   changed_by INT,

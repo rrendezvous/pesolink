@@ -15,6 +15,8 @@ async function authenticate(req, res, next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // Look up the account on every request (one small query) so a suspension by
+    // PESO Admin takes effect immediately instead of waiting for the JWT to expire.
     const [rows] = await db.query(
       'SELECT id, email, role, account_status FROM users WHERE id = ?',
       [decoded.id]

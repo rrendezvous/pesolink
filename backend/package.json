@@ -10,7 +10,8 @@
     "init-db": "node init-db.js",
     "ocr:smoke": "node scripts/ocr-smoke.js",
     "migrate:referral": "node migrate-referral-status.js",
-    "migrate:application-status": "node migrate-application-status.js"
+    "migrate:application-status": "node migrate-application-status.js",
+    "migrate:referral-workflow": "node migrate-referral-workflow.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
