@@ -58,6 +58,7 @@ router.post('/employers', async (req, res) => {
   if (!email || !password || !company_name) {
     return res.status(400).json({ error: 'email, password and company_name are required' });
   }
+  const cleanEmail = String(email).trim().toLowerCase();
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
@@ -67,7 +68,7 @@ router.post('/employers', async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [email]);
+    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [cleanEmail]);
     if (existing.length > 0) {
       await conn.rollback();
       return res.status(409).json({ error: 'Email already registered' });
@@ -76,7 +77,7 @@ router.post('/employers', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const [userResult] = await conn.query(
       "INSERT INTO users (email, password_hash, role, account_status) VALUES (?, ?, 'employer', 'active')",
-      [email, passwordHash]
+      [cleanEmail, passwordHash]
     );
     const userId = userResult.insertId;
 

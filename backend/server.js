@@ -6,6 +6,13 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Verify critical environment variables early
+const REQUIRED_ENVS = ['JWT_SECRET', 'DB_NAME', 'DB_HOST'];
+const missingEnvs = REQUIRED_ENVS.filter((key) => !process.env[key]);
+if (missingEnvs.length > 0) {
+  console.warn(`[Server Warning] Missing environment variables in .env: ${missingEnvs.join(', ')}`);
+}
+
 const authRoutes = require('./routes/auth');
 const jobSeekerRoutes = require('./routes/jobSeeker');
 const nsrpRoutes = require('./routes/nsrp');

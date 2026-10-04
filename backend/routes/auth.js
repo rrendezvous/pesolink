@@ -16,6 +16,7 @@ router.post('/register', async (req, res) => {
   if (!email || !password || !role) {
     return res.status(400).json({ error: 'Email, password and role are required' });
   }
+  const cleanEmail = String(email).trim().toLowerCase();
   if (role !== 'job_seeker') {
     return res.status(400).json({
       error: 'Self-registration is only available for job seekers. Employer accounts are created by PESO Admin.',
@@ -31,7 +32,7 @@ router.post('/register', async (req, res) => {
     await conn.beginTransaction();
 
     // Check if email exists
-    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [email]);
+    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [cleanEmail]);
     if (existing.length > 0) {
       await conn.rollback();
       return res.status(409).json({ error: 'Email already registered' });
@@ -42,7 +43,7 @@ router.post('/register', async (req, res) => {
 
     const [userResult] = await conn.query(
       'INSERT INTO users (email, password_hash, role, account_status) VALUES (?, ?, ?, ?)',
-      [email, passwordHash, role, userStatus]
+      [cleanEmail, passwordHash, role, userStatus]
     );
     const userId = userResult.insertId;
 
@@ -61,7 +62,7 @@ router.post('/register', async (req, res) => {
     await conn.commit();
 
     const token = jwt.sign(
-      { id: userId, email, role },
+      { id: userId, email: cleanEmail, role },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
@@ -69,7 +70,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'Registration successful',
       token,
-      user: { id: userId, email, role, account_status: userStatus },
+      user: { id: userId, email: cleanEmail, role, account_status: userStatus },
     });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -91,8 +92,10 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Invalid account role' });
   }
 
+  const cleanEmail = String(email).trim().toLowerCase();
+
   try {
-    const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [cleanEmail]);
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }

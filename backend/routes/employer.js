@@ -424,13 +424,18 @@ router.put('/applications/:id/status', async (req, res) => {
       hired: 'marked hired by the employer',
       rejected: 'no longer being considered by the employer',
     }[status];
+    const notifTitle = status === 'hired' ? 'Congratulations! You are Hired' : 'Application Status Updated';
+    const notifMessage = status === 'hired'
+      ? `Congratulations! Your application for "${app.job_title}" has been marked as Hired by the employer. Please remember to update your employment status on your NSRP profile.`
+      : `Your application for "${app.job_title}" is ${statusLabel}.`;
+
     await conn.query(
       `INSERT INTO notifications (user_id, title, message, type, related_id, related_type)
        VALUES (?, ?, ?, 'application_status', ?, 'application')`,
       [
         app.seeker_user_id,
-        'Application Status Updated',
-        `Your application for "${app.job_title}" is ${statusLabel}.`,
+        notifTitle,
+        notifMessage,
         req.params.id,
       ]
     );
