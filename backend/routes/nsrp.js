@@ -10,6 +10,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const nsrpOcr = require('../services/nsrpOcr');
 const { refreshProfileCompleted } = require('../services/nsrpProfileValidation');
+const { normalizeNsrpProfile } = require('../services/nsrpForm');
 
 const router = express.Router();
 router.use(authenticate, requireRole('job_seeker'));
@@ -184,7 +185,7 @@ router.post('/extract', async (req, res) => {
 
 // POST /api/nsrp/confirm
 router.post('/confirm', async (req, res) => {
-  const { upload_id, confirmed_data } = req.body;
+  const { upload_id, upload_ids, confirmed_data } = req.body;
   if (!confirmed_data) return res.status(400).json({ error: 'confirmed_data is required' });
 
   const conn = await db.getConnection();
@@ -196,32 +197,58 @@ router.post('/confirm', async (req, res) => {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
-    const d = confirmed_data;
-    const nsrpFullData = d.nsrp_full_data ? JSON.stringify(d.nsrp_full_data) : null;
+    // OCR confirm only adds or replaces what was reviewed; blank values never erase saved profile data
+    // (scanning page 2 must not clear the page-1 fields, and vice versa).
+    const [currentRows] = await conn.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
+    const current = currentRows[0];
+    let currentFull = current.nsrp_full_data || {};
+    if (typeof currentFull === 'string') {
+      try { currentFull = JSON.parse(currentFull); } catch { currentFull = {}; }
+    }
+    const filled = (v) => {
+      if (Array.isArray(v)) return v.some(filled);
+      if (v && typeof v === 'object') return Object.values(v).some(filled);
+      if (typeof v === 'boolean') return v;
+      return String(v ?? '').trim() !== '';
+    };
+    const incomingFull = confirmed_data.nsrp_full_data || {};
+    const mergedFull = { ...currentFull };
+    for (const [key, value] of Object.entries(incomingFull)) {
+      if (!filled(value)) continue;
+      // Education levels and language rows merge one level/row at a time.
+      mergedFull[key] = (key === 'education' || key === 'languages') && value && typeof value === 'object'
+        ? { ...(currentFull[key] || {}), ...Object.fromEntries(Object.entries(value).filter(([, row]) => filled(row))) }
+        : value;
+    }
+    const BASE = [
+      'first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'civil_status', 'contact_number',
+      'address', 'city', 'province', 'education_level', 'course', 'years_of_experience', 'employment_status',
+      'preferred_occupation',
+    ];
+    const mergedBase = Object.fromEntries(BASE.map((k) => [k, filled(confirmed_data[k]) && confirmed_data[k] !== 0 ? confirmed_data[k] : current[k]]));
+    const d = normalizeNsrpProfile({ ...mergedBase, nsrp_full_data: mergedFull });
 
     await conn.query(
       `UPDATE job_seekers SET
          first_name=?, middle_name=?, last_name=?, date_of_birth=?, gender=?,
          civil_status=?, contact_number=?, address=?, city=?, province=?,
          education_level=?, course=?, years_of_experience=?, employment_status=?,
-         preferred_occupation=?, nsrp_full_data=COALESCE(?, nsrp_full_data)
+         preferred_occupation=?, nsrp_full_data=?
        WHERE id=?`,
       [
-        d.first_name || null, d.middle_name || null, d.last_name || null,
-        d.date_of_birth || null, d.gender || null, d.civil_status || null,
-        d.contact_number || null, d.address || null, d.city || null,
-        d.province || null, d.education_level || null, d.course || null,
-        d.years_of_experience || 0, d.employment_status || null,
-        d.preferred_occupation || null,
-        nsrpFullData, jsId,
+        ...BASE.map((k) => (k === 'years_of_experience' ? (d[k] || 0) : (d[k] || null))),
+        JSON.stringify(d.nsrp_full_data), jsId,
       ],
     );
     const requirements = await refreshProfileCompleted(conn, jsId);
 
-    if (upload_id) {
+    // Mark every page scanned into this review as confirmed (only the job seeker's own uploads).
+    const confirmedIds = [...new Set([upload_id, ...(Array.isArray(upload_ids) ? upload_ids : [])]
+      .map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (confirmedIds.length) {
       await conn.query(
-        'UPDATE uploaded_nsrp_forms SET ocr_confirmed = TRUE WHERE id = ? AND job_seeker_id = ?',
-        [upload_id, jsId],
+        'UPDATE uploaded_nsrp_forms SET ocr_confirmed = TRUE WHERE id IN (?) AND job_seeker_id = ?',
+        [confirmedIds, jsId],
       );
     }
 

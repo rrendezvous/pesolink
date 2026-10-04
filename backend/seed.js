@@ -7,15 +7,16 @@ const path = require('path');
 const db = require('./db');
 const { syncSkills } = require('./seed-skills');
 const { nsrpFingerprint } = require('./services/nsrpReview');
+const { normalizeNsrpProfile } = require('./services/nsrpForm');
 
 // Fill in the NSRP extended fields that are not stored as job_seekers columns.
 function nsrpData(overrides) {
   return {
-    suffix: '', place_of_birth: '', religion: '', height: '', weight: '',
+    suffix: '', place_of_birth: '', religion: '', height: '',
     tin: '', gsis_sss_no: '', pagibig_no: '', philhealth_no: '',
     email_address: '', landline_number: '', cell_phone_number: '',
     house_street: '', village: '', barangay: '',
-    disability: 'none', disability_other: '', employment_type: '',
+    disability: 'none', disabilities: [], disability_other: '', employment_type: '',
     looking_for_work: 'yes', looking_duration: '', willing_to_work_immediately: 'yes',
     available_when: '', four_ps_beneficiary: 'no', household_id: '',
     language_dialect: '', language_proficiency: '', other_skills: '',
@@ -58,30 +59,36 @@ async function run() {
   skillRows.forEach((s) => (skillByName[s.skill_name] = s.id));
 
   // 5. Job seekers
+  // NSRP Form 1 data for the demo job seekers (structured like the official form; the summary
+  // text fields are filled from these rows by normalizeNsrpProfile, as when saving in the app).
+  const lang = (r, w, sp, u) => ({ read: r, write: w, speak: sp, understand: u });
   const seekerData = [
     {
       email: 'juan.cruz@example.com',
       password: 'Test@123',
       first_name: 'Juan', middle_name: 'Dela', last_name: 'Cruz',
       date_of_birth: '1998-05-15', gender: 'male', civil_status: 'single',
-      contact_number: '09171234567', address: 'Purok 3, Brgy. San Isidro',
-      city: 'Cagayan de Oro', province: 'Misamis Oriental',
-      education_level: 'College Graduate', course: 'BS Information Technology',
+      city: 'Cagayan de Oro City', province: 'Misamis Oriental',
       years_of_experience: 2, employment_status: 'unemployed',
-      preferred_occupation: 'Software Developer',
       nsrp_full_data: nsrpData({
-        place_of_birth: 'Cagayan de Oro City', religion: 'Roman Catholic',
+        place_of_birth: 'Cagayan de Oro City', religion: 'Roman Catholic', height: '170 cm',
         cell_phone_number: '09171234567', email_address: 'juan.cruz@example.com',
         house_street: 'Purok 3', barangay: 'San Isidro',
-        employment_type: 'Fresh graduate', looking_duration: '3 months',
         tin: '123-456-789-000', philhealth_no: '12-345678901-2',
-        tertiary_background: 'BS Information Technology, USTP Cagayan de Oro, 2020',
-        secondary_background: 'Cagayan de Oro National High School, 2016',
-        preferred_occupations: 'Software Developer, IT Support',
-        preferred_work_location: 'Cagayan de Oro City',
-        language_dialect: 'English, Tagalog, Cebuano',
-        trainings: 'Web Development Bootcamp (40 hrs)',
-        work_experience: 'Freelance Web Developer, 2020-2022',
+        employment_type: 'new entrant/fresh graduate', looking_duration: '3 months',
+        preferred_occupation_list: ['Software Developer', 'IT Support', 'Web Developer', ''],
+        preferred_work_location: 'local',
+        local_location_list: ['Cagayan de Oro City', 'Opol', ''],
+        expected_salary: 'PHP 18,000 - 25,000',
+        languages: { english: lang(true, true, true, true), filipino: lang(true, true, true, true), other: { name: 'Cebuano', ...lang(true, true, true, true) } },
+        education: {
+          elementary: { school: 'Carmen Central School', year_graduated: '2010' },
+          secondary: { school: 'Cagayan de Oro National High School', year_graduated: '2016' },
+          tertiary: { school: 'USTP Cagayan de Oro', course: 'BS Information Technology', year_graduated: '2020' },
+        },
+        training_rows: [{ course: 'Web Development Bootcamp', duration: '01/2021 to 02/2021', institution: 'DICT Region X', certificate: 'Certificate of Completion' }],
+        work_rows: [{ company: 'Freelance Client', address: 'Cagayan de Oro City', position: 'Web Developer', dates: '06/2020 to 12/2022', status: 'Part-time' }],
+        other_skills_checked: ['Computer Literate'], other_skills_acquired: 'Computer Literate',
       }),
       skills: ['Web Development', 'JavaScript', 'Python', 'Database Management', 'English Proficiency'],
       // Submitted NSRP profile waiting for PESO verification - use admin to demo verifying it.
@@ -91,23 +98,25 @@ async function run() {
       email: 'maria.santos@example.com',
       password: 'Test@123',
       first_name: 'Maria', middle_name: 'Lopez', last_name: 'Santos',
-      date_of_birth: '2000-08-22', gender: 'female', civil_status: 'single',
-      contact_number: '09181234568', address: 'Zone 4, Brgy. Macabalan',
-      city: 'Cagayan de Oro', province: 'Misamis Oriental',
-      education_level: 'College Graduate', course: 'BS Business Administration',
-      years_of_experience: 1, employment_status: 'underemployed',
-      preferred_occupation: 'Office Staff',
+      date_of_birth: '1999-08-22', gender: 'female', civil_status: 'single',
+      city: 'Cagayan de Oro City', province: 'Misamis Oriental',
+      years_of_experience: 1, employment_status: 'employed',
       nsrp_full_data: nsrpData({
-        place_of_birth: 'Cagayan de Oro City', religion: 'Roman Catholic',
+        place_of_birth: 'Cagayan de Oro City', religion: 'Roman Catholic', height: '157 cm',
         cell_phone_number: '09181234568', email_address: 'maria.santos@example.com',
-        house_street: 'Zone 4', barangay: 'Macabalan',
-        employment_type: 'Wage employed (part-time)', looking_duration: '2 months',
-        gsis_sss_no: '34-5678901-2',
-        tertiary_background: 'BS Business Administration, Xavier University, 2021',
-        preferred_occupations: 'Office Staff, Admin Assistant, Bookkeeper',
-        preferred_work_location: 'Cagayan de Oro City, Opol',
-        language_dialect: 'English, Tagalog, Cebuano',
-        work_experience: 'Part-time Office Assistant, 2021-present',
+        house_street: 'Zone 4', barangay: 'Macabalan', gsis_sss_no: '34-5678901-2',
+        employment_type: 'wage employed', looking_duration: '2 months',
+        preferred_occupation_list: ['Office Staff', 'Admin Assistant', 'Bookkeeper', ''],
+        preferred_work_location: 'local',
+        local_location_list: ['Cagayan de Oro City', 'Opol', ''],
+        expected_salary: 'PHP 15,000 - 18,000',
+        languages: { english: lang(true, true, true, true), filipino: lang(true, true, true, true), other: { name: 'Cebuano', ...lang(true, true, true, true) } },
+        education: {
+          secondary: { school: 'Macabalan National High School', year_graduated: '2017' },
+          tertiary: { school: 'Xavier University', course: 'BS Business Administration', year_graduated: '2021' },
+        },
+        work_rows: [{ company: 'Macabalan Trading', address: 'Cagayan de Oro City', position: 'Office Assistant', dates: '07/2021 to present', status: 'Part-time' }],
+        other_skills_checked: ['Computer Literate', 'Stenography'], other_skills_acquired: 'Computer Literate\nStenography',
       }),
       skills: ['Microsoft Office', 'Customer Service', 'Bookkeeping', 'Communication', 'English Proficiency', 'Computer Literacy'],
       nsrp: { status: 'verified', notes: 'NSRP details checked against the submitted form.' },
@@ -117,27 +126,29 @@ async function run() {
       password: 'Test@123',
       first_name: 'Pedro', middle_name: 'Garcia', last_name: 'Reyes',
       date_of_birth: '1995-03-10', gender: 'male', civil_status: 'married',
-      contact_number: '09191234569', address: 'Sitio Bagong Silang',
-      city: 'Gingoog', province: 'Misamis Oriental',
-      education_level: 'TESDA NC II', course: 'Electrical Installation',
+      city: 'Gingoog City', province: 'Misamis Oriental',
       years_of_experience: 5, employment_status: 'unemployed',
-      preferred_occupation: 'Electrician',
       nsrp_full_data: nsrpData({
-        place_of_birth: 'Gingoog City', religion: 'Roman Catholic',
+        place_of_birth: 'Gingoog City', religion: 'Roman Catholic', height: '168 cm',
         cell_phone_number: '09191234569',
         house_street: 'Sitio Bagong Silang', barangay: 'Lunao',
-        employment_type: 'Terminated/laid off (local)', looking_duration: '6 months',
+        employment_type: 'terminated/laidoff(local)', looking_duration: '6 months',
         four_ps_beneficiary: 'yes', household_id: '104305001-0001',
-        secondary_background: 'Gingoog City Comprehensive National High School, 2012',
-        preferred_occupations: 'Electrician, Construction Worker',
-        preferred_work_location: 'Gingoog City, Cagayan de Oro City',
-        language_dialect: 'Cebuano, Tagalog',
-        trainings: 'Electrical Installation and Maintenance NC II (TESDA)',
-        eligibility_license: 'TESDA EIM NC II',
-        work_experience: 'Electrician Helper, Gingoog Builders, 2016-2023',
+        preferred_occupation_list: ['Electrician', 'Construction Worker', '', ''],
+        preferred_work_location: 'local',
+        local_location_list: ['Gingoog City', 'Cagayan de Oro City', ''],
+        languages: { filipino: lang(true, true, true, true), other: { name: 'Cebuano', ...lang(true, true, true, true) } },
+        education: {
+          elementary: { school: 'Lunao Elementary School', year_graduated: '2008' },
+          secondary: { school: 'Gingoog City Comprehensive National High School', year_graduated: '2012' },
+        },
+        training_rows: [{ course: 'Electrical Installation and Maintenance', duration: '2014', institution: 'TESDA Gingoog', certificate: 'NC II' }],
+        license_rows: [{ license: 'TESDA EIM NC II', valid_until: '2027' }],
+        work_rows: [{ company: 'Gingoog Builders', address: 'Gingoog City', position: 'Electrician Helper', dates: '01/2016 to 03/2023', status: 'Contractual' }],
+        other_skills_checked: ['Electrician', 'Carpentry Work', 'Masonry'], other_skills_acquired: 'Electrician\nCarpentry Work\nMasonry',
       }),
       skills: ['Electrical Wiring', 'Carpentry', 'Welding', 'Cebuano Proficiency'],
-      nsrp: { status: 'needs_revision', notes: 'Please add your SSS number and the year you finished your TESDA training.' },
+      nsrp: { status: 'needs_revision', notes: 'Please add your SSS number and the dates of your TESDA training.' },
     },
     {
       // PESO-verified NSRP profile with no applications yet - use this account to demo one-tap applying.
@@ -145,30 +156,32 @@ async function run() {
       password: 'Test@123',
       first_name: 'Ana', middle_name: 'Ramos', last_name: 'Bautista',
       date_of_birth: '2001-11-03', gender: 'female', civil_status: 'single',
-      contact_number: '09201234570', address: 'Purok 1, Brgy. Poblacion',
       city: 'Tagoloan', province: 'Misamis Oriental',
-      education_level: 'Senior High Graduate', course: 'TVL - Cookery',
       years_of_experience: 1, employment_status: 'unemployed',
-      preferred_occupation: 'Cook',
       nsrp_full_data: nsrpData({
-        place_of_birth: 'Tagoloan, Misamis Oriental', religion: 'Roman Catholic',
+        place_of_birth: 'Tagoloan, Misamis Oriental', religion: 'Roman Catholic', height: '155 cm',
         cell_phone_number: '09201234570',
         house_street: 'Purok 1', barangay: 'Poblacion',
-        employment_type: 'New entrant / fresh graduate', looking_duration: '1 month',
-        secondary_background: 'Tagoloan National High School (SHS TVL - Cookery), 2019',
-        preferred_occupations: 'Cook, Kitchen Helper, Baker',
-        preferred_work_location: 'Tagoloan, Cagayan de Oro City, Villanueva',
-        language_dialect: 'Cebuano, Tagalog, English',
-        trainings: 'Cookery NC II (TESDA)',
-        eligibility_license: 'TESDA Cookery NC II',
-        work_experience: 'Kitchen Helper (OJT), 2019',
+        employment_type: 'new entrant/fresh graduate', looking_duration: '1 month',
+        preferred_occupation_list: ['Cook', 'Kitchen Helper', 'Baker', ''],
+        preferred_work_location: 'local',
+        local_location_list: ['Tagoloan', 'Cagayan de Oro City', 'Villanueva'],
+        languages: { english: lang(true, false, false, true), filipino: lang(true, true, true, true), other: { name: 'Cebuano', ...lang(true, true, true, true) } },
+        education: {
+          elementary: { school: 'Tagoloan Central School', year_graduated: '2013' },
+          secondary: { school: 'Tagoloan National High School', course: 'SHS TVL - Cookery', year_graduated: '2019' },
+        },
+        training_rows: [{ course: 'Cookery', duration: '06/2019 to 08/2019', institution: 'TESDA Misamis Oriental', certificate: 'NC II' }],
+        work_rows: [{ company: 'Tagoloan Eatery', address: 'Tagoloan', position: 'Kitchen Helper (OJT)', dates: '03/2019 to 05/2019', status: 'OJT' }],
+        other_skills_checked: ['Domestic Chores'], other_skills_acquired: 'Domestic Chores',
       }),
       skills: ['Cooking', 'Baking', 'Food and Beverage Service', 'Cebuano Proficiency', 'Teamwork'],
       nsrp: { status: 'verified' },
     },
   ];
 
-  for (const s of seekerData) {
+  for (const seeker of seekerData) {
+    const s = { ...seeker, ...normalizeNsrpProfile(seeker) };
     const pwHash = await hash(s.password);
     const [userRes] = await db.query(
       "INSERT INTO users (email, password_hash, role, account_status) VALUES (?, ?, 'job_seeker', 'active')",
@@ -201,7 +214,7 @@ async function run() {
     const reviewed = ['verified', 'needs_revision'].includes(s.nsrp.status);
     await db.query(
       `UPDATE job_seekers
-       SET nsrp_status = ?, nsrp_review_notes = ?, nsrp_submitted_at = NOW(),
+       SET nsrp_status = ?, nsrp_review_notes = ?, nsrp_submitted_at = NOW(), nsrp_certified_at = NOW(),
            nsrp_reviewed_by = ?, nsrp_reviewed_at = ?, nsrp_reviewed_hash = ?
        WHERE id = ?`,
       [

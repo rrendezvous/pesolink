@@ -28,13 +28,13 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
   const full = p.nsrp_full_data || {};
   return (
     <>
-      <Section title="Personal Information">
+      <Section title="I. Personal Information">
         <Field label="Date of Birth" value={formatDate(p.date_of_birth)} />
         <Field label="Place of Birth" value={full.place_of_birth} />
         <Field label="Sex" value={p.gender} />
         <Field label="Civil Status" value={p.civil_status} />
         <Field label="Religion" value={full.religion} />
-        <Field label="Height / Weight" value={[full.height, full.weight].filter(Boolean).join(' / ')} />
+        <Field label="Height" value={full.height} />
         <Field label="Disability" value={[full.disability, full.disability_other].filter(Boolean).join(' - ')} />
       </Section>
 
@@ -43,7 +43,6 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
         <Field label="Cell Phone" value={full.cell_phone_number} />
         <Field label="Landline" value={full.landline_number} />
         <Field label="Email (NSRP)" value={full.email_address} />
-        <Field label="Address" value={p.address} />
         <Field label="House No. / Street" value={full.house_street} />
         <Field label="Village" value={full.village} />
         <Field label="Barangay" value={full.barangay} />
@@ -56,46 +55,43 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
         <Field label="GSIS / SSS No." value={full.gsis_sss_no} />
         <Field label="PAG-IBIG No." value={full.pagibig_no} />
         <Field label="PhilHealth No." value={full.philhealth_no} />
-        <Field label="Passport No." value={[full.passport_number, full.passport_expiry && `exp. ${full.passport_expiry}`].filter(Boolean).join(' ')} />
       </Section>
 
-      <Section title="Employment Status">
+      <Section title="Employment Status / Type">
         <Field label="Employment Status" value={p.employment_status} />
-        <Field label="Employment Type" value={full.employment_type} />
+        <Field label="Employment Type" value={[full.employment_type, full.terminated_abroad_country, full.employment_type_other].filter(Boolean).join(' - ')} />
         <Field label="Actively Looking for Work" value={[full.looking_for_work, full.looking_duration].filter(Boolean).join(' - ')} />
         <Field label="Willing to Work Immediately" value={[full.willing_to_work_immediately, full.available_when].filter(Boolean).join(' - ')} />
         <Field label="4Ps Beneficiary" value={[full.four_ps_beneficiary, full.household_id && `HH ID ${full.household_id}`].filter(Boolean).join(' - ')} />
       </Section>
 
-      <Section title="Job Preference">
-        <Field label="Preferred Occupation" value={p.preferred_occupation} />
-        <Field label="Preferred Occupations" value={full.preferred_occupations} />
+      <Section title="II. Job Preference">
+        <Field label="Preferred Occupations" value={full.preferred_occupations || p.preferred_occupation} />
         <Field label="Preferred Work Location" value={full.preferred_work_location} />
         <Field label="Local Locations" value={full.preferred_local_locations} />
         <Field label="Overseas Locations" value={full.preferred_overseas_locations} />
         <Field label="Expected Salary" value={full.expected_salary} />
+        <Field label="Passport No." value={[full.passport_number, full.passport_expiry && `exp. ${full.passport_expiry}`].filter(Boolean).join(' ')} />
       </Section>
 
-      <Section title="Language / Dialect">
-        <Field label="Languages" value={full.language_dialect} />
-        <Field label="Proficiency" value={full.language_proficiency} />
+      <Section title="III. Language / Dialect Proficiency">
+        <Field label="Read / Write / Speak / Understand" value={full.language_proficiency || full.language_dialect} />
       </Section>
 
-      <Section title="Educational Background">
-        <Field label="Education Level" value={p.education_level} />
-        <Field label="Course" value={p.course} />
+      <Section title="IV. Educational Background">
+        <Field label="Highest Level" value={[p.education_level, p.course].filter(Boolean).join(' - ')} />
         <Field label="Elementary" value={full.elementary_background} />
         <Field label="Secondary" value={full.secondary_background} />
         <Field label="Tertiary" value={full.tertiary_background} />
         <Field label="Graduate Studies" value={full.graduate_studies_background} />
       </Section>
 
-      <Section title="Training, Eligibility, and Experience">
-        <Field label="Years of Experience" value={p.years_of_experience != null ? String(p.years_of_experience) : ''} />
-        <Field label="Trainings / Seminars" value={full.trainings} />
-        <Field label="Eligibility / Licenses" value={full.eligibility_license} />
-        <Field label="Work Experience" value={full.work_experience} />
-        <Field label="Other Skills Acquired" value={full.other_skills_acquired} />
+      <Section title="V-VIII. Training, Eligibility, Work Experience, Other Skills">
+        <Field label="V. Technical/Vocational Training" value={full.trainings} />
+        <Field label="VI. Eligibility / Professional License" value={full.eligibility_license} />
+        <Field label="VII. Work Experience" value={full.work_experience} />
+        <Field label="VIII. Other Skills (no formal training)" value={full.other_skills_acquired} />
+        <Field label="Years of Work Experience" value={p.years_of_experience != null ? String(p.years_of_experience) : ''} />
       </Section>
 
       <Section title={`Encoded Skills (${skills.length})`}>

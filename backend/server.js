@@ -54,6 +54,8 @@ app.use((err, req, res, next) => {
 
 // Keep older databases compatible with the per-job PESO referral workflow fields.
 require('./migrate-referral-workflow').ensureReferralWorkflowColumns()
+  // Keep the skills list current (adds new skills, keeps existing IDs).
+  .then(() => require('./seed-skills').syncSkills(require('./db')))
   .catch((err) => console.error('[Migration] Referral workflow columns check failed:', err.message));
 
 app.listen(PORT, '0.0.0.0', () => {

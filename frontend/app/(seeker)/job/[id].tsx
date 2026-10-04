@@ -54,6 +54,8 @@ export default function JobDetails() {
           { text: 'Later', style: 'cancel' },
           { text: 'Open Profile', onPress: () => router.push('/(seeker)/profile') },
         ]);
+      } else if (code === 'JOB_CLOSED') {
+        Alert.alert('Job Post Closed', getApiError(err));
       } else if (code === 'SKILL_MINIMUM') {
         Alert.alert('Not Enough Matching Skills', getApiError(err), [
           { text: 'OK', style: 'cancel' },
@@ -75,7 +77,8 @@ export default function JobDetails() {
   }
 
   const myRequest = job.my_application;
-  const canApplyHere = !myRequest || canRequestAgain(myRequest.referral_status);
+  const isOpen = job.accepting_applications !== false;
+  const canApplyHere = isOpen && (!myRequest || canRequestAgain(myRequest.referral_status));
   const nsrpStatus: string = job.my_nsrp_status || 'not_submitted';
   const meetsMinimum = !match || match.meets_minimum !== false;
 
@@ -134,6 +137,25 @@ export default function JobDetails() {
           <Card style={styles.sectionCard}>
             <Text style={styles.section}>Rule-Based Skill Comparison</Text>
             <Text style={styles.disclaimer}>{match.notice}</Text>
+            {match.total_required === 0 ? (
+              <Text style={styles.helpText}>This job post lists no required skills, so there is nothing to compare.</Text>
+            ) : !match.skills_confirmed ? (
+              <>
+                <Text style={styles.pesoNote}>
+                  Save your skills in your NSRP profile to see which of this job&apos;s {match.total_required} required skills you have.
+                </Text>
+                <Text style={styles.subSection}>Required skills</Text>
+                <View style={styles.pillWrap}>
+                  {match.unmatched_required_skills.map((s: any) => (
+                    <View key={s.id} style={styles.skillPill}>
+                      <Text style={styles.skillPillText}>{s.skill_name}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Button title="Add My Skills" variant="secondary" style={{ marginTop: Spacing.sm }} onPress={() => router.push('/(seeker)/profile')} />
+              </>
+            ) : (
+            <>
             {match.required_matches > 0 && (
               <Text style={[styles.minimumNote, !match.meets_minimum && styles.minimumNoteShort]}>
                 {match.meets_minimum
@@ -171,6 +193,17 @@ export default function JobDetails() {
                 </View>
               </>
             )}
+            </>
+            )}
+          </Card>
+        )}
+
+        {!isOpen && (!myRequest || canRequestAgain(myRequest.referral_status)) && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.section}>Not Accepting Applications</Text>
+            <Text style={styles.helpText}>
+              This job post is closed{job.closing_date ? ` (closing date ${formatDate(job.closing_date)})` : ''}. You can browse other jobs.
+            </Text>
           </Card>
         )}
 

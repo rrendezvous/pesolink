@@ -11,7 +11,9 @@
     "ocr:smoke": "node scripts/ocr-smoke.js",
     "migrate:referral": "node migrate-referral-status.js",
     "migrate:application-status": "node migrate-application-status.js",
-    "migrate:referral-workflow": "node migrate-referral-workflow.js"
+    "migrate:referral-workflow": "node migrate-referral-workflow.js",
+    "reset-demo": "node scripts/reset-demo-db.js",
+    "test:e2e": "node scripts/reset-demo-db.js && node tests/e2e_nsrp.mjs && node scripts/reset-demo-db.js && node tests/e2e_objective_a.mjs && node scripts/reset-demo-db.js && node tests/e2e_nsrp_form.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -46,7 +46,7 @@ JWT_EXPIRES_IN=7d
 
 Run this only if the database has not been initialized yet, or if you want to reset the demo data.
 
-Important: `node init-db.js` drops and recreates the app tables. It will remove existing app data.
+Important: `node init-db.js` drops and recreates the app tables in `peso_link_misor` (the real database name is fixed in `schema.sql`). It will remove existing app data. For a separate demo database, run `npm run reset-demo` instead (only touches `peso_link_demo`).
 
 Open **PowerShell Terminal 1**, then copy and paste:
 

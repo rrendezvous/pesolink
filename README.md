@@ -25,7 +25,7 @@ The submitted system is not:
 ### Job Seeker
 
 - Register and log in.
-- Create and update an NSRP-based job seeker profile.
+- Create and update an NSRP-based job seeker profile laid out like NSRP Form 1 (DOLE, January 2017): sections I-VIII with the form's checklists and table rows (education, training, eligibility/license, work experience, other skills).
 - Optionally scan NSRP form page 1 and page 2 using OCR.
 - Review and edit all OCR-filled fields before saving.
 - Save selected skills for rule-based job comparison.
@@ -58,9 +58,10 @@ The submitted system is not:
 - View dashboard statistics.
 - Create employer accounts.
 - Approve or reject employer accounts when applicable.
-- View and manage employer accounts.
+- Create, approve/reject, edit, deactivate, and reactivate employer accounts (deactivating closes the employer's active job posts and notifies those applicants).
 - View job seeker accounts.
-- Deactivate/reactivate job seeker accounts.
+- Deactivate/reactivate job seeker accounts (deactivating closes the seeker's in-progress applications and notifies the employers).
+- View the job seeker's uploaded NSRP form image next to the encoded profile, and record the form's "For use of PESO only" eligibility (SPES, GIP, TUPAD, JobStart, others) when verifying.
 - Verify each job seeker's NSRP profile once (Verify, or Return for Revision with a note); changed profiles come back for re-checking.
 - Deactivate job seeker accounts with invalid information.
 - Monitor job postings.
@@ -263,6 +264,10 @@ node init-db.js
 node seed.js
 ```
 
+Warning: `init-db.js` always targets `peso_link_misor` (the name is in `schema.sql`) and drops its tables.
+For a separate demo/test database use `npm run reset-demo` instead (resets `peso_link_demo` only and seeds it).
+Run the backend against it with `DB_NAME=peso_link_demo`.
+
 Start the backend:
 
 ```cmd
@@ -461,8 +466,12 @@ PESO Admin:
 - `POST /api/admin/employers`
 - `PUT /api/admin/employers/:id/approve`
 - `PUT /api/admin/employers/:id/reject`
+- `PUT /api/admin/employers/:id` (edit details)
+- `PUT /api/admin/employers/:id/deactivate`
+- `PUT /api/admin/employers/:id/reactivate`
 - `GET /api/admin/job-seekers`
 - `GET /api/admin/job-seekers/:id/profile`
+- `GET /api/admin/job-seekers/:id/nsrp-forms` (uploaded NSRP form images)
 - `PUT /api/admin/job-seekers/:id/nsrp-status`
 - `PUT /api/admin/job-seekers/:id/deactivate`
 - `PUT /api/admin/job-seekers/:id/reactivate`
@@ -538,7 +547,16 @@ Backend live health check:
 curl http://localhost:8001/api/health
 ```
 
-Backend regression tests, if Python and pytest are installed:
+API end-to-end tests (backend running on the demo database; each file runs on a fresh seed):
+
+```cmd
+cd backend
+npm run test:e2e
+```
+
+OCR accuracy on the two sample NSRP pages: `node scripts/ocr-accuracy.js`.
+
+Backend regression tests, if Python and pytest are installed (a virtualenv is fine), on a freshly reset demo database:
 
 ```cmd
 set PESO_LINK_BASE_URL=http://localhost:8001

@@ -1,5 +1,6 @@
 // ============================================================
-// Admin: Applications (monitor PESO-referred applications across all job posts)
+// Admin: Referrals (monitor PESO-referred applications across all job posts)
+// "By Job" shows each job post with its applicant counts per status; tapping one lists its applicants.
 // PESO's decision happens once per job seeker on the NSRP Verification screen.
 // ============================================================
 import React, { useCallback, useState } from 'react';
@@ -25,6 +26,10 @@ const FILTERS = [
 
 export default function MonitorApplications() {
   const [apps, setApps] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [view, setView] = useState<'jobs' | 'applicants'>('jobs');
+  const [employerFilter, setEmployerFilter] = useState<number | null>(null);
+  const [jobFilter, setJobFilter] = useState<any | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
@@ -33,8 +38,9 @@ export default function MonitorApplications() {
 
   const load = async () => {
     try {
-      const res = await api.get('/admin/applications');
-      setApps(res.data.applications || []);
+      const [a, j] = await Promise.all([api.get('/admin/applications'), api.get('/admin/jobs')]);
+      setApps(a.data.applications || []);
+      setJobs(j.data.jobs || []);
     } catch (err) {
       console.warn(getApiError(err));
     }
@@ -63,13 +69,26 @@ export default function MonitorApplications() {
   };
 
   const query = search.trim().toLowerCase();
-  const visibleApps = apps.filter((a) => {
-    if (filter && currentStatus(a).status !== filter) return false;
-    if (!query) return true;
-    return [`${a.first_name} ${a.last_name}`, a.job_title, a.company_name, a.seeker_email]
-      .some((v) => String(v || '').toLowerCase().includes(query));
-  });
-  const countFor = (key: string) => (key ? apps.filter((a) => currentStatus(a).status === key).length : apps.length);
+  const employers = Array.from(new Map(jobs.map((j) => [j.employer_id, j.company_name])).entries());
+  const matchesQuery = (values: any[]) => !query || values.some((v) => String(v || '').toLowerCase().includes(query));
+
+  const scopedApps = apps.filter((a) => (!employerFilter || a.employer_id === employerFilter)
+    && (!jobFilter || a.job_post_id === jobFilter.id));
+  const visibleApps = scopedApps.filter((a) => (!filter || currentStatus(a).status === filter)
+    && matchesQuery([`${a.first_name} ${a.last_name}`, a.job_title, a.company_name, a.seeker_email]));
+  const countFor = (key: string) => (key ? scopedApps.filter((a) => currentStatus(a).status === key).length : scopedApps.length);
+
+  const visibleJobs = jobs.filter((j) => (!employerFilter || j.employer_id === employerFilter)
+    && matchesQuery([j.job_title, j.company_name, j.location]));
+  const statusCounts = (jobId: number) => {
+    const counts: Record<string, number> = {};
+    for (const a of apps.filter((x) => x.job_post_id === jobId)) {
+      const st = currentStatus(a).status;
+      counts[st] = (counts[st] || 0) + 1;
+    }
+    return counts;
+  };
+  const openJob = (job: any) => { setJobFilter(job); setFilter(''); setView('applicants'); };
 
   const app = detail?.application;
   const match = detail?.skill_comparison;
@@ -83,20 +102,95 @@ export default function MonitorApplications() {
       </View>
 
       <View style={styles.filterCard}>
-        <Input testID="app-search" value={search} onChangeText={setSearch} placeholder="Search applicant, job title, or company" />
+        <View style={styles.viewSwitch}>
+          {(['jobs', 'applicants'] as const).map((v) => (
+            <TouchableOpacity
+              key={v}
+              testID={`view-${v}`}
+              onPress={() => { setView(v); if (v === 'jobs') setJobFilter(null); }}
+              style={[styles.viewTab, view === v && styles.viewTabActive]}
+            >
+              <Text style={[styles.viewTabText, view === v && styles.viewTabTextActive]}>
+                {v === 'jobs' ? `By Job (${jobs.length})` : `All Applicants (${apps.length})`}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Input
+          testID="app-search"
+          value={search}
+          onChangeText={setSearch}
+          placeholder={view === 'jobs' ? 'Search job title, company, or location' : 'Search applicant, job title, or company'}
+        />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {FILTERS.map((f) => (
-            <Chip
-              key={f.key || 'all'}
-              testID={`ref-filter-${f.key || 'all'}`}
-              label={`${f.label} (${countFor(f.key)})`}
-              active={filter === f.key}
-              onPress={() => setFilter(f.key)}
-            />
+          <Chip label="All Employers" active={!employerFilter} onPress={() => setEmployerFilter(null)} />
+          {employers.map(([id, name]) => (
+            <Chip key={id} testID={`emp-chip-${id}`} label={String(name)} active={employerFilter === id} onPress={() => setEmployerFilter(id)} />
           ))}
         </ScrollView>
+        {view === 'applicants' && (
+          <>
+            {jobFilter && (
+              <TouchableOpacity onPress={() => setJobFilter(null)} style={styles.jobFilterBar}>
+                <Text style={styles.jobFilterText} numberOfLines={1}>Job: {jobFilter.job_title} / {jobFilter.company_name}</Text>
+                <Text style={styles.jobFilterClear}>Clear</Text>
+              </TouchableOpacity>
+            )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {FILTERS.map((f) => (
+                <Chip
+                  key={f.key || 'all'}
+                  testID={`ref-filter-${f.key || 'all'}`}
+                  label={`${f.label} (${countFor(f.key)})`}
+                  active={filter === f.key}
+                  onPress={() => setFilter(f.key)}
+                />
+              ))}
+            </ScrollView>
+          </>
+        )}
       </View>
 
+      {view === 'jobs' ? (
+        <FlatList
+          data={visibleJobs}
+          keyExtractor={(item) => `job-${item.id}`}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          ListEmptyComponent={<EmptyState message={jobs.length ? 'No job posts match this filter.' : 'No job posts yet.'} />}
+          renderItem={({ item }) => {
+            const counts = statusCounts(item.id);
+            const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+            return (
+              <TouchableOpacity testID={`job-group-${item.id}`} onPress={() => openJob(item)} activeOpacity={0.85}>
+                <Card style={styles.appCard}>
+                  <View style={styles.cardTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.applicant}>{item.job_title}</Text>
+                      <Text style={styles.company}>{item.company_name}</Text>
+                      <Text style={styles.detail}>
+                        {item.location || 'No location'} / {item.vacancies} {item.vacancies === 1 ? 'vacancy' : 'vacancies'}
+                      </Text>
+                    </View>
+                    <StatusBadge status={item.status === 'active' ? 'for_review' : 'closed'} label={item.status === 'active' ? 'Open' : 'Closed'} />
+                  </View>
+                  <View style={styles.countRow}>
+                    {total === 0 ? (
+                      <Text style={styles.cardHint}>No PESO-referred applicants yet.</Text>
+                    ) : FILTERS.filter((f) => f.key && counts[f.key]).map((f) => (
+                      <View key={f.key} style={styles.countPill}>
+                        <Text style={styles.countValue}>{counts[f.key]}</Text>
+                        <Text style={styles.countLabel}>{f.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {total > 0 && <Text style={styles.cardHint}>Tap to see the {total} applicant{total === 1 ? '' : 's'}.</Text>}
+                </Card>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      ) : (
       <FlatList
         data={visibleApps}
         keyExtractor={(item) => String(item.id)}
@@ -126,6 +220,7 @@ export default function MonitorApplications() {
           );
         }}
       />
+      )}
 
       <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
         <View style={styles.modalBg}>
@@ -253,6 +348,26 @@ const styles = StyleSheet.create({
   detail: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 3 },
   date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 6 },
   cardHint: { fontSize: FontSize.xs, color: Colors.gray, marginTop: Spacing.sm },
+  viewSwitch: {
+    flexDirection: 'row', backgroundColor: Colors.muted, borderRadius: Radius.md, padding: 4, marginBottom: Spacing.sm,
+  },
+  viewTab: { flex: 1, paddingVertical: 8, borderRadius: Radius.sm, alignItems: 'center' },
+  viewTabActive: { backgroundColor: Colors.white, ...Shadow.card },
+  viewTabText: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.gray },
+  viewTabTextActive: { color: Colors.primaryDark },
+  jobFilterBar: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.cardHighlight,
+    borderRadius: Radius.md, paddingHorizontal: 12, paddingVertical: 8, marginBottom: Spacing.sm,
+  },
+  jobFilterText: { flex: 1, fontSize: FontSize.sm, fontWeight: '800', color: Colors.primaryDark },
+  jobFilterClear: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary },
+  countRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.sm },
+  countPill: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 4, backgroundColor: Colors.muted,
+    borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  countValue: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.textDark },
+  countLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.gray },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: Colors.white,

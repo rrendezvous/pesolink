@@ -77,6 +77,16 @@ const COLUMNS = [
     sql: 'ALTER TABLE job_seekers ADD COLUMN nsrp_reviewed_hash CHAR(64) NULL AFTER nsrp_submitted_at',
   },
   {
+    table: 'job_seekers',
+    column: 'nsrp_certified_at',
+    sql: 'ALTER TABLE job_seekers ADD COLUMN nsrp_certified_at TIMESTAMP NULL AFTER nsrp_submitted_at',
+  },
+  {
+    table: 'job_seekers',
+    column: 'peso_assessment',
+    sql: 'ALTER TABLE job_seekers ADD COLUMN peso_assessment JSON NULL AFTER nsrp_reviewed_hash',
+  },
+  {
     table: 'job_posts',
     column: 'application_email',
     sql: 'ALTER TABLE job_posts ADD COLUMN application_email VARCHAR(255) NULL AFTER requirements',
@@ -133,6 +143,20 @@ async function backfillNsrpStatus() {
   }
 }
 
+// NSRP Form 1 civil status includes "Live-in" (the OCR also returns it).
+async function ensureLiveInCivilStatus() {
+  const [rows] = await db.query(
+    `SELECT COLUMN_TYPE AS type FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'job_seekers' AND COLUMN_NAME = 'civil_status'`
+  );
+  if (rows.length && !String(rows[0].type).includes("'live-in'")) {
+    await db.query(
+      "ALTER TABLE job_seekers MODIFY civil_status ENUM('single', 'married', 'widowed', 'separated', 'live-in')"
+    );
+    console.log('[Migration] Added live-in to job_seekers.civil_status.');
+  }
+}
+
 async function ensureReferralWorkflowColumns() {
   for (const migration of COLUMNS) {
     if (await columnExists(migration.table, migration.column)) continue;
@@ -141,6 +165,7 @@ async function ensureReferralWorkflowColumns() {
     else if (migration.backfill) await db.query(migration.backfill);
     console.log(`[Migration] Added ${migration.table}.${migration.column}.`);
   }
+  await ensureLiveInCivilStatus();
 }
 
 module.exports = { ensureReferralWorkflowColumns };

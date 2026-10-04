@@ -6,7 +6,7 @@
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Alert, RefreshControl, Modal, ScrollView, ActivityIndicator, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, Alert, RefreshControl, Modal, ScrollView, ActivityIndicator, TouchableOpacity, Image,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Card, Button, EmptyState, Row, Chip, StatusBadge, Input } from '../../src/components/ui';
@@ -24,6 +24,9 @@ const FILTERS = [
   { key: '', label: 'All' },
 ];
 
+// NSRP Form 1 "For use of PESO only - Eligible for public employment services?"
+const PESO_PROGRAMS = ['SPES', 'GIP', 'TUPAD', 'JobStart'];
+
 const nameOf = (p: any) => [p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Job Seeker';
 
 export default function NsrpVerification() {
@@ -36,6 +39,10 @@ export default function NsrpVerification() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [note, setNote] = useState('');
   const [deciding, setDeciding] = useState(false);
+  const [programs, setPrograms] = useState<string[]>([]);
+  const [programOther, setProgramOther] = useState('');
+  const [forms, setForms] = useState<any[] | null>(null);
+  const [formsLoading, setFormsLoading] = useState(false);
 
   const load = async () => {
     try {
@@ -52,6 +59,9 @@ export default function NsrpVerification() {
   const openProfile = async (seeker: any) => {
     setDetail({ profile: seeker });
     setNote('');
+    setForms(null);
+    setPrograms([]);
+    setProgramOther('');
     setDetailLoading(true);
     try {
       if (seeker.nsrp_status === 'submitted') {
@@ -69,6 +79,20 @@ export default function NsrpVerification() {
     }
   };
 
+  // Uploaded NSRP form images are large, so they load only when PESO asks to compare.
+  const loadForms = async () => {
+    if (!detail?.profile) return;
+    setFormsLoading(true);
+    try {
+      const res = await api.get(`/admin/job-seekers/${detail.profile.id}/nsrp-forms`);
+      setForms(res.data.forms || []);
+    } catch (err) {
+      Alert.alert('Error', getApiError(err));
+    } finally {
+      setFormsLoading(false);
+    }
+  };
+
   const decide = (next: 'verified' | 'needs_revision') => {
     const profile = detail?.profile;
     if (!profile) return;
@@ -83,7 +107,11 @@ export default function NsrpVerification() {
     confirmAction(copy[0], copy[1], async () => {
       setDeciding(true);
       try {
-        await api.put(`/admin/job-seekers/${profile.id}/nsrp-status`, { nsrp_status: next, notes: reason || null });
+        await api.put(`/admin/job-seekers/${profile.id}/nsrp-status`, {
+          nsrp_status: next,
+          notes: reason || null,
+          peso_assessment: next === 'verified' ? { programs, other: programOther } : undefined,
+        });
         setDetail(null);
         await load();
         Alert.alert('Saved', `NSRP profile marked ${NSRP_STATUS_LABELS[next]}. The job seeker has been notified.`);
@@ -236,6 +264,39 @@ export default function NsrpVerification() {
                       />
                     )}
                     {!!profile.nsrp_review_notes && <Row left="PESO Note" right={profile.nsrp_review_notes} />}
+                    <Row
+                      left="Certification"
+                      right={profile.nsrp_certified_at ? `Accepted ${new Date(profile.nsrp_certified_at).toLocaleDateString()}` : 'Not yet accepted'}
+                    />
+                    {!!profile.peso_assessment && (
+                      <Row
+                        left="Eligible for (PESO)"
+                        right={[...(profile.peso_assessment.programs || []), profile.peso_assessment.other].filter(Boolean).join(', ') || 'None marked'}
+                      />
+                    )}
+
+                    <Section title="Uploaded NSRP Form">
+                      {!detail.uploaded_form_count ? (
+                        <Text style={styles.emptyText}>No NSRP form image uploaded. This profile was encoded manually.</Text>
+                      ) : forms === null ? (
+                        <Button
+                          testID="show-nsrp-forms"
+                          title={`Show Uploaded Form (${detail.uploaded_form_count})`}
+                          variant="secondary"
+                          onPress={loadForms}
+                          loading={formsLoading}
+                        />
+                      ) : (
+                        forms.map((f: any) => (
+                          <View key={f.id} style={styles.formImageWrap}>
+                            <Image source={{ uri: f.image_base64 }} style={styles.formImage} resizeMode="contain" />
+                            <Text style={styles.appMeta}>
+                              Uploaded {new Date(f.uploaded_at).toLocaleString()} / {f.ocr_confirmed ? 'OCR result confirmed by job seeker' : 'OCR result not confirmed'}
+                            </Text>
+                          </View>
+                        ))
+                      )}
+                    </Section>
 
                     <Section title="Required NSRP Items">
                       <NsrpRequirements requirements={detail.referral_requirements} />
@@ -266,6 +327,19 @@ export default function NsrpVerification() {
                           numberOfLines={3}
                           autoCapitalize="sentences"
                         />
+                        <Text style={styles.assessLabel}>For use of PESO only - eligible for public employment services? (optional, saved on Verify)</Text>
+                        <View style={styles.programRow}>
+                          {PESO_PROGRAMS.map((prog) => (
+                            <Chip
+                              key={prog}
+                              testID={`program-${prog}`}
+                              label={prog}
+                              active={programs.includes(prog)}
+                              onPress={() => setPrograms((cur) => (cur.includes(prog) ? cur.filter((x) => x !== prog) : [...cur, prog]))}
+                            />
+                          ))}
+                        </View>
+                        <Input testID="program-other" label="Others, specify" value={programOther} onChangeText={setProgramOther} />
                         <Button testID="nsrp-verify" title="Verify NSRP Profile" onPress={() => decide('verified')} loading={deciding} />
                         <View style={{ height: Spacing.sm }} />
                         <Button testID="nsrp-return" title="Return for Revision" variant="danger" onPress={() => decide('needs_revision')} loading={deciding} />
@@ -334,4 +408,11 @@ const styles = StyleSheet.create({
   appTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.textDark },
   appMeta: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 2 },
   emptyText: { color: Colors.gray, fontSize: FontSize.xs },
+  assessLabel: { fontSize: FontSize.xs, color: Colors.textDark, fontWeight: '700', marginBottom: 6 },
+  programRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  formImageWrap: { marginBottom: Spacing.sm },
+  formImage: {
+    width: '100%', aspectRatio: 0.72, backgroundColor: Colors.surfaceMuted,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.borderSoft,
+  },
 });

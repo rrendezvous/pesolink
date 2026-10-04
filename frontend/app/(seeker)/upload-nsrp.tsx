@@ -2,14 +2,15 @@
 // Upload NSRP Form + OCR-assisted NSRP review (combined)
 // OCR is OPTIONAL & ASSISTIVE - User must review/confirm before saving.
 // ============================================================
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, Card } from '../../src/components/ui';
+import { Button, Card } from '../../src/components/ui';
+import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
@@ -42,9 +43,22 @@ const emptyExtracted = {
   nsrp_full_data: defaultNsrpFullData,
 };
 
-const hasMergeValue = (value: any) => {
+// True when OCR actually read something (empty rows/objects from a page that wasn't scanned don't count).
+const hasMergeValue = (value: any): boolean => {
   if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.some(hasMergeValue);
+  if (value && typeof value === 'object') return Object.values(value).some(hasMergeValue);
   return String(value ?? '').trim().length > 0;
+};
+
+// Education levels and language rows are merged one level/row at a time.
+const mergeNested = (previous: any, incoming: any) => {
+  const merged = { ...(previous || {}) };
+  Object.entries(incoming || {}).forEach(([key, value]) => {
+    if (hasMergeValue(value)) merged[key] = value;
+  });
+  return merged;
 };
 
 const mergeExtractedData = (previous: any, incoming: any) => {
@@ -74,7 +88,10 @@ const mergeExtractedData = (previous: any, incoming: any) => {
   });
 
   Object.entries(incoming.nsrp_full_data || {}).forEach(([key, value]) => {
-    if (hasMergeValue(value)) merged.nsrp_full_data[key] = value;
+    if (!hasMergeValue(value)) return;
+    merged.nsrp_full_data[key] = (key === 'education' || key === 'languages')
+      ? mergeNested(merged.nsrp_full_data[key], value)
+      : value;
   });
 
   return merged;
@@ -86,7 +103,28 @@ export default function UploadNSRP() {
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploadId, setUploadId] = useState<number | null>(null);
+  // Every page scanned into the current review (page 1 and page 2 are confirmed together).
+  const [reviewUploadIds, setReviewUploadIds] = useState<number[]>([]);
   const [extracted, setExtracted] = useState<any | null>(null);
+  // The saved profile: OCR results are merged on top of it, so scanning one page never blanks the other page's fields.
+  const [savedProfile, setSavedProfile] = useState<any | null>(null);
+
+  useEffect(() => {
+    api.get('/job-seeker/profile')
+      .then((res) => {
+        const prof = res.data.profile || {};
+        let full = prof.nsrp_full_data || {};
+        if (typeof full === 'string') {
+          try { full = JSON.parse(full); } catch { full = {}; }
+        }
+        const base: any = {};
+        Object.keys(emptyExtracted).forEach((k) => {
+          if (k !== 'nsrp_full_data' && prof[k] != null) base[k] = prof[k];
+        });
+        setSavedProfile({ ...emptyExtracted, ...base, nsrp_full_data: { ...defaultNsrpFullData, ...full } });
+      })
+      .catch(() => setSavedProfile(null));
+  }, []);
   const [ocrSuccess, setOcrSuccess] = useState<boolean | null>(null);
   const [ocrStatus, setOcrStatus] = useState('');
   const [fieldCount, setFieldCount] = useState(0);
@@ -101,6 +139,7 @@ export default function UploadNSRP() {
 
   const resetReview = () => {
     setUploadId(null);
+    setReviewUploadIds([]);
     setExtracted(null);
     setOcrSuccess(null);
     setOcrStatus('');
@@ -133,7 +172,10 @@ export default function UploadNSRP() {
     }
     setImageBase64(`data:${imageMimeType(asset)};base64,${asset.base64}`);
     setImageUri(asset.uri);
-    if (!extracted) setUploadId(null);
+    if (!extracted) {
+      setUploadId(null);
+      setReviewUploadIds([]);
+    }
     setOcrSuccess(null);
     setOcrStatus('');
     setFieldCount(0);
@@ -240,6 +282,7 @@ export default function UploadNSRP() {
       );
       const newUploadId = upRes.data.upload_id;
       setUploadId(newUploadId);
+      setReviewUploadIds((ids) => [...ids, newUploadId]);
       setUploading(false);
       setExtracting(true);
       stage = 'extract';
@@ -247,7 +290,7 @@ export default function UploadNSRP() {
       const nextStatus = exRes.data.ocr_status || (exRes.data.success ? 'fields_extracted' : 'no_text');
       const nextFieldCount = Number(exRes.data.field_count || 0);
       const nextPageType = exRes.data.page_type || '';
-      setExtracted((current: any) => mergeExtractedData(current, exRes.data.extracted_data));
+      setExtracted((current: any) => mergeExtractedData(current || savedProfile, exRes.data.extracted_data));
       setRawText(exRes.data.raw_text || '');
       setOcrRegions(exRes.data.ocr_regions || null);
       setOcrSuccess(!!exRes.data.success);
@@ -262,7 +305,7 @@ export default function UploadNSRP() {
       }
 
     } catch (err) {
-      setExtracted((current: any) => current || emptyExtracted);
+      setExtracted((current: any) => current || savedProfile || emptyExtracted);
       setOcrRegions(null);
       setOcrSuccess(false);
       setOcrStatus(getRequestFailureStatus(err));
@@ -275,22 +318,11 @@ export default function UploadNSRP() {
     }
   };
 
-  const setField = (k: string, v: any) => setExtracted((p: any) => ({ ...p, [k]: v }));
-  const setFullDataField = (k: keyof typeof defaultNsrpFullData, v: string) => (
-    setExtracted((p: any) => ({
-      ...p,
-      nsrp_full_data: { ...defaultNsrpFullData, ...(p?.nsrp_full_data || {}), [k]: v },
-    }))
-  );
-  const fullDataValue = (k: keyof typeof defaultNsrpFullData) => (
-    extracted?.nsrp_full_data?.[k] || ''
-  );
-
   const confirmAndSave = async () => {
     if (!extracted) return;
     setConfirming(true);
     try {
-      await api.post('/nsrp/confirm', { upload_id: uploadId, confirmed_data: extracted });
+      await api.post('/nsrp/confirm', { upload_id: uploadId, upload_ids: reviewUploadIds, confirmed_data: extracted });
       Alert.alert(
         'Saved',
         'Your reviewed NSRP data has been saved to your profile.',
@@ -405,70 +437,14 @@ export default function UploadNSRP() {
                   </View>
                 )}
 
-                <Text style={styles.formGroup}>I. Personal Information</Text>
-                <Input testID="rev-first" label="First Name" value={extracted.first_name || ''} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
-                <Input testID="rev-middle" label="Middle Name" value={extracted.middle_name || ''} onChangeText={(v) => setField('middle_name', v)} autoCapitalize="words" />
-                <Input testID="rev-last" label="Last Name" value={extracted.last_name || ''} onChangeText={(v) => setField('last_name', v)} autoCapitalize="words" />
-                <Input testID="rev-suffix" label="Suffix" value={fullDataValue('suffix')} onChangeText={(v) => setFullDataField('suffix', v)} />
-                <Input testID="rev-dob" label="Date of Birth (YYYY-MM-DD)" value={extracted.date_of_birth || ''} onChangeText={(v) => setField('date_of_birth', v)} />
-                <Input testID="rev-place-birth" label="Place of Birth" value={fullDataValue('place_of_birth')} onChangeText={(v) => setFullDataField('place_of_birth', v)} autoCapitalize="words" />
-                <Input testID="rev-gender" label="Gender" value={extracted.gender || ''} onChangeText={(v) => setField('gender', v)} />
-                <Input testID="rev-civil" label="Civil Status" value={extracted.civil_status || ''} onChangeText={(v) => setField('civil_status', v)} />
-                <Input testID="rev-religion" label="Religion" value={fullDataValue('religion')} onChangeText={(v) => setFullDataField('religion', v)} />
-                <Input testID="rev-height" label="Height" value={fullDataValue('height')} onChangeText={(v) => setFullDataField('height', v)} />
-                <Input testID="rev-tin" label="TIN" value={fullDataValue('tin')} onChangeText={(v) => setFullDataField('tin', v)} />
-                <Input testID="rev-gsis-sss" label="GSIS/SSS ID No." value={fullDataValue('gsis_sss_no')} onChangeText={(v) => setFullDataField('gsis_sss_no', v)} />
-                <Input testID="rev-pagibig" label="PAG-IBIG No." value={fullDataValue('pagibig_no')} onChangeText={(v) => setFullDataField('pagibig_no', v)} />
-                <Input testID="rev-philhealth" label="PhilHealth No." value={fullDataValue('philhealth_no')} onChangeText={(v) => setFullDataField('philhealth_no', v)} />
-                <Input testID="rev-email" label="Email Address" value={fullDataValue('email_address')} onChangeText={(v) => setFullDataField('email_address', v)} keyboardType="email-address" />
-                <Input testID="rev-landline" label="Landline Number" value={fullDataValue('landline_number')} onChangeText={(v) => setFullDataField('landline_number', v)} />
-                <Input testID="rev-contact" label="Contact Number" value={extracted.contact_number || ''} onChangeText={(v) => setField('contact_number', v)} keyboardType="phone-pad" />
-                <Input testID="rev-cellphone" label="Cellphone Number" value={fullDataValue('cell_phone_number')} onChangeText={(v) => setFullDataField('cell_phone_number', v)} keyboardType="phone-pad" />
-                <Input testID="rev-address" label="Present Address" value={extracted.address || ''} onChangeText={(v) => setField('address', v)} multiline numberOfLines={2} />
-                <Input testID="rev-house-street" label="House No. / Street" value={fullDataValue('house_street')} onChangeText={(v) => setFullDataField('house_street', v)} />
-                <Input testID="rev-village" label="Village" value={fullDataValue('village')} onChangeText={(v) => setFullDataField('village', v)} />
-                <Input testID="rev-barangay" label="Barangay" value={fullDataValue('barangay')} onChangeText={(v) => setFullDataField('barangay', v)} />
-                <Input testID="rev-city" label="Municipality/City" value={extracted.city || ''} onChangeText={(v) => setField('city', v)} autoCapitalize="words" />
-                <Input testID="rev-province" label="Province" value={extracted.province || ''} onChangeText={(v) => setField('province', v)} autoCapitalize="words" />
-                <Input testID="rev-disability" label="Disability" value={fullDataValue('disability')} onChangeText={(v) => setFullDataField('disability', v)} />
-                <Input testID="rev-disability-other" label="Disability - Others, Specify" value={fullDataValue('disability_other')} onChangeText={(v) => setFullDataField('disability_other', v)} />
-                <Input testID="rev-emp-status" label="Employment Status" value={extracted.employment_status || ''} onChangeText={(v) => setField('employment_status', v)} />
-                <Input testID="rev-emp-type" label="Employment Type" value={fullDataValue('employment_type')} onChangeText={(v) => setFullDataField('employment_type', v)} />
-                <Input testID="rev-looking-work" label="Actively Looking for Work?" value={fullDataValue('looking_for_work')} onChangeText={(v) => setFullDataField('looking_for_work', v)} />
-                <Input testID="rev-looking-duration" label="How Long Looking for Work?" value={fullDataValue('looking_duration')} onChangeText={(v) => setFullDataField('looking_duration', v)} />
-                <Input testID="rev-willing-now" label="Willing to Work Immediately?" value={fullDataValue('willing_to_work_immediately')} onChangeText={(v) => setFullDataField('willing_to_work_immediately', v)} />
-                <Input testID="rev-available-when" label="If No, When?" value={fullDataValue('available_when')} onChangeText={(v) => setFullDataField('available_when', v)} />
-                <Input testID="rev-4ps" label="4Ps Beneficiary?" value={fullDataValue('four_ps_beneficiary')} onChangeText={(v) => setFullDataField('four_ps_beneficiary', v)} />
-                <Input testID="rev-household-id" label="Household ID No." value={fullDataValue('household_id')} onChangeText={(v) => setFullDataField('household_id', v)} />
-
-                <Text style={styles.formGroup}>II. Job Preference</Text>
-                <Input testID="rev-edu" label="Education Level" value={extracted.education_level || ''} onChangeText={(v) => setField('education_level', v)} />
-                <Input testID="rev-course" label="Course" value={extracted.course || ''} onChangeText={(v) => setField('course', v)} />
-                <Input testID="rev-occ" label="Preferred Occupation" value={extracted.preferred_occupation || ''} onChangeText={(v) => setField('preferred_occupation', v)} autoCapitalize="words" />
-                <Input testID="rev-pref-occupations" label="Preferred Occupations (1-4)" value={fullDataValue('preferred_occupations')} onChangeText={(v) => setFullDataField('preferred_occupations', v)} multiline numberOfLines={3} />
-                <Input testID="rev-work-location" label="Preferred Work Location" value={fullDataValue('preferred_work_location')} onChangeText={(v) => setFullDataField('preferred_work_location', v)} />
-                <Input testID="rev-local-locations" label="Local Cities/Municipalities" value={fullDataValue('preferred_local_locations')} onChangeText={(v) => setFullDataField('preferred_local_locations', v)} multiline numberOfLines={2} />
-                <Input testID="rev-overseas-locations" label="Overseas Countries" value={fullDataValue('preferred_overseas_locations')} onChangeText={(v) => setFullDataField('preferred_overseas_locations', v)} multiline numberOfLines={2} />
-                <Input testID="rev-expected-salary" label="Expected Salary Range" value={fullDataValue('expected_salary')} onChangeText={(v) => setFullDataField('expected_salary', v)} />
-                <Input testID="rev-passport" label="Passport No." value={fullDataValue('passport_number')} onChangeText={(v) => setFullDataField('passport_number', v)} />
-                <Input testID="rev-passport-expiry" label="Passport Expiry Date" value={fullDataValue('passport_expiry')} onChangeText={(v) => setFullDataField('passport_expiry', v)} />
-
-                <Text style={styles.formGroup}>III. Language / Dialect Proficiency</Text>
-                <Input testID="rev-language" label="Language / Dialect" value={fullDataValue('language_dialect')} onChangeText={(v) => setFullDataField('language_dialect', v)} />
-                <Input testID="rev-language-prof" label="Read / Write / Speak / Understand" value={fullDataValue('language_proficiency')} onChangeText={(v) => setFullDataField('language_proficiency', v)} multiline numberOfLines={3} />
-
-                <Text style={styles.formGroup}>IV. Educational Background</Text>
-                <Input testID="rev-elem-bg" label="Elementary" value={fullDataValue('elementary_background')} onChangeText={(v) => setFullDataField('elementary_background', v)} multiline numberOfLines={2} />
-                <Input testID="rev-secondary-bg" label="Secondary" value={fullDataValue('secondary_background')} onChangeText={(v) => setFullDataField('secondary_background', v)} multiline numberOfLines={2} />
-                <Input testID="rev-tertiary-bg" label="Tertiary" value={fullDataValue('tertiary_background')} onChangeText={(v) => setFullDataField('tertiary_background', v)} multiline numberOfLines={2} />
-                <Input testID="rev-grad-bg" label="Graduate Studies" value={fullDataValue('graduate_studies_background')} onChangeText={(v) => setFullDataField('graduate_studies_background', v)} multiline numberOfLines={2} />
-
-                <Text style={styles.formGroup}>V-VIII. Training, License, Experience, Other Skills</Text>
-                <Input testID="rev-trainings" label="Technical/Vocational and Other Training" value={fullDataValue('trainings')} onChangeText={(v) => setFullDataField('trainings', v)} multiline numberOfLines={3} />
-                <Input testID="rev-eligibility" label="Eligibility / Professional License" value={fullDataValue('eligibility_license')} onChangeText={(v) => setFullDataField('eligibility_license', v)} multiline numberOfLines={2} />
-                <Input testID="rev-workexp" label="Work Experience" value={fullDataValue('work_experience')} onChangeText={(v) => setFullDataField('work_experience', v)} multiline numberOfLines={4} />
-                <Input testID="rev-other-skills" label="Other Skills Acquired Without Formal Training" value={fullDataValue('other_skills_acquired')} onChangeText={(v) => setFullDataField('other_skills_acquired', v)} multiline numberOfLines={3} />
-
+                <Text style={styles.reviewHint}>
+                  Review every field below against your paper form. Fix anything the OCR read wrong, then confirm.
+                </Text>
+              </Card>
+            )}
+            {extracted && <NsrpForm value={extracted} onChange={setExtracted} idPrefix="rev" />}
+            {extracted && (
+              <Card style={styles.reviewCard}>
                 <View style={{ marginTop: Spacing.sm }}>
                   <Button testID="confirm-save" title="Confirm and Save" onPress={confirmAndSave} loading={confirming} />
                 </View>
@@ -497,6 +473,7 @@ const styles = StyleSheet.create({
   captureCard: { marginBottom: Spacing.xs },
   noticeCard: { backgroundColor: Colors.cardHighlight, marginBottom: Spacing.sm },
   reviewCard: { marginTop: Spacing.sm },
+  reviewHint: { fontSize: FontSize.sm, color: Colors.textDark, lineHeight: 20, marginTop: Spacing.sm },
   noticeTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
   notice: { fontSize: FontSize.xs, color: Colors.textDark, lineHeight: 18 },
   noticeInline: { fontSize: FontSize.xs, color: Colors.primary, marginBottom: Spacing.sm, fontWeight: '700', lineHeight: 18 },

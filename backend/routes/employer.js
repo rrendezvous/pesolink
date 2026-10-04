@@ -4,7 +4,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { recordHistory, closeOpenReferralsForJob, buildSkillComparison } = require('../services/referral');
+const {
+  recordHistory, notify, closeJobRecords, buildSkillComparison, ACTIVE_APPLICATION_STATUSES,
+} = require('../services/referral');
 
 const router = express.Router();
 router.use(authenticate, requireRole('employer'));
@@ -203,6 +205,29 @@ router.put('/jobs/:id', async (req, res) => {
       ]
     );
 
+    const nextStatus = status || job.status;
+    if (nextStatus === 'closed' && job.status !== 'closed') {
+      await closeJobRecords(conn, job.id, req.user.id, job_title || job.job_title, 'the employer');
+    } else if (nextStatus === 'active') {
+      // Job posting update alert (§3.5.4) for job seekers whose application is still in progress.
+      const [active] = await conn.query(
+        `SELECT DISTINCT js.user_id FROM job_applications ja JOIN job_seekers js ON js.id = ja.job_seeker_id
+         WHERE ja.job_post_id = ? AND ja.referral_status = 'peso_referred' AND ja.application_status IN (?)`,
+        [job.id, ACTIVE_APPLICATION_STATUSES]
+      );
+      for (const applicant of active) {
+        await notify(
+          conn,
+          applicant.user_id,
+          'Job Post Updated',
+          `${emp.company_name} updated the job post "${job_title || job.job_title}". Open it to review the latest details.`,
+          'job_post_update',
+          job.id,
+          'job_post'
+        );
+      }
+    }
+
     if (Array.isArray(required_skills)) {
       await conn.query('DELETE FROM job_required_skills WHERE job_post_id = ?', [req.params.id]);
       for (const s of required_skills) {
@@ -244,10 +269,13 @@ router.put('/jobs/:id/close', async (req, res) => {
     }
 
     await conn.query("UPDATE job_posts SET status = 'closed' WHERE id = ?", [req.params.id]);
-    await closeOpenReferralsForJob(conn, jobs[0].id, req.user.id, jobs[0].job_title);
+    const closed = await closeJobRecords(conn, jobs[0].id, req.user.id, jobs[0].job_title, 'the employer');
 
     await conn.commit();
-    res.json({ message: 'Job post closed; record retained for monitoring' });
+    res.json({
+      message: 'Job post closed; record retained for monitoring',
+      closed_applications: closed.applications + closed.referrals,
+    });
   } catch (err) {
     await conn.rollback();
     console.error('[Emp Job Close]', err);
@@ -406,6 +434,25 @@ router.put('/applications/:id/status', async (req, res) => {
         req.params.id,
       ]
     );
+
+    if (status === 'hired' && oldStatus !== 'hired') {
+      const [[job]] = await conn.query('SELECT id, vacancies, status FROM job_posts WHERE id = ?', [app.job_post_id]);
+      const [[hired]] = await conn.query(
+        "SELECT COUNT(*) AS count FROM job_applications WHERE job_post_id = ? AND application_status = 'hired'",
+        [app.job_post_id]
+      );
+      if (job.status === 'active' && hired.count >= job.vacancies) {
+        await notify(
+          conn,
+          req.user.id,
+          'All Vacancies Filled',
+          `"${app.job_title}" now has ${hired.count} hired for ${job.vacancies} ${job.vacancies === 1 ? 'vacancy' : 'vacancies'}. Close the job post when you are done so the remaining applicants are informed.`,
+          'vacancies_filled',
+          job.id,
+          'job_post'
+        );
+      }
+    }
 
     await conn.commit();
     res.json({ message: 'Status updated' });

@@ -162,7 +162,7 @@ const card = StyleSheet.create({
   },
 });
 
-export function StatusBadge({ status, testID }: { status: keyof typeof StatusColors; testID?: string }) {
+export function StatusBadge({ status, testID, label }: { status: keyof typeof StatusColors; testID?: string; label?: string }) {
   const cfg = StatusColors[status];
   if (!cfg) return null;
   return (
@@ -180,7 +180,7 @@ export function StatusBadge({ status, testID }: { status: keyof typeof StatusCol
       }}
     >
       <Text style={{ color: cfg.text, fontSize: FontSize.xs, fontWeight: '800', textAlign: 'center' }}>
-        {StatusLabels[status]}
+        {label || StatusLabels[status]}
       </Text>
     </View>
   );

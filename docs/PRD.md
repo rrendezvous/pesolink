@@ -49,8 +49,9 @@ PESO Admin users manage employer accounts, monitor job seekers and their NSRP pr
 
 ### NSRP Profile Management
 
-- The system shall allow job seekers to create and update an NSRP-based profile.
-- The system shall store core profile fields and extended NSRP data.
+- The system shall allow job seekers to create and update an NSRP-based profile that follows NSRP Form 1 (DOLE, January 2017), sections I-VIII, with the form's options (e.g., Live-in civil status, employment types, disability and other-skills checklists) and table rows (education per level, training, eligibility/license, work experience).
+- The system shall store core profile fields and extended NSRP data; summary fields (address, highest education level, background text) are filled from the form rows.
+- The system shall require the job seeker to accept the form's certification/authorization statement when submitting the NSRP profile to PESO.
 - The system shall allow job seekers to encode skills.
 - The system shall show a checklist of required PESO review fields.
 - The system shall block PESO review submission when required profile fields are incomplete.
@@ -90,7 +91,10 @@ NSRP statuses (PESO Admin):
 - The system shall allow approved employers to update job postings.
 - The system shall allow employers to provide requirements/application instructions and an optional application email for direct (untracked) applications.
 - The system shall allow employers to select required skills for each job.
-- The system shall allow employers and PESO Admin to close job posts.
+- The system shall allow employers and PESO Admin to close job posts. Closing a post moves in-progress applications (For Review / For Interview) to Closed and notifies those job seekers that it is not a rejection; Hired and Rejected records stay as they are.
+- The system shall notify job seekers with in-progress applications when the employer updates the job post.
+- The system shall notify the employer when the number of hired applicants reaches the vacancies (the employer still decides whether to close the post).
+- The system shall hide job posts whose closing date has passed or whose employer account is deactivated, and refuse applications to them.
 - The system shall retain closed job posts for monitoring instead of hard-deleting them.
 - The system shall notify active job seekers when a new job is posted by an approved employer.
 
@@ -114,6 +118,9 @@ Job post statuses:
 - The system shall display matched skills.
 - The system shall display missing required skills.
 - The system shall display counts only as a simple comparison.
+- The system shall use one shared comparison for the job seeker, employer, and PESO Admin views and for the apply check.
+- The system shall show the comparison only after the job seeker has saved profile skills (§3.5.4); otherwise it lists the job's required skills and asks the seeker to add theirs.
+- Proficiency levels are stored but not used in the comparison (the paper compares skills only).
 - The system shall not generate scores, rankings, recommendations, automated screening results, or hiring decisions.
 
 ### Job Application Tracking
@@ -123,7 +130,7 @@ Job post statuses:
 - The system shall allow employers to view only PESO-referred applicants for their own job posts.
 - The system shall allow employers to update the application status of PESO-referred applicants.
 - The system shall notify job seekers when application status changes.
-- The system shall allow PESO Admin to monitor all applications.
+- The system shall allow PESO Admin to monitor all applications, grouped by job post (with per-job counts by status) or as a list, filtered by employer, status, and search.
 
 Application statuses (employer, after PESO-Referred):
 
@@ -153,18 +160,24 @@ The employer applicant view shall show:
 - Cover letter when submitted
 - Application status update controls
 
+### Employer Account Management (PESO Admin)
+
+- The system shall allow PESO Admin to create, approve, reject, edit, deactivate, and reactivate employer accounts.
+- Deactivating an employer closes its active job posts (and their in-progress applications, with notices to the job seekers); reactivating does not reopen them.
+
 ### Notifications
 
 The system shall store and display in-app notification records for:
 
-- Employer account creation
-- Employer account approval/rejection
-- NSRP profile review updates
+- Employer account creation, approval/rejection, detail edits, deactivation/reactivation
+- NSRP profile submission, resubmission, and changes after verification (PESO Admin)
+- NSRP For Review / PESO-Verified / Needs Revision / sent back for re-checking (job seeker)
 - New job posting alerts to active seekers
-- New application alerts to employers
+- Job post updates and closures to applicants with in-progress applications
+- New PESO-referred applicant alerts and all-vacancies-filled alerts to employers
 - Application status updates to seekers
 - Admin job closure alerts
-- Account deactivation/reactivation
+- Account deactivation/reactivation (and the resulting closed applications)
 
 Native push notification service is not part of the current prototype.
 

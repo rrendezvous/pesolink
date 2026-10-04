@@ -46,7 +46,7 @@ CREATE TABLE job_seekers (
   last_name VARCHAR(100),
   date_of_birth DATE,
   gender ENUM('male', 'female', 'other'),
-  civil_status ENUM('single', 'married', 'widowed', 'separated'),
+  civil_status ENUM('single', 'married', 'widowed', 'separated', 'live-in'),
   contact_number VARCHAR(20),
   address TEXT,
   city VARCHAR(100),
@@ -65,8 +65,12 @@ CREATE TABLE job_seekers (
   nsrp_reviewed_by INT NULL,
   nsrp_reviewed_at TIMESTAMP NULL,
   nsrp_submitted_at TIMESTAMP NULL,
+  -- When the job seeker accepted the NSRP form's certification/authorization statement.
+  nsrp_certified_at TIMESTAMP NULL,
   -- Fingerprint of the NSRP data PESO verified; any change sends the profile back for re-checking.
   nsrp_reviewed_hash CHAR(64) NULL,
+  -- NSRP Form 1 "For use of PESO only": programs the job seeker is eligible for, set by PESO Admin.
+  peso_assessment JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

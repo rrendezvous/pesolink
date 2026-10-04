@@ -85,6 +85,11 @@ const PAGE1_REGION_SPECS = {
   passport_number: { region: [0.585, 0.765, 0.110, 0.024], mode: 'image', psm: 'SINGLE_LINE' },
   passport_expiry: { region: [0.835, 0.765, 0.130, 0.024], mode: 'image', psm: 'SINGLE_LINE' },
 
+  // Answers written on the lines after the Yes/No questions
+  looking_duration: { region: [0.875, 0.565, 0.120, 0.022], mode: 'image', psm: 'SINGLE_LINE' },
+  available_when: { region: [0.540, 0.586, 0.300, 0.022], mode: 'image', psm: 'SINGLE_LINE' },
+  household_id: { region: [0.555, 0.608, 0.220, 0.022], mode: 'image', psm: 'SINGLE_LINE' },
+
   language_english: { region: [0.050, 0.828, 0.900, 0.025], mode: 'image' },
   language_filipino: { region: [0.050, 0.855, 0.900, 0.020], mode: 'image' },
 };
@@ -211,6 +216,22 @@ const PAGE1_CHECKBOX_GROUPS = [
     ],
   },
 ];
+
+// III. Language / dialect proficiency: tick marks in the Read / Write / Speak / Understand cells.
+const LANGUAGE_COLUMNS = [
+  { value: 'read', x: 0.274 },
+  { value: 'write', x: 0.482 },
+  { value: 'speak', x: 0.691 },
+  { value: 'understand', x: 0.865 },
+];
+PAGE1_CHECKBOX_GROUPS.push(
+  ...[['language_english', 0.846], ['language_filipino', 0.872], ['language_other', 0.894]].map(([field, y]) => ({
+    field,
+    multi: true,
+    threshold: 0.06,
+    values: LANGUAGE_COLUMNS.map((c) => ({ value: c.value, x: c.x, y })),
+  })),
+);
 
 const PAGE2_CHECKBOX_GROUPS = [
   {
@@ -543,7 +564,7 @@ function detectNsrpCheckboxes(binaryImage, dy = 0, groups = PAGE1_CHECKBOX_GROUP
     densities[group.field] = measured.map(({ value, density }) => ({ value, density: Number(density.toFixed(4)) }));
     if (group.multi) {
       const picked = measured
-        .filter((item) => item.density >= 0.180)
+        .filter((item) => item.density >= (group.threshold ?? 0.180))
         .map((item) => item.value);
       if (picked.length > 0) results[group.field] = picked;
     } else {
@@ -1003,8 +1024,44 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   const otherSkillText = cleanFreeText(rv('other_skills_other_text'));
   if (otherSkillText) checkedSkills.push(`Others: ${otherSkillText}`);
 
+  // Structured rows matching the NSRP Form 1 tables ("NA" cells count as blank).
+  const cell = (key) => {
+    const v = cleanFreeText(rv(key));
+    return /^n\.?\/?a\.?$/i.test(v) ? '' : v;
+  };
+  const eduRow = (prefix) => ({
+    school: cell(`${prefix}_school`),
+    course: cell(`${prefix}_course`),
+    year_graduated: cell(`${prefix}_year`),
+    level_reached: cell(`${prefix}_level`),
+    year_last_attended: cell(`${prefix}_last_attended`),
+    awards: cell(`${prefix}_awards`),
+  });
+  const workRow = (n) => ({
+    company: cell(`work_${n}_company`),
+    address: cell(`work_${n}_address`),
+    position: cell(`work_${n}_position`) || (n === 1 && /IT\s+Intern/i.test(rawText) ? 'IT Intern' : ''),
+    dates: cell(`work_${n}_dates`),
+    status: cell(`work_${n}_status`),
+  });
+
   const nsrpFullData = {
     ...EMPTY_FULL_DATA,
+    education: {
+      elementary: eduRow('elementary'),
+      secondary: eduRow('secondary'),
+      tertiary: eduRow('tertiary'),
+      graduate: eduRow('graduate'),
+    },
+    training_rows: [{
+      course: cell('training_1_course'),
+      duration: cell('training_1_duration'),
+      institution: cell('training_1_institution'),
+      certificate: cell('training_1_certificate'),
+    }],
+    work_rows: [workRow(1), workRow(2)],
+    other_skills_checked: checkedSkills.filter((skill) => !skill.startsWith('Others:')),
+    other_skills_other: otherSkillText,
     trainings: training,
     eligibility_license: '',
     work_experience: workRows.join('\n'),
@@ -1077,6 +1134,10 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const lookingWork = checkboxes.looking_for_work || '';
   const willingNow = checkboxes.willing_to_work_immediately || '';
   const fourPs = checkboxes.four_ps_beneficiary || '';
+  const notNa = (v) => (/^n\.?\/?a\.?$/i.test(v) ? '' : v);
+  const lookingDuration = notNa(cleanFreeText(rv('looking_duration', ['How long'])));
+  const availableWhen = notNa(cleanFreeText(rv('available_when', ['If no', 'when'])));
+  const householdId = notNa(validateIdNumber(rv('household_id', ['Household', 'ID', 'No.'])) || '');
   const workLocation = checkboxes.work_location || '';
 
   const occList = [
@@ -1101,10 +1162,25 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const expectedSalary = validateSalary(rv('expected_salary', ['Expected Salary', 'Range']));
   const passportNumber = validateIdNumber(rv('passport_number', ['Passport', 'No.']));
   const passportExpiry = validateDate(rv('passport_expiry', ['Expiry', 'date']));
-  const languageRows = [
-    rv('language_english').match(/English/i) ? 'English: Read, Write, Speak, Understand' : '',
-    rv('language_filipino').match(/Filipino/i) ? 'Filipino: Read, Write, Speak, Understand' : '',
-  ].filter(Boolean);
+  // Language grid: use the tick marks detected in each Read / Write / Speak / Understand cell
+  // (the row labels are printed on every form, so they say nothing about what was ticked).
+  const SKILL_ORDER = ['read', 'write', 'speak', 'understand'];
+  const languageTicks = (field) => {
+    const ticked = Array.isArray(checkboxes[field]) ? checkboxes[field] : [];
+    return Object.fromEntries(SKILL_ORDER.map((skill) => [skill, ticked.includes(skill)]));
+  };
+  const languageGrid = {
+    english: languageTicks('language_english'),
+    filipino: languageTicks('language_filipino'),
+    other: languageTicks('language_other'),
+  };
+  const titleCase = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
+  const languageRows = [['English', languageGrid.english], ['Filipino', languageGrid.filipino], ['Others', languageGrid.other]]
+    .map(([name, ticks]) => {
+      const skills = SKILL_ORDER.filter((skill) => ticks[skill]).map(titleCase);
+      return skills.length ? `${name}: ${skills.join(', ')}` : '';
+    })
+    .filter(Boolean);
 
   const nsrpFullData = {
     ...EMPTY_FULL_DATA,
@@ -1127,6 +1203,9 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     looking_for_work: lookingWork,
     willing_to_work_immediately: willingNow,
     four_ps_beneficiary: fourPs,
+    looking_duration: lookingDuration,
+    available_when: availableWhen,
+    household_id: householdId,
     preferred_occupations: occList.join('\n'),
     preferred_work_location: workLocation,
     preferred_local_locations: localLocations.join('\n'),
@@ -1134,8 +1213,13 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     expected_salary: expectedSalary,
     passport_number: passportNumber,
     passport_expiry: passportExpiry,
-    language_dialect: languageRows.map((line) => line.split(':')[0]).join('\n'),
+    language_dialect: languageRows.map((line) => line.split(':')[0]).join(', '),
     language_proficiency: languageRows.join('\n'),
+    // Structured lists matching the NSRP Form 1 rows
+    preferred_occupation_list: occList,
+    local_location_list: localLocations,
+    overseas_location_list: overseasLocations,
+    ...(languageRows.length ? { languages: languageGrid } : {}),
   };
 
   return {

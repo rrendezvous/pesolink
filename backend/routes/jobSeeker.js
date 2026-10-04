@@ -6,6 +6,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted } = require('../services/nsrpProfileValidation');
 const { NSRP_STATUS_LABELS, notifyAdminsOfSubmission } = require('../services/nsrpReview');
+const { normalizeNsrpProfile } = require('../services/nsrpForm');
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ router.get('/profile', async (req, res) => {
 
 // POST /api/job-seeker/profile - create/update NSRP profile
 router.post('/profile', async (req, res) => {
+  // Fill summary fields (address, education level, background text, ...) from the NSRP form rows.
   const {
     first_name,
     middle_name,
@@ -64,7 +66,7 @@ router.post('/profile', async (req, res) => {
     employment_status,
     preferred_occupation,
     nsrp_full_data,
-  } = req.body;
+  } = normalizeNsrpProfile(req.body);
 
   try {
     const jsId = await getJobSeekerId(req.user.id);
@@ -121,6 +123,14 @@ router.post('/profile/submit-nsrp', async (req, res) => {
     const jsId = await getJobSeekerId(req.user.id);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
+    // NSRP Form 1 certification/authorization statement.
+    if (req.body?.certified !== true) {
+      return res.status(400).json({
+        error: 'Please confirm the certification that your NSRP information is true before submitting',
+        code: 'CERTIFICATION_REQUIRED',
+      });
+    }
+
     const requirements = await refreshProfileCompleted(db, jsId);
     if (!requirements.isComplete) {
       return res.status(400).json({
@@ -139,7 +149,7 @@ router.post('/profile/submit-nsrp', async (req, res) => {
     }
 
     await db.query(
-      "UPDATE job_seekers SET nsrp_status = 'submitted', nsrp_submitted_at = NOW(), nsrp_review_notes = NULL WHERE id = ?",
+      "UPDATE job_seekers SET nsrp_status = 'submitted', nsrp_submitted_at = NOW(), nsrp_certified_at = NOW(), nsrp_review_notes = NULL WHERE id = ?",
       [jsId]
     );
     await notifyAdminsOfSubmission(

@@ -9,6 +9,7 @@
 // ============================================================
 const crypto = require('crypto');
 const { notify } = require('./referral');
+const { DERIVED_COLUMNS } = require('./nsrpForm');
 
 const NSRP_STATUS_LABELS = {
   not_submitted: 'Not Submitted',
@@ -69,13 +70,15 @@ function withoutBlanks(value) {
       .filter(([, item]) => item !== undefined);
     return entries.length ? Object.fromEntries(entries) : undefined;
   }
-  if (value === null || value === undefined) return undefined;
+  if (value === null || value === undefined || value === false) return undefined;
   const text = String(value).trim();
   return text === '' ? undefined : text;
 }
 
 // Fingerprint of everything PESO verifies: NSRP fields, extended NSRP data, and skills.
-async function nsrpFingerprint(queryable, jobSeekerId) {
+// Version 2 (current) leaves out columns the app derives from other fields. Version 1 is the
+// original formula, still accepted so profiles verified before the change are not sent back.
+async function nsrpFingerprint(queryable, jobSeekerId, version = 2) {
   const [rows] = await queryable.query('SELECT * FROM job_seekers WHERE id = ?', [jobSeekerId]);
   if (rows.length === 0) return null;
   const profile = rows[0];
@@ -84,7 +87,9 @@ async function nsrpFingerprint(queryable, jobSeekerId) {
     [jobSeekerId]
   );
   const data = withoutBlanks({
-    fields: Object.fromEntries(NSRP_COLUMNS.map((column) => [column, profile[column]])),
+    fields: Object.fromEntries(NSRP_COLUMNS
+      .filter((column) => version === 1 || !DERIVED_COLUMNS.includes(column))
+      .map((column) => [column, profile[column]])),
     full: parseJson(profile.nsrp_full_data),
     skills: skills.map((skill) => `${skill.skill_id}:${skill.proficiency_level}`),
   }) || {};
@@ -107,6 +112,11 @@ async function syncNsrpStatusAfterEdit(queryable, jobSeekerId, requirements) {
   if (seeker.nsrp_status === 'verified') {
     const current = await nsrpFingerprint(queryable, jobSeekerId);
     if (current === seeker.nsrp_reviewed_hash) return null;
+    if (await nsrpFingerprint(queryable, jobSeekerId, 1) === seeker.nsrp_reviewed_hash) {
+      // Verified under the original fingerprint and unchanged: upgrade the stored fingerprint.
+      await queryable.query('UPDATE job_seekers SET nsrp_reviewed_hash = ? WHERE id = ?', [current, jobSeekerId]);
+      return null;
+    }
     const next = isComplete ? 'submitted' : 'not_submitted';
     await queryable.query(
       `UPDATE job_seekers

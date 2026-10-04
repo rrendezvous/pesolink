@@ -5,11 +5,16 @@ const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted, parseFullData } = require('../services/nsrpProfileValidation');
-const { notify, closeOpenReferralsForJob, buildSkillComparison } = require('../services/referral');
+const {
+  notify, closeJobRecords, closeActiveApplications, buildSkillComparison,
+} = require('../services/referral');
 const { NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES, nsrpFingerprint } = require('../services/nsrpReview');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
+
+// NSRP Form 1 "Eligible for public employment services?" options (for use of PESO only).
+const PESO_PROGRAMS = ['SPES', 'GIP', 'TUPAD', 'JobStart'];
 
 // GET /api/admin/employers/pending
 router.get('/employers/pending', async (req, res) => {
@@ -185,6 +190,131 @@ router.put('/employers/:id/reject', async (req, res) => {
   }
 });
 
+// PUT /api/admin/employers/:id - PESO Admin corrects an employer's company details (§3.5.3)
+router.put('/employers/:id', async (req, res) => {
+  const fields = ['company_name', 'company_address', 'contact_person', 'contact_number', 'business_type', 'company_size'];
+  const updates = Object.fromEntries(fields.filter((f) => req.body[f] !== undefined).map((f) => [f, req.body[f]]));
+  if (updates.company_name !== undefined && !String(updates.company_name).trim()) {
+    return res.status(400).json({ error: 'Company name cannot be blank' });
+  }
+  if (updates.company_size && !['small', 'medium', 'large'].includes(updates.company_size)) {
+    return res.status(400).json({ error: 'Company size must be small, medium, or large' });
+  }
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Nothing to update' });
+
+  try {
+    const [rows] = await db.query('SELECT * FROM employers WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Employer not found' });
+    const emp = rows[0];
+
+    const values = Object.values(updates).map((v) => (typeof v === 'string' && v.trim() === '' ? null : v));
+    await db.query(
+      `UPDATE employers SET ${Object.keys(updates).map((f) => `${f} = ?`).join(', ')} WHERE id = ?`,
+      [...values, emp.id]
+    );
+    await notify(
+      db,
+      emp.user_id,
+      'Company Details Updated',
+      'PESO Admin updated your company details. Open your dashboard to review them.',
+      'employer_account',
+      emp.id,
+      'employer'
+    );
+    const [updated] = await db.query(
+      'SELECT e.*, u.email, u.account_status FROM employers e JOIN users u ON u.id = e.user_id WHERE e.id = ?',
+      [emp.id]
+    );
+    res.json({ message: 'Employer details updated', employer: updated[0] });
+  } catch (err) {
+    console.error('[Admin Update Employer]', err);
+    res.status(500).json({ error: 'Failed to update employer' });
+  }
+});
+
+// PUT /api/admin/employers/:id/deactivate - suspend an employer account (§3.5.3 manage employer accounts)
+// Its active job posts are closed so job seekers are not left waiting on an employer who can no longer act.
+router.put('/employers/:id/deactivate', async (req, res) => {
+  const reason = String(req.body.reason || '').trim();
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query('SELECT * FROM employers WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Employer not found' });
+    }
+    const emp = rows[0];
+
+    await conn.query("UPDATE users SET account_status = 'suspended' WHERE id = ?", [emp.user_id]);
+    const [jobs] = await conn.query("SELECT id, job_title FROM job_posts WHERE employer_id = ? AND status = 'active'", [emp.id]);
+    for (const job of jobs) {
+      await conn.query("UPDATE job_posts SET status = 'closed' WHERE id = ?", [job.id]);
+      await closeJobRecords(conn, job.id, req.user.id, job.job_title, 'PESO Admin');
+    }
+    await notify(
+      conn,
+      emp.user_id,
+      'Account Deactivated',
+      `Your employer account was deactivated by PESO Admin.${reason ? ` Reason: ${reason}` : ''} Your active job posts were closed.`,
+      'account_deactivated',
+      emp.id,
+      'employer'
+    );
+
+    await conn.commit();
+    res.json({ message: 'Employer account deactivated', closed_job_posts: jobs.length });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[Admin Deactivate Employer]', err);
+    res.status(500).json({ error: 'Failed to deactivate employer' });
+  } finally {
+    conn.release();
+  }
+});
+
+// PUT /api/admin/employers/:id/reactivate - closed job posts stay closed; the employer can post again
+router.put('/employers/:id/reactivate', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM employers WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Employer not found' });
+    const emp = rows[0];
+    if (emp.approval_status !== 'approved') {
+      return res.status(400).json({ error: 'Approve this employer instead; only approved accounts can be reactivated' });
+    }
+    await db.query("UPDATE users SET account_status = 'active' WHERE id = ?", [emp.user_id]);
+    await notify(
+      db,
+      emp.user_id,
+      'Account Reactivated',
+      'Your employer account was reactivated by PESO Admin. Job posts closed during the deactivation stay closed; you can post again.',
+      'account_reactivated',
+      emp.id,
+      'employer'
+    );
+    res.json({ message: 'Employer account reactivated' });
+  } catch (err) {
+    console.error('[Admin Reactivate Employer]', err);
+    res.status(500).json({ error: 'Failed to reactivate employer' });
+  }
+});
+
+// GET /api/admin/job-seekers/:id/nsrp-forms - uploaded NSRP form images, for comparing with the encoded profile.
+// Kept separate from the profile endpoint because the images are large.
+router.get('/job-seekers/:id/nsrp-forms', async (req, res) => {
+  try {
+    const [forms] = await db.query(
+      `SELECT id, image_base64, ocr_confirmed, uploaded_at
+       FROM uploaded_nsrp_forms WHERE job_seeker_id = ? ORDER BY uploaded_at DESC LIMIT 4`,
+      [req.params.id]
+    );
+    res.json({ forms });
+  } catch (err) {
+    console.error('[Admin NSRP Forms]', err);
+    res.status(500).json({ error: 'Failed to fetch uploaded NSRP forms' });
+  }
+});
+
 // GET /api/admin/job-seekers - NSRP profiles waiting for PESO verification first
 router.get('/job-seekers', async (req, res) => {
   try {
@@ -236,8 +366,11 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
     );
 
     const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skills.length });
+    const [[uploads]] = await db.query('SELECT COUNT(*) AS count FROM uploaded_nsrp_forms WHERE job_seeker_id = ?', [profile.id]);
 
-    res.json({ profile, skills, applications, referral_requirements: referralRequirements });
+    res.json({
+      profile, skills, applications, referral_requirements: referralRequirements, uploaded_form_count: uploads.count,
+    });
   } catch (err) {
     console.error('[Admin Seeker Profile]', err);
     res.status(500).json({ error: 'Failed to fetch job seeker profile' });
@@ -251,7 +384,7 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
 // Only profiles waiting on PESO (submitted / for_review) can be decided. A verified profile goes back
 // to PESO automatically when the job seeker changes it.
 router.put('/job-seekers/:id/nsrp-status', async (req, res) => {
-  const { nsrp_status: next, notes } = req.body;
+  const { nsrp_status: next, notes, peso_assessment: assessment } = req.body;
   if (!['for_review', 'verified', 'needs_revision'].includes(next)) {
     return res.status(400).json({ error: 'nsrp_status must be for_review, verified, or needs_revision' });
   }
@@ -298,6 +431,20 @@ router.put('/job-seekers/:id/nsrp-status', async (req, res) => {
        WHERE id = ?`,
       [next, reason || null, req.user.id, next === 'verified' ? await nsrpFingerprint(conn, seeker.id) : seeker.nsrp_reviewed_hash, seeker.id]
     );
+    // NSRP Form 1 "For use of PESO only": eligibility for public employment services.
+    if (next === 'verified' && assessment && typeof assessment === 'object') {
+      const programs = (Array.isArray(assessment.programs) ? assessment.programs : [])
+        .filter((p) => PESO_PROGRAMS.includes(p));
+      await conn.query('UPDATE job_seekers SET peso_assessment = ? WHERE id = ?', [
+        JSON.stringify({
+          programs,
+          other: String(assessment.other || '').trim() || null,
+          assessed_by: req.user.email,
+          assessed_at: new Date().toISOString(),
+        }),
+        seeker.id,
+      ]);
+    }
 
     const message = {
       for_review: ['NSRP Profile For Review', 'PESO Misamis Oriental is now reviewing your NSRP profile.'],
@@ -337,6 +484,14 @@ router.put('/job-seekers/:id/deactivate', async (req, res) => {
     const seeker = rows[0];
 
     await conn.query("UPDATE users SET account_status='suspended' WHERE id=?", [seeker.user_id]);
+    await closeActiveApplications(conn, {
+      where: 'ja.job_seeker_id = ?',
+      params: [seeker.id],
+      closedBy: req.user.id,
+      note: 'The job seeker account was deactivated by PESO Admin.',
+      seekerMessage: (app) => `Your application for "${app.job_title}" was closed because your account was deactivated.`,
+      notifyEmployer: true,
+    });
 
     await conn.query(
       `INSERT INTO notifications (user_id, title, message, type)
@@ -408,7 +563,7 @@ router.put('/jobs/:id/close', async (req, res) => {
     const job = rows[0];
 
     await conn.query("UPDATE job_posts SET status='closed' WHERE id=?", [req.params.id]);
-    await closeOpenReferralsForJob(conn, job.id, req.user.id, job.job_title);
+    await closeJobRecords(conn, job.id, req.user.id, job.job_title, 'PESO Admin');
 
     await conn.query(
       `INSERT INTO notifications (user_id, title, message, type, related_id, related_type)
@@ -452,7 +607,7 @@ router.get('/jobs', async (req, res) => {
 router.get('/applications', async (req, res) => {
   try {
     const [apps] = await db.query(
-      `SELECT ja.*, jp.job_title, jp.location, jp.status AS job_status, e.company_name,
+      `SELECT ja.*, jp.job_title, jp.location, jp.status AS job_status, jp.vacancies, e.id AS employer_id, e.company_name,
               js.first_name, js.last_name, js.profile_completed, u.email AS seeker_email
        FROM job_applications ja
        JOIN job_posts jp ON jp.id = ja.job_post_id

@@ -6,7 +6,7 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { recordHistory, notify, buildSkillComparison } = require('../services/referral');
+const { recordHistory, notify, getSkillComparison } = require('../services/referral');
 const { NSRP_STATUS_LABELS, requiredMatchesFor } = require('../services/nsrpReview');
 
 const router = express.Router();
@@ -49,26 +49,18 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
 
     const [job] = await conn.query(
       `SELECT jp.*, e.company_name, e.user_id AS employer_user_id
-       FROM job_posts jp JOIN employers e ON e.id = jp.employer_id
-       WHERE jp.id = ? AND jp.status = 'active'`,
+       FROM job_posts jp JOIN employers e ON e.id = jp.employer_id JOIN users eu ON eu.id = e.user_id
+       WHERE jp.id = ? AND jp.status = 'active' AND eu.account_status = 'active'
+         AND (jp.closing_date IS NULL OR jp.closing_date >= CURDATE())`,
       [job_post_id]
     );
     if (job.length === 0) {
       await conn.rollback();
-      return res.status(404).json({ error: 'Job not found or not active' });
+      return res.status(404).json({ error: 'This job post is closed or no longer accepting applications', code: 'JOB_CLOSED' });
     }
 
     // Temporary minimum skill-match rule (MIN_SKILL_MATCHES) until PESO confirms its own rule.
-    const [requiredSkills] = await conn.query(
-      `SELECT s.id, s.skill_name FROM job_required_skills jrs JOIN skills s ON s.id = jrs.skill_id
-       WHERE jrs.job_post_id = ?`,
-      [job_post_id]
-    );
-    const [seekerSkills] = await conn.query(
-      'SELECT s.id, s.skill_name FROM job_seeker_skills jss JOIN skills s ON s.id = jss.skill_id WHERE jss.job_seeker_id = ?',
-      [jobSeeker.id]
-    );
-    const comparison = buildSkillComparison(requiredSkills, seekerSkills);
+    const comparison = await getSkillComparison(conn, job_post_id, jobSeeker.id);
     const neededMatches = requiredMatchesFor(comparison.total_required_skills);
     if (comparison.matched_count < neededMatches) {
       await conn.rollback();

@@ -6,6 +6,7 @@ const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
 const { requiredMatchesFor } = require('../services/nsrpReview');
+const { getSkillComparison } = require('../services/referral');
 
 const router = express.Router();
 
@@ -17,7 +18,9 @@ router.get('/', authenticate, async (req, res) => {
       SELECT jp.*, e.company_name, e.business_type
       FROM job_posts jp
       JOIN employers e ON e.id = jp.employer_id
-      WHERE jp.status = 'active' AND e.approval_status = 'approved'
+      JOIN users eu ON eu.id = e.user_id
+      WHERE jp.status = 'active' AND e.approval_status = 'approved' AND eu.account_status = 'active'
+        AND (jp.closing_date IS NULL OR jp.closing_date >= CURDATE())
     `;
     const params = [];
 
@@ -50,14 +53,18 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const [jobs] = await db.query(
       `SELECT jp.*, e.company_name, e.company_address, e.contact_person,
-              e.contact_number, e.business_type
+              e.contact_number, e.business_type,
+              (jp.status = 'active' AND eu.account_status = 'active'
+               AND (jp.closing_date IS NULL OR jp.closing_date >= CURDATE())) AS accepting_applications
        FROM job_posts jp
        JOIN employers e ON e.id = jp.employer_id
+       JOIN users eu ON eu.id = e.user_id
        WHERE jp.id = ?`,
       [req.params.id]
     );
     if (jobs.length === 0) return res.status(404).json({ error: 'Job not found' });
     const job = jobs[0];
+    job.accepting_applications = Boolean(job.accepting_applications);
 
     const [skills] = await db.query(
       `SELECT s.id, s.skill_name, s.category, jrs.required_level, jrs.is_required
@@ -101,37 +108,20 @@ router.get('/:id/match', authenticate, async (req, res) => {
     if (jsRows.length === 0) return res.status(404).json({ error: 'Profile not found' });
     const jsId = jsRows[0].id;
 
-    const [requiredSkills] = await db.query(
-      `SELECT s.id, s.skill_name, s.category, jrs.required_level, jrs.is_required
-       FROM job_required_skills jrs
-       JOIN skills s ON s.id = jrs.skill_id
-       WHERE jrs.job_post_id = ?`,
-      [req.params.id]
-    );
-
-    const [seekerSkills] = await db.query(
-      `SELECT s.id, s.skill_name, s.category, jss.proficiency_level
-       FROM job_seeker_skills jss
-       JOIN skills s ON s.id = jss.skill_id
-       WHERE jss.job_seeker_id = ?`,
-      [jsId]
-    );
-
-    const seekerSkillIds = new Set(seekerSkills.map((s) => s.id));
-    const matched = requiredSkills.filter((s) => seekerSkillIds.has(s.id));
-    const unmatched = requiredSkills.filter((s) => !seekerSkillIds.has(s.id));
-
+    const comparison = await getSkillComparison(db, req.params.id, jsId);
     // Temporary minimum (MIN_SKILL_MATCHES) for applying with PESO referral, capped at the job's skill count.
-    const requiredMatches = requiredMatchesFor(requiredSkills.length);
+    const requiredMatches = requiredMatchesFor(comparison.total_required_skills);
     res.json({
-      notice: 'Rule-based skill comparison only. No ranking or recommendation.',
+      notice: comparison.skill_comparison_notice,
+      // §3.5.4: the comparison is meaningful only after the job seeker has saved (confirmed) profile skills.
+      skills_confirmed: comparison.seeker_skill_count > 0,
       required_matches: requiredMatches,
-      meets_minimum: matched.length >= requiredMatches,
-      total_required: requiredSkills.length,
-      matched_count: matched.length,
-      unmatched_count: unmatched.length,
-      matched_skills: matched,
-      unmatched_required_skills: unmatched,
+      meets_minimum: comparison.matched_count >= requiredMatches,
+      total_required: comparison.total_required_skills,
+      matched_count: comparison.matched_count,
+      unmatched_count: comparison.missing_count,
+      matched_skills: comparison.matched_skills,
+      unmatched_required_skills: comparison.missing_required_skills,
     });
   } catch (err) {
     console.error('[Skill Match]', err);

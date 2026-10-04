@@ -7,14 +7,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
+import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { nsrpStatusMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
-const GENDERS = ['male', 'female', 'other'];
-const CIVIL = ['single', 'married', 'widowed', 'separated'];
-const EMPLOYMENT = ['unemployed', 'underemployed', 'employed'];
-const YES_NO = ['yes', 'no'];
 
 const defaultNsrpFullData = {
   suffix: '',
@@ -64,16 +61,17 @@ const defaultNsrpFullData = {
 
 const hasText = (value: any) => String(value ?? '').trim().length > 0;
 const hasAny = (...values: any[]) => values.some(hasText);
+const anyRowFilled = (rows: any[]) => rows.some((r) => r && Object.values(r).some(hasText));
 
-function getMissingReferralFields(form: any, full: typeof defaultNsrpFullData, selectedSkills: Set<number>) {
+function getMissingReferralFields(form: any, full: Record<string, any>, selectedSkills: Set<number>) {
   const checks = [
     { label: 'First name', ok: hasText(form.first_name) },
     { label: 'Last name', ok: hasText(form.last_name) },
     { label: 'Date of birth', ok: hasText(form.date_of_birth) },
     { label: 'Place of birth', ok: hasText(full.place_of_birth) },
-    { label: 'Gender', ok: hasText(form.gender) },
+    { label: 'Sex', ok: hasText(form.gender) },
     { label: 'Civil status', ok: hasText(form.civil_status) },
-    { label: 'Contact number or cellphone number', ok: hasAny(form.contact_number, full.cell_phone_number) },
+    { label: 'Contact number or cellphone number', ok: hasAny(form.contact_number, full.cell_phone_number, full.landline_number) },
     { label: 'Present address or house/street/barangay', ok: hasAny(form.address, full.house_street) && hasAny(form.address, full.barangay) },
     { label: 'City/Municipality', ok: hasText(form.city) },
     { label: 'Province', ok: hasText(form.province) },
@@ -82,10 +80,10 @@ function getMissingReferralFields(form: any, full: typeof defaultNsrpFullData, s
     { label: 'Actively looking for work', ok: hasText(full.looking_for_work) },
     { label: 'Willing to work immediately', ok: hasText(full.willing_to_work_immediately) },
     { label: '4Ps beneficiary answer', ok: hasText(full.four_ps_beneficiary) },
-    { label: 'Educational background', ok: hasAny(form.education_level, form.course, full.elementary_background, full.secondary_background, full.tertiary_background, full.graduate_studies_background) },
-    { label: 'Preferred occupation', ok: hasAny(form.preferred_occupation, full.preferred_occupations) },
-    { label: 'Preferred work location', ok: hasAny(full.preferred_work_location, full.preferred_local_locations, full.preferred_overseas_locations) },
-    { label: 'At least one skill, training, or work experience', ok: selectedSkills.size > 0 || hasAny(full.other_skills_acquired, full.trainings, full.eligibility_license, full.work_experience) },
+    { label: 'Educational background', ok: hasAny(form.education_level, form.course, full.elementary_background, full.secondary_background, full.tertiary_background, full.graduate_studies_background) || anyRowFilled(Object.values(full.education || {})) },
+    { label: 'Preferred occupation', ok: hasAny(form.preferred_occupation, full.preferred_occupations, ...(full.preferred_occupation_list || [])) },
+    { label: 'Preferred work location', ok: hasAny(full.preferred_work_location, full.preferred_local_locations, full.preferred_overseas_locations, ...(full.local_location_list || []), ...(full.overseas_location_list || [])) },
+    { label: 'At least one skill, training, or work experience', ok: selectedSkills.size > 0 || hasAny(full.other_skills_acquired, full.trainings, full.eligibility_license, full.work_experience) || anyRowFilled([...(full.training_rows || []), ...(full.work_rows || []), ...(full.eligibility_rows || []), ...(full.license_rows || [])]) },
   ];
   return checks.filter((check) => !check.ok).map((check) => check.label);
 }
@@ -107,6 +105,7 @@ export default function ProfileScreen() {
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
   const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
   const [submitting, setSubmitting] = useState(false);
+  const [certified, setCertified] = useState(false);
 
   const goToDashboard = () => {
     router.replace('/(seeker)/dashboard');
@@ -151,9 +150,6 @@ export default function ProfileScreen() {
   }, []);
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
-  const setFullDataField = (k: keyof typeof defaultNsrpFullData, v: string) => (
-    setNsrpFullData((f) => ({ ...f, [k]: v }))
-  );
 
   const toggleSkill = (id: number) => {
     setSelectedSkills((prev) => {
@@ -197,7 +193,7 @@ export default function ProfileScreen() {
     setSubmitting(true);
     try {
       await saveProfileDraft();
-      await api.post('/job-seeker/profile/submit-nsrp');
+      await api.post('/job-seeker/profile/submit-nsrp', { certified });
       setNsrp({ status: 'submitted', notes: null });
       Alert.alert(
         'Sent to PESO',
@@ -278,12 +274,31 @@ export default function ProfileScreen() {
             <Text style={styles.noticeText}>{nsrpStatusMessage(nsrp.status)}</Text>
             {!!nsrp.notes && <Text style={styles.pesoNote}>PESO note: {nsrp.notes}</Text>}
             {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
+              <TouchableOpacity
+                testID="nsrp-certify"
+                onPress={() => setCertified((c) => !c)}
+                activeOpacity={0.8}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: certified }}
+                style={styles.certifyRow}
+              >
+                <View style={[styles.checkbox, certified && styles.checkboxOn]}>
+                  {certified && <Text style={styles.checkMark}>✓</Text>}
+                </View>
+                <Text style={styles.certifyText}>
+                  I certify that all data/information I have provided are true to the best of my knowledge. I authorize
+                  DOLE to include my profile in the PESO Employment Information System (PhilJobNet), and I understand
+                  that my name may be made available to employers with access to the registry.
+                </Text>
+              </TouchableOpacity>
+            )}
+            {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
               <Button
                 testID="submit-nsrp"
                 title={nsrp.status === 'needs_revision' ? 'Save and Resubmit to PESO' : 'Save and Submit to PESO'}
                 onPress={handleSubmitToPeso}
                 loading={submitting}
-                disabled={missingReferralFields.length > 0}
+                disabled={missingReferralFields.length > 0 || !certified}
                 style={{ marginTop: Spacing.md }}
               />
             )}
@@ -309,128 +324,18 @@ export default function ProfileScreen() {
             )}
           </Card>
 
-          <ProfileSection title="Personal Information">
-            <Input testID="prof-first" label="First Name *" value={form.first_name} onChangeText={(v) => setField('first_name', v)} autoCapitalize="words" />
-            <Input testID="prof-middle" label="Middle Name" value={form.middle_name} onChangeText={(v) => setField('middle_name', v)} autoCapitalize="words" />
-            <Input testID="prof-last" label="Last Name *" value={form.last_name} onChangeText={(v) => setField('last_name', v)} autoCapitalize="words" />
-            <Input testID="prof-suffix" label="Suffix" value={nsrpFullData.suffix} onChangeText={(v) => setFullDataField('suffix', v)} placeholder="e.g., Jr., III" />
-            <Input testID="prof-dob" label="Date of Birth (YYYY-MM-DD)" value={form.date_of_birth} onChangeText={(v) => setField('date_of_birth', v)} placeholder="1998-05-15" />
-            <Input testID="prof-birthplace" label="Place of Birth" value={nsrpFullData.place_of_birth} onChangeText={(v) => setFullDataField('place_of_birth', v)} autoCapitalize="words" />
-            <SelectField label="Sex" options={GENDERS} value={form.gender} onSelect={(v) => setField('gender', v)} testID="prof-gender" />
-            <SelectField label="Civil Status" options={CIVIL} value={form.civil_status} onSelect={(v) => setField('civil_status', v)} testID="prof-civil" />
-            <Input testID="prof-religion" label="Religion" value={nsrpFullData.religion} onChangeText={(v) => setFullDataField('religion', v)} autoCapitalize="words" />
-            <Input testID="prof-contact" label="Contact Number" value={form.contact_number} onChangeText={(v) => setField('contact_number', v)} keyboardType="phone-pad" />
-            <Input testID="prof-email-address" label="Email Address" value={nsrpFullData.email_address} onChangeText={(v) => setFullDataField('email_address', v)} keyboardType="email-address" />
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-landline" label="Landline Number" value={nsrpFullData.landline_number} onChangeText={(v) => setFullDataField('landline_number', v)} />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-cellphone" label="Cell Phone Number" value={nsrpFullData.cell_phone_number} onChangeText={(v) => setFullDataField('cell_phone_number', v)} keyboardType="phone-pad" />
-              </View>
-            </View>
-          </ProfileSection>
+          <NsrpForm
+            value={{ ...form, nsrp_full_data: nsrpFullData }}
+            onChange={(next) => {
+              const { nsrp_full_data: nextFull, ...base } = next;
+              setForm(base);
+              setNsrpFullData(nextFull as any);
+            }}
+            idPrefix="prof"
+          />
 
-          <ProfileSection title="Address">
-            <Input testID="prof-address" label="Address" value={form.address} onChangeText={(v) => setField('address', v)} multiline numberOfLines={2} />
-            <Input testID="prof-house-street" label="House No. / Street" value={nsrpFullData.house_street} onChangeText={(v) => setFullDataField('house_street', v)} />
-            <Input testID="prof-village" label="Village" value={nsrpFullData.village} onChangeText={(v) => setFullDataField('village', v)} />
-            <Input testID="prof-barangay" label="Barangay" value={nsrpFullData.barangay} onChangeText={(v) => setFullDataField('barangay', v)} />
-            <Input testID="prof-city" label="City/Municipality" value={form.city} onChangeText={(v) => setField('city', v)} autoCapitalize="words" />
-            <Input testID="prof-province" label="Province" value={form.province} onChangeText={(v) => setField('province', v)} autoCapitalize="words" />
-          </ProfileSection>
-
-          <ProfileSection title="Employment Status / Type">
-            <SelectField label="Employment Status" options={EMPLOYMENT} value={form.employment_status} onSelect={(v) => setField('employment_status', v)} testID="prof-empstatus" />
-            <Input testID="prof-employment-type" label="Employment Type" value={nsrpFullData.employment_type} onChangeText={(v) => setFullDataField('employment_type', v)} placeholder="e.g., wage employed, self-employed, fresh graduate, resigned" />
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <SelectField label="Actively Looking for Work?" options={YES_NO} value={nsrpFullData.looking_for_work} onSelect={(v) => setFullDataField('looking_for_work', v)} testID="prof-looking-work" />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-looking-duration" label="How Long Looking?" value={nsrpFullData.looking_duration} onChangeText={(v) => setFullDataField('looking_duration', v)} />
-              </View>
-            </View>
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <SelectField label="Willing to Work Immediately?" options={YES_NO} value={nsrpFullData.willing_to_work_immediately} onSelect={(v) => setFullDataField('willing_to_work_immediately', v)} testID="prof-willing-now" />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-available-when" label="If No, When?" value={nsrpFullData.available_when} onChangeText={(v) => setFullDataField('available_when', v)} />
-              </View>
-            </View>
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <SelectField label="4Ps Beneficiary?" options={YES_NO} value={nsrpFullData.four_ps_beneficiary} onSelect={(v) => setFullDataField('four_ps_beneficiary', v)} testID="prof-4ps" />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-household-id" label="4Ps Household ID No." value={nsrpFullData.household_id} onChangeText={(v) => setFullDataField('household_id', v)} />
-              </View>
-            </View>
-          </ProfileSection>
-
-          <ProfileSection title="Educational Background">
-            <Input testID="prof-edu" label="Education Level" value={form.education_level} onChangeText={(v) => setField('education_level', v)} placeholder="e.g., College Graduate" />
-            <Input testID="prof-course" label="Course / Field" value={form.course} onChangeText={(v) => setField('course', v)} placeholder="e.g., BS Information Technology" />
-            <Text style={styles.help}>Summarize school, course, year graduated, undergraduate level, and awards per level.</Text>
-            <Input testID="prof-elem-bg" label="Elementary" value={nsrpFullData.elementary_background} onChangeText={(v) => setFullDataField('elementary_background', v)} multiline numberOfLines={2} />
-            <Input testID="prof-secondary-bg" label="Secondary" value={nsrpFullData.secondary_background} onChangeText={(v) => setFullDataField('secondary_background', v)} multiline numberOfLines={2} />
-            <Input testID="prof-tertiary-bg" label="Tertiary" value={nsrpFullData.tertiary_background} onChangeText={(v) => setFullDataField('tertiary_background', v)} multiline numberOfLines={2} />
-            <Input testID="prof-grad-bg" label="Graduate Studies" value={nsrpFullData.graduate_studies_background} onChangeText={(v) => setFullDataField('graduate_studies_background', v)} multiline numberOfLines={2} />
-          </ProfileSection>
-
-          <ProfileSection title="Job Preference">
-            <Input testID="prof-occupation" label="Preferred Occupation" value={form.preferred_occupation} onChangeText={(v) => setField('preferred_occupation', v)} placeholder="e.g., Software Developer" autoCapitalize="words" />
-            <Input testID="prof-pref-occupations" label="Preferred Occupations (1-4)" value={nsrpFullData.preferred_occupations} onChangeText={(v) => setFullDataField('preferred_occupations', v)} multiline numberOfLines={2} />
-            <Input testID="prof-work-location" label="Preferred Work Location" value={nsrpFullData.preferred_work_location} onChangeText={(v) => setFullDataField('preferred_work_location', v)} placeholder="e.g., CDO, Tagoloan, Villanueva" />
-            <Input testID="prof-local-locations" label="Local Cities/Municipalities" value={nsrpFullData.preferred_local_locations} onChangeText={(v) => setFullDataField('preferred_local_locations', v)} multiline numberOfLines={2} />
-            <Input testID="prof-overseas-locations" label="Overseas Countries" value={nsrpFullData.preferred_overseas_locations} onChangeText={(v) => setFullDataField('preferred_overseas_locations', v)} multiline numberOfLines={2} />
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-expected-salary" label="Expected Salary Range" value={nsrpFullData.expected_salary} onChangeText={(v) => setFullDataField('expected_salary', v)} />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-passport" label="Passport No." value={nsrpFullData.passport_number} onChangeText={(v) => setFullDataField('passport_number', v)} />
-              </View>
-            </View>
-            <Input testID="prof-passport-expiry" label="Passport Expiry Date" value={nsrpFullData.passport_expiry} onChangeText={(v) => setFullDataField('passport_expiry', v)} placeholder="YYYY-MM-DD" />
-          </ProfileSection>
-
-          <ProfileSection title="Language / Dialect Proficiency">
-            <Text style={styles.help}>Indicate read/write/speak/understand ability for English, Filipino, and others.</Text>
-            <Input testID="prof-language" label="Language / Dialect Summary" value={nsrpFullData.language_dialect} onChangeText={(v) => setFullDataField('language_dialect', v)} placeholder="e.g., Cebuano, Tagalog, English" />
-            <Input testID="prof-language-prof" label="Read / Write / Speak / Understand" value={nsrpFullData.language_proficiency} onChangeText={(v) => setFullDataField('language_proficiency', v)} multiline numberOfLines={3} />
-          </ProfileSection>
-
-          <ProfileSection title="Technical/Vocational, Eligibility, and Work Experience">
-            <Input testID="prof-exp" label="Years of Experience" value={form.years_of_experience} onChangeText={(v) => setField('years_of_experience', v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
-            <Input testID="prof-trainings" label="Trainings / Seminars" value={nsrpFullData.trainings} onChangeText={(v) => setFullDataField('trainings', v)} multiline numberOfLines={3} />
-            <Input testID="prof-eligibility" label="Eligibility / Licenses" value={nsrpFullData.eligibility_license} onChangeText={(v) => setFullDataField('eligibility_license', v)} multiline numberOfLines={2} />
-            <Input testID="prof-workexp" label="Work Experience" value={nsrpFullData.work_experience} onChangeText={(v) => setFullDataField('work_experience', v)} multiline numberOfLines={4} />
-          </ProfileSection>
-
-          <ProfileSection title="Government IDs, Physical Details, and Other Skills">
-            <View style={styles.twoColumn}>
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-height" label="Height" value={nsrpFullData.height} onChangeText={(v) => setFullDataField('height', v)} placeholder="e.g., 165 cm" />
-              </View>
-              <View style={{ width: Spacing.sm }} />
-              <View style={{ flex: 1 }}>
-                <Input testID="prof-weight" label="Weight" value={nsrpFullData.weight} onChangeText={(v) => setFullDataField('weight', v)} placeholder="e.g., 60 kg" />
-              </View>
-            </View>
-            <Input testID="prof-tin" label="TIN" value={nsrpFullData.tin} onChangeText={(v) => setFullDataField('tin', v)} />
-            <Input testID="prof-gsis-sss" label="GSIS/SSS ID No." value={nsrpFullData.gsis_sss_no} onChangeText={(v) => setFullDataField('gsis_sss_no', v)} />
-            <Input testID="prof-pagibig" label="PAG-IBIG No." value={nsrpFullData.pagibig_no} onChangeText={(v) => setFullDataField('pagibig_no', v)} />
-            <Input testID="prof-philhealth" label="PhilHealth No." value={nsrpFullData.philhealth_no} onChangeText={(v) => setFullDataField('philhealth_no', v)} />
-            <Input testID="prof-disability" label="Disability" value={nsrpFullData.disability} onChangeText={(v) => setFullDataField('disability', v)} placeholder="Visual, hearing, speech, physical, others, or none" />
-            <Input testID="prof-disability-other" label="Disability - Others, Specify" value={nsrpFullData.disability_other} onChangeText={(v) => setFullDataField('disability_other', v)} />
-            <Input testID="prof-other-skills-acquired" label="Other Skills Acquired Without Formal Training" value={nsrpFullData.other_skills_acquired} onChangeText={(v) => setFullDataField('other_skills_acquired', v)} placeholder="e.g., driver, computer literate, electrician" multiline numberOfLines={3} />
+          <ProfileSection title="Additional Information (not on the NSRP form)">
+            <Input testID="prof-exp" label="Years of Work Experience" value={form.years_of_experience} onChangeText={(v) => setField('years_of_experience', v)} keyboardType="number-pad" />
           </ProfileSection>
 
           <ProfileSection title="Skills">
@@ -491,33 +396,6 @@ function ProfileSection({ title, children }: { title: string; children: React.Re
   );
 }
 
-function SelectField({
-  label, options, value, onSelect, testID,
-}: { label: string; options: string[]; value: string; onSelect: (v: string) => void; testID?: string }) {
-  return (
-    <View style={{ marginBottom: Spacing.md }}>
-      <Text style={styles.selectLabel}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-        {options.map((opt) => (
-          <TouchableOpacity
-            key={opt}
-            testID={`${testID}-${opt}`}
-            onPress={() => onSelect(opt)}
-            activeOpacity={0.75}
-            style={[
-              styles.optBtn,
-              { backgroundColor: value === opt ? Colors.primary : Colors.white, borderColor: value === opt ? Colors.primary : Colors.border },
-            ]}
-          >
-            <Text style={{ color: value === opt ? Colors.white : Colors.textDark, fontSize: FontSize.sm, textTransform: 'capitalize', fontWeight: '700' }}>
-              {opt}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.lightBg },
@@ -545,6 +423,14 @@ const styles = StyleSheet.create({
   missingItem: { fontSize: FontSize.xs, color: '#92400E', lineHeight: 18, fontWeight: '700' },
   nsrpStatusRow: { flexDirection: 'row', marginBottom: Spacing.sm },
   pesoNote: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.sm },
+  certifyRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start', marginTop: Spacing.md },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white, marginTop: 2,
+  },
+  checkboxOn: { backgroundColor: Colors.primary },
+  checkMark: { color: Colors.white, fontWeight: '900', fontSize: FontSize.sm },
+  certifyText: { flex: 1, fontSize: FontSize.xs, color: Colors.textDark, lineHeight: 18 },
   readyText: { fontSize: FontSize.xs, color: Colors.primaryDark, lineHeight: 18, fontWeight: '900' },
   sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
   formTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.md },

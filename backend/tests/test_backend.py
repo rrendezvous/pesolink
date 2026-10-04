@@ -127,7 +127,11 @@ class TestJobSeeker:
                           headers=headers(seeker_token), json=payload)
         assert r.status_code in (200, 201), r.text
         body = r.json()
-        assert body["profile"]["profile_completed"] in (1, True)
+        # Only 5 basic fields: the profile is saved but is NOT complete under the 19-item NSRP check
+        # (the old 5-field rule was flagged in QA as too weak).
+        assert body["profile"]["profile_completed"] in (0, False)
+        assert body["referral_requirements"]["isComplete"] is False
+        assert len(body["referral_requirements"]["missing_fields"]) > 0
 
     def test_skills_replace(self, seeker_token):
         rs = requests.get(f"{BASE_URL}/api/skills", headers=headers(seeker_token))

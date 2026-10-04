@@ -1,6 +1,8 @@
 // ============================================================
 // Skills master list for rule-based skill matching
-// Covers common PESO Misamis Oriental job categories.
+// Covers common PESO Misamis Oriental job categories, plus every item in the NSRP Form 1
+// "Other Skills Acquired Without Formal Training" checklist (marked "NSRP VIII").
+// Still to be confirmed with PESO Misamis Oriental before it is treated as final.
 // Non-destructive sync (keeps existing skill IDs, updates categories):
 //   node seed-skills.js
 // ============================================================
@@ -23,6 +25,7 @@ const SKILLS = [
   ['Bookkeeping', 'Office / Administrative'],
   ['Records Management', 'Office / Administrative'],
   ['Clerical Work', 'Office / Administrative'],
+  ['Stenography', 'Office / Administrative'], // NSRP VIII
 
   // Construction / Skilled Trades
   ['Carpentry', 'Construction / Trades'],
@@ -32,6 +35,7 @@ const SKILLS = [
   ['Plumbing', 'Construction / Trades'],
   ['Painting', 'Construction / Trades'],
   ['Heavy Equipment Operation', 'Construction / Trades'],
+  ['Automotive Servicing', 'Construction / Trades'], // NSRP VIII: Auto Mechanic
 
   // Manufacturing / Production
   ['Machine Operation', 'Manufacturing'],
@@ -44,6 +48,7 @@ const SKILLS = [
   ['Livestock Raising', 'Agriculture / Fishery'],
   ['Aquaculture', 'Agriculture / Fishery'],
   ['Farm Machinery Operation', 'Agriculture / Fishery'],
+  ['Gardening', 'Agriculture / Fishery'], // NSRP VIII
 
   // Hospitality / Tourism
   ['Cooking', 'Hospitality / Tourism'],
@@ -77,6 +82,14 @@ const SKILLS = [
   ['Cashiering', 'Retail / Sales'],
   ['Merchandising', 'Retail / Sales'],
   ['Customer Service', 'Retail / Sales'],
+
+  // Garments / Personal Services / Creative
+  ['Dressmaking', 'Garments'], // NSRP VIII: Sewing Dresses
+  ['Tailoring', 'Garments'], // NSRP VIII
+  ['Embroidery', 'Garments'], // NSRP VIII
+  ['Beauty Care', 'Personal Services'], // NSRP VIII: Beautician
+  ['Domestic Work', 'Personal Services'], // NSRP VIII: Domestic Chores
+  ['Photography', 'Creative / Media'], // NSRP VIII
 
   // Language
   ['English Proficiency', 'Language'],
