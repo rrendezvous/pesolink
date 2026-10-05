@@ -59,6 +59,9 @@ router.post('/employers', async (req, res) => {
     return res.status(400).json({ error: 'email, password and company_name are required' });
   }
   const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanEmail) {
+    return res.status(400).json({ error: 'email, password and company_name are required' });
+  }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }

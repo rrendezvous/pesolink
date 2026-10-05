@@ -17,6 +17,9 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Email, password and role are required' });
   }
   const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanEmail) {
+    return res.status(400).json({ error: 'Email, password and role are required' });
+  }
   if (role !== 'job_seeker') {
     return res.status(400).json({
       error: 'Self-registration is only available for job seekers. Employer accounts are created by PESO Admin.',
