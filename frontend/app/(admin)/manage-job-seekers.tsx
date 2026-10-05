@@ -70,6 +70,13 @@ export default function NsrpVerification() {
       }
       const res = await api.get(`/admin/job-seekers/${seeker.id}/profile`);
       setDetail(res.data);
+      // Start from PESO's last eligibility assessment, so re-verifying a changed profile keeps it
+      // unless PESO changes it (Verify saves exactly what is ticked here).
+      const previous = res.data?.profile?.peso_assessment;
+      if (previous && typeof previous === 'object') {
+        setPrograms((previous.programs || []).filter((p: string) => PESO_PROGRAMS.includes(p)));
+        setProgramOther(previous.other || '');
+      }
       load();
     } catch (err) {
       Alert.alert('Error', getApiError(err));

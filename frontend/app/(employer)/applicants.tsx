@@ -6,7 +6,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView,
 } from 'react-native';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Card, Button, StatusBadge, EmptyState, Row } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels } from '../../src/constants/theme';
@@ -14,16 +14,24 @@ import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels } from '../../s
 const STATUSES = ['for_review', 'for_interview', 'hired', 'rejected'] as const;
 
 export default function Applicants() {
+  const router = useRouter();
   const { jobId, jobTitle } = useLocalSearchParams<{ jobId: string; jobTitle: string }>();
   const [applicants, setApplicants] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
 
+  // Opened from the tab bar there is no job selected yet: list the job posts to choose from.
   const load = async () => {
     try {
+      if (!jobId) {
+        const res = await api.get('/employer/jobs');
+        setJobs(res.data.jobs || []);
+        return;
+      }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
       setApplicants(res.data.applicants || []);
     } catch (err) {
-      console.warn(getApiError(err));
+      Alert.alert('Error', getApiError(err));
     }
   };
 
@@ -46,9 +54,47 @@ export default function Applicants() {
       <View style={styles.header}>
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>PESO-Referred Applicants</Text>
-        <Text style={styles.headerSub}>{jobTitle || 'Selected job post'}</Text>
+        <Text style={styles.headerSub}>{jobId ? (jobTitle || 'Selected job post') : 'Choose a job post to see its applicants'}</Text>
+        {!!jobId && (
+          <TouchableOpacity
+            testID="choose-job"
+            onPress={() => router.setParams({ jobId: '', jobTitle: '' })}
+            activeOpacity={0.75}
+            style={styles.chooseJob}
+          >
+            <Text style={styles.chooseJobText}>{'< Choose another job post'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
+      {!jobId ? (
+        <FlatList
+          data={jobs}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={<EmptyState message="No job posts yet. Post a job under Jobs." />}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              testID={`pick-job-${item.id}`}
+              onPress={() => router.setParams({ jobId: String(item.id), jobTitle: item.job_title })}
+              activeOpacity={0.82}
+            >
+              <Card style={styles.applicantCard}>
+                <View style={styles.cardTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.name}>{item.job_title}</Text>
+                    <Text style={styles.detail}>{item.location}</Text>
+                  </View>
+                  <StatusBadge status={item.status} />
+                </View>
+                <Text style={styles.cardHint}>
+                  {item.applicant_count || 0} PESO-referred applicant{Number(item.applicant_count) === 1 ? '' : 's'}. Tap to view.
+                </Text>
+              </Card>
+            </TouchableOpacity>
+          )}
+        />
+      ) : (
       <FlatList
         data={applicants}
         keyExtractor={(item) => String(item.application_id)}
@@ -91,6 +137,7 @@ export default function Applicants() {
           </TouchableOpacity>
         )}
       />
+      )}
 
       <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
         <View style={styles.modalBg}>
@@ -211,6 +258,8 @@ const styles = StyleSheet.create({
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
+  chooseJob: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginTop: Spacing.xs },
+  chooseJobText: { color: Colors.white, fontSize: FontSize.sm, fontWeight: '900' },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
   applicantCard: { borderRadius: Radius.lg },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },

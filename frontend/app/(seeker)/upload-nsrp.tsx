@@ -2,12 +2,12 @@
 // Upload NSRP Form + OCR-assisted NSRP review (combined)
 // OCR is OPTIONAL & ASSISTIVE - User must review/confirm before saving.
 // ============================================================
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Button, Card } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
@@ -109,7 +109,8 @@ export default function UploadNSRP() {
   // The saved profile: OCR results are merged on top of it, so scanning one page never blanks the other page's fields.
   const [savedProfile, setSavedProfile] = useState<any | null>(null);
 
-  useEffect(() => {
+  // Reloaded on every focus: this hidden tab stays mounted, and the profile may have been edited since.
+  useFocusEffect(useCallback(() => {
     api.get('/job-seeker/profile')
       .then((res) => {
         const prof = res.data.profile || {};
@@ -124,7 +125,7 @@ export default function UploadNSRP() {
         setSavedProfile({ ...emptyExtracted, ...base, nsrp_full_data: { ...defaultNsrpFullData, ...full } });
       })
       .catch(() => setSavedProfile(null));
-  }, []);
+  }, []));
   const [ocrSuccess, setOcrSuccess] = useState<boolean | null>(null);
   const [ocrStatus, setOcrStatus] = useState('');
   const [fieldCount, setFieldCount] = useState(0);
@@ -323,6 +324,7 @@ export default function UploadNSRP() {
     setConfirming(true);
     try {
       await api.post('/nsrp/confirm', { upload_id: uploadId, upload_ids: reviewUploadIds, confirmed_data: extracted });
+      clearAll();
       Alert.alert(
         'Saved',
         'Your reviewed NSRP data has been saved to your profile.',

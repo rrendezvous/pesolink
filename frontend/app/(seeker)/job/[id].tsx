@@ -1,11 +1,11 @@
 // ============================================================
 // Job Details + Skill Match + Apply with PESO Referral (combined)
 // ============================================================
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, StatusBadge, EmptyState, Row } from '../../../src/components/ui';
 import { formatDate } from '../../../src/components/NsrpProfileView';
 import { api, getApiError } from '../../../src/api/client';
@@ -21,7 +21,9 @@ export default function JobDetails() {
   const [applying, setApplying] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
 
-  useEffect(() => {
+  // Reload on focus: this hidden tab stays mounted, so reopening the same job would show the old
+  // apply/match state (e.g. before PESO verified the profile or before skills changed).
+  useFocusEffect(useCallback(() => {
     (async () => {
       try {
         const [j, m] = await Promise.all([
@@ -36,7 +38,7 @@ export default function JobDetails() {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id]));
 
   const handleApply = async () => {
     setApplying(true);

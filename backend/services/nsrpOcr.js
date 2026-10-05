@@ -930,7 +930,6 @@ function cleanFreeText(raw) {
     .replace(/\bCagdyan de Lro\b/gi, 'Cagayan de Oro')
     .replace(/\b(\d{2}\/\d{4})\s+10\s+(\d{2}\/\d{4})\b/g, '$1 to $2')
     .replace(/\b(?:wee|veo|eo)\s+Development Basics\b/i, 'Web Development Basics')
-    .replace(/\bBASIC\s+WEB\s+DESIGN\b/i, 'Basic Web Design')
     .replace(/\s+/g, ' ')
     .trim();
   if (isEmptyToken(v)) return '';
@@ -1270,6 +1269,34 @@ function countExtractedFields(parsed) {
   for (const key of fullKeys) {
     if (String(parsed.nsrp_full_data?.[key] || '').trim()) count += 1;
   }
+  // The summary keys above fold whole tables into one value (page 2 showed "6 fields" for 30+ filled cells),
+  // so prefer a count of the form fields the job seeker actually reviews: each filled cell, list item and tick.
+  const visible = countVisibleFormFields(parsed);
+  return visible > 0 ? visible : count;
+}
+
+function countVisibleFormFields(parsed) {
+  const full = parsed.nsrp_full_data || {};
+  const filled = (v) => String(v ?? '').trim().length > 0;
+  const cells = (v) => {
+    if (Array.isArray(v)) return v.reduce((n, item) => n + cells(item), 0);
+    if (v && typeof v === 'object') return Object.values(v).reduce((n, item) => n + cells(item), 0);
+    return v === true || (typeof v === 'string' && filled(v)) ? 1 : 0;
+  };
+  let count = ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'civil_status', 'city', 'province', 'employment_status']
+    .filter((key) => filled(parsed[key])).length;
+  count += [
+    'suffix', 'place_of_birth', 'religion', 'height', 'tin', 'gsis_sss_no', 'pagibig_no', 'philhealth_no',
+    'email_address', 'landline_number', 'cell_phone_number', 'house_street', 'village', 'barangay',
+    'disability_other', 'employment_type', 'terminated_abroad_country', 'employment_type_other',
+    'looking_for_work', 'looking_duration', 'willing_to_work_immediately', 'available_when',
+    'four_ps_beneficiary', 'household_id', 'preferred_work_location', 'expected_salary',
+    'passport_number', 'passport_expiry', 'other_skills_other',
+  ].filter((key) => filled(full[key])).length;
+  for (const key of [
+    'disabilities', 'preferred_occupation_list', 'local_location_list', 'overseas_location_list', 'languages',
+    'education', 'training_rows', 'eligibility_rows', 'license_rows', 'work_rows', 'other_skills_checked',
+  ]) count += cells(full[key]);
   return count;
 }
 

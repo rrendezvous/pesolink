@@ -1,7 +1,8 @@
 'use strict';
 
 // OCR accuracy check against the two sample NSRP pages in samples/nsrp-ocr.
-// The expected values are what is printed on the sample forms. Prints each field as OK / WRONG / MISSING.
+// The expected values are what is printed on the sample forms, letter for letter (case and punctuation count;
+// only surrounding/repeated whitespace is ignored). Prints each field as OK / WRONG / MISSING.
 //   node scripts/ocr-accuracy.js
 const fs = require('fs');
 const path = require('path');
@@ -21,8 +22,11 @@ const EXPECTED_PAGE1 = {
   city: 'CAGAYAN DE ORO CITY', province: 'MISAMIS ORIENTAL',
   'full.tin': '', 'full.gsis_sss_no': '', 'full.pagibig_no': '', 'full.philhealth_no': '',
   'full.height': '170 CM', 'full.email_address': 'juan.santos@example.com',
-  'full.landline_number': '', 'full.cell_phone_number': '09171234567',
+  'full.landline_number': '', 'full.cell_phone_number': '09171234567', contact_number: '09171234567',
+  // Disability: no box ticked; "NONE" on the Others line means no disability
+  'full.disability': '', 'full.disability_other': '',
   employment_status: 'unemployed', 'full.employment_type': 'new entrant/fresh graduate',
+  'full.terminated_abroad_country': '', 'full.employment_type_other': '',
   'full.looking_for_work': 'no', 'full.looking_duration': '1 MONTH',
   'full.willing_to_work_immediately': 'yes', 'full.available_when': '',
   'full.four_ps_beneficiary': 'no', 'full.household_id': '',
@@ -33,7 +37,7 @@ const EXPECTED_PAGE1 = {
   'list.overseas_location_list': [],
   'full.expected_salary': 'PHP 18,000 - 25,000', 'full.passport_number': '', 'full.passport_expiry': '',
   // III. Language / dialect proficiency (all four ticked for English and Filipino; Others empty)
-  'lang.english': 'read,write,speak,understand', 'lang.filipino': 'read,write,speak,understand', 'lang.other': '',
+  'lang.english': 'read,write,speak,understand', 'lang.filipino': 'read,write,speak,understand', 'lang.other': '', 'langname.other': '',
 };
 const EXPECTED_PAGE2 = {
   // IV. Educational background
@@ -44,23 +48,24 @@ const EXPECTED_PAGE2 = {
   'edu.tertiary.school': 'USTP', 'edu.tertiary.course': 'BS Information Technology', 'edu.tertiary.year_graduated': '2026',
   'edu.tertiary.level_reached': '', 'edu.tertiary.year_last_attended': '', 'edu.tertiary.awards': '',
   'edu.graduate.school': '', 'edu.graduate.course': '', 'edu.graduate.year_graduated': '',
+  'edu.graduate.level_reached': '', 'edu.graduate.year_last_attended': '', 'edu.graduate.awards': '',
   // V. Training
   'training.0.course': 'Web Development Basics', 'training.0.duration': '01/2025 to 03/2025',
   'training.0.institution': 'USTP Extension', 'training.0.certificate': 'Certificate',
-  'training.1.course': '', 'training.2.course': '',
+  'count.training_rows': 1, // rows 2 and 3 are blank
   // VI. Eligibility / license (all NA)
-  'full.eligibility_license': '',
+  'full.eligibility_license': '', 'count.eligibility_rows': 0, 'count.license_rows': 0,
   // VII. Work experience
   'work.0.company': 'USTP ICT Office', 'work.0.address': 'Cagayan de Oro', 'work.0.position': 'IT Intern',
   'work.0.dates': '06/2025 to 08/2025', 'work.0.status': 'Internship',
   'work.1.company': 'Freelance Client', 'work.1.address': 'Cagayan de Oro', 'work.1.position': 'Data Encoder',
   'work.1.dates': '01/2024 to 05/2024', 'work.1.status': 'Part-time',
-  'work.2.company': '',
+  'count.work_rows': 2, // the other table rows are blank
   // VIII. Other skills
   'skills.checked': ['Computer Literate', 'Photography'], 'skills.other': 'BASIC WEB DESIGN',
 };
 
-const norm = (v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const norm = (v) => String(v ?? '').replace(/s+/g, ' ').trim();
 
 function pick(parsed, key) {
   const full = parsed.nsrp_full_data || {};
@@ -71,6 +76,8 @@ function pick(parsed, key) {
     const row = full.languages?.[a] || {};
     return ['read', 'write', 'speak', 'understand'].filter((sk) => row[sk]).join(',');
   }
+  if (kind === 'langname') return full.languages?.[a]?.name;
+  if (kind === 'count') return (full[a] || []).filter((r) => r && Object.values(r).some((v) => String(v ?? '').trim())).length;
   if (kind === 'edu') return full.education?.[a]?.[b];
   if (kind === 'training') return full.training_rows?.[Number(a)]?.[b];
   if (kind === 'work') return full.work_rows?.[Number(a)]?.[b];
