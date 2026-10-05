@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { SignOutModal } from '../../src/components/SignOutModal';
 
-export default function SeekerLogout() {
+export default function AdminLogout() {
   const router = useRouter();
   const { logout } = useAuth();
   const [visible, setVisible] = useState(true);
@@ -15,7 +15,7 @@ export default function SeekerLogout() {
         visible={visible}
         onCancel={() => {
           setVisible(false);
-          router.replace('/(seeker)/dashboard');
+          router.replace('/(admin)/dashboard');
         }}
         onConfirm={async () => {
           setVisible(false);
