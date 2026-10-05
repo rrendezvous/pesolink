@@ -141,11 +141,18 @@ export function NsrpForm({
 
   return (
     <>
+      <Text style={styles.formHeader}>
+        NSRP Form 1 (January 2017) - Department of Labor and Employment{'\n'}PESO Employment Information System Registration Form
+      </Text>
+      <Text style={styles.hint}>
+        Please do not leave any items unanswered. Where the paper form says to write &quot;NA&quot; (not applicable),
+        leave the item blank.
+      </Text>
       <Section title="I. Personal Information">
         {Text1({ k: "last_name", label: "Surname *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "first_name", label: "First Name *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "middle_name", label: "Middle Name", base: true, autoCapitalize: "words" })}
-        {Text1({ k: "suffix", label: "Suffix (Sr., Jr., III, etc.)", placeholder: "NA if not applicable" })}
+        {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
         {Text1({ k: "date_of_birth", label: "Date of Birth (YYYY-MM-DD)", base: true, placeholder: "1998-05-15" })}
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
         <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
@@ -298,15 +305,13 @@ export function NsrpForm({
               <Text style={styles.rowTitle}>{level.label}</Text>
               <Input testID={id(`edu-${level.key}-school`)} label="School" value={row.school || ''} onChangeText={(t) => setEducation(level.key, 'school', t)} autoCapitalize="words" />
               <Input testID={id(`edu-${level.key}-course`)} label="Course" value={row.course || ''} onChangeText={(t) => setEducation(level.key, 'course', t)} />
-              <View style={styles.twoCol}>
-                <View style={styles.col}><Input testID={id(`edu-${level.key}-year`)} label="Year Graduated" value={row.year_graduated || ''} onChangeText={(t) => setEducation(level.key, 'year_graduated', t)} keyboardType="number-pad" /></View>
-                <View style={styles.col}><Input testID={id(`edu-${level.key}-awards`)} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', t)} /></View>
-              </View>
+              <Input testID={id(`edu-${level.key}-year`)} label="Year Graduated" value={row.year_graduated || ''} onChangeText={(t) => setEducation(level.key, 'year_graduated', t)} keyboardType="number-pad" />
               <Text style={styles.hint}>If undergraduate:</Text>
               <View style={styles.twoCol}>
                 <View style={styles.col}><Input testID={id(`edu-${level.key}-level`)} label="What level?" value={row.level_reached || ''} onChangeText={(t) => setEducation(level.key, 'level_reached', t)} /></View>
                 <View style={styles.col}><Input testID={id(`edu-${level.key}-last`)} label="Year last attended" value={row.year_last_attended || ''} onChangeText={(t) => setEducation(level.key, 'year_last_attended', t)} keyboardType="number-pad" /></View>
               </View>
+              <Input testID={id(`edu-${level.key}-awards`)} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', t)} />
             </View>
           );
         })}
@@ -315,15 +320,14 @@ export function NsrpForm({
       </Section>
 
       <Section title="V. Technical/Vocational and Other Training">
+        <Text style={styles.hint}>Include courses taken as part of college education.</Text>
         {rows('training_rows', 3).map((r: any, i: number) => (
           <View key={`tr-${i}`} style={styles.rowCard}>
             <Text style={styles.rowTitle}>{i + 1}.</Text>
             <Input testID={id(`training-${i + 1}-course`)} label="Training/Vocational Course" value={r.course || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'course', t)} />
-            <View style={styles.twoCol}>
-              <View style={styles.col}><Input testID={id(`training-${i + 1}-duration`)} label="Duration (mm/dd/yyyy to mm/dd/yyyy)" value={r.duration || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'duration', t)} /></View>
-              <View style={styles.col}><Input testID={id(`training-${i + 1}-cert`)} label="Certificates Received (NC I-IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', t)} /></View>
-            </View>
+            <Input testID={id(`training-${i + 1}-duration`)} label="Duration (mm/dd/yyyy to mm/dd/yyyy)" value={r.duration || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'duration', t)} />
             <Input testID={id(`training-${i + 1}-institution`)} label="Training Institution" value={r.institution || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'institution', t)} />
+            <Input testID={id(`training-${i + 1}-cert`)} label="Certificates Received (NC I, NC II, NC III, NC IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', t)} />
           </View>
         ))}
         {legacyBox(!anyRow(full.training_rows), 'trainings')}
@@ -454,6 +458,7 @@ const styles = StyleSheet.create({
   sectionCard: { marginTop: Spacing.sm },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
   subTitle: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, marginTop: Spacing.xs, marginBottom: Spacing.xs },
+  formHeader: { fontSize: FontSize.xs, fontWeight: '800', color: Colors.textDark, marginBottom: Spacing.xs },
   hint: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: Spacing.xs },
   legacyNote: { fontSize: FontSize.xs, color: '#92400E', fontWeight: '700', marginBottom: Spacing.sm },
   field: { marginBottom: Spacing.md },

@@ -58,7 +58,7 @@ export default function ManageJobs() {
       </View>
 
       <View style={styles.topBar}>
-        <Button testID="new-job-btn" title="Post New Job" onPress={() => router.push('/(employer)/job-form')} />
+        <Button testID="new-job-btn" title="Post New Job" onPress={() => router.push({ pathname: '/(employer)/job-form', params: { jobId: '' } })} />
       </View>
 
       <FlatList

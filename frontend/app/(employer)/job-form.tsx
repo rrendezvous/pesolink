@@ -1,37 +1,44 @@
 // ============================================================
 // Job Form - Create / Edit Job Post
 // ============================================================
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
+const BLANK_FORM = {
+  job_title: '', job_description: '', job_type: 'full-time',
+  salary_min: '', salary_max: '', location: 'Cagayan de Oro City',
+  vacancies: '1', requirements: '', closing_date: '', application_email: '',
+};
 
 export default function JobForm() {
   const router = useRouter();
   const { jobId } = useLocalSearchParams<{ jobId?: string }>();
   const isEdit = !!jobId;
 
-  const [form, setForm] = useState<any>({
-    job_title: '', job_description: '', job_type: 'full-time',
-    salary_min: '', salary_max: '', location: 'Cagayan de Oro City',
-    vacancies: '1', requirements: '', closing_date: '', application_email: '',
-  });
+  const [form, setForm] = useState<any>(BLANK_FORM);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // Load on every focus: this hidden tab stays mounted, so editing the same job again would show the
+  // values from before the last save (and saving would undo it), and a new post would keep old entries.
+  useFocusEffect(useCallback(() => {
     (async () => {
       try {
         const sk = await api.get('/skills');
         setAllSkills(sk.data.skills);
+        if (!isEdit) {
+          setForm(BLANK_FORM);
+          setSelectedSkills(new Set());
+        }
 
         if (isEdit) {
           setLoading(true);
@@ -57,7 +64,7 @@ export default function JobForm() {
         setLoading(false);
       }
     })();
-  }, [jobId]);
+  }, [jobId, isEdit]));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 

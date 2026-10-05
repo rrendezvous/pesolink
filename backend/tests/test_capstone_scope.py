@@ -125,8 +125,9 @@ class TestDeactivateReactivate:
         assert rs.status_code == 200, rs.text
         seekers = rs.json().get("job_seekers", rs.json().get("seekers", rs.json()))
         assert isinstance(seekers, list)
-        target = next((s for s in seekers if s.get("email") == email), None)
-        assert target, f"seeker {email} not found in admin list"
+        # emails are stored normalized (trimmed, lowercased)
+        target = next((s for s in seekers if s.get("email") == email.lower()), None)
+        assert target, f"seeker {email.lower()} not found in admin list"
         assert "account_status" in target
         TestDeactivateReactivate.seeker_id = target.get("id") or target.get("job_seeker_id")
 

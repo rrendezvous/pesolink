@@ -5,6 +5,14 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Row } from './ui';
 import { Colors, Spacing, FontSize, Radius } from '../constants/theme';
+import { SEX_OPTIONS, CIVIL_OPTIONS, EMPLOYMENT_STATUS_OPTIONS, EMPLOYMENT_TYPE_OPTIONS } from './NsrpForm';
+
+// Show the NSRP Form 1 option label (e.g. "Male") instead of the stored value ("male").
+const OPTION_LABELS: Record<string, string> = Object.fromEntries(
+  [...SEX_OPTIONS, ...CIVIL_OPTIONS, ...EMPLOYMENT_STATUS_OPTIONS, ...Object.values(EMPLOYMENT_TYPE_OPTIONS).flat()]
+    .map((o) => [o.value, o.label]),
+);
+const optionLabel = (value?: string | null) => (value ? OPTION_LABELS[value] || value : '');
 
 export function NsrpRequirements({ requirements }: { requirements?: any }) {
   if (!requirements) return null;
@@ -29,10 +37,11 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
   return (
     <>
       <Section title="I. Personal Information">
+        <Field label="Suffix" value={full.suffix} />
         <Field label="Date of Birth" value={formatDate(p.date_of_birth)} />
         <Field label="Place of Birth" value={full.place_of_birth} />
-        <Field label="Sex" value={p.gender} />
-        <Field label="Civil Status" value={p.civil_status} />
+        <Field label="Sex" value={optionLabel(p.gender)} />
+        <Field label="Civil Status" value={optionLabel(p.civil_status)} />
         <Field label="Religion" value={full.religion} />
         <Field label="Height" value={full.height} />
         <Field label="Disability" value={[full.disability, full.disability_other].filter(Boolean).join(' - ')} />
@@ -58,8 +67,8 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
       </Section>
 
       <Section title="Employment Status / Type">
-        <Field label="Employment Status" value={p.employment_status} />
-        <Field label="Employment Type" value={[full.employment_type, full.terminated_abroad_country, full.employment_type_other].filter(Boolean).join(' - ')} />
+        <Field label="Employment Status" value={optionLabel(p.employment_status)} />
+        <Field label="Employment Type" value={[optionLabel(full.employment_type), full.terminated_abroad_country, full.employment_type_other].filter(Boolean).join(' - ')} />
         <Field label="Actively Looking for Work" value={[full.looking_for_work, full.looking_duration].filter(Boolean).join(' - ')} />
         <Field label="Willing to Work Immediately" value={[full.willing_to_work_immediately, full.available_when].filter(Boolean).join(' - ')} />
         <Field label="4Ps Beneficiary" value={[full.four_ps_beneficiary, full.household_id && `HH ID ${full.household_id}`].filter(Boolean).join(' - ')} />

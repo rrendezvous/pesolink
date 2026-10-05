@@ -1,11 +1,11 @@
 // ============================================================
 // NSRP Profile + Skills Management (combined screen)
 // ============================================================
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
@@ -111,7 +111,9 @@ export default function ProfileScreen() {
     router.replace('/(seeker)/dashboard');
   };
 
-  useEffect(() => {
+  // Reload on every focus: this tab stays mounted, so returning from the OCR Assistant (which saves
+  // straight to the profile) would otherwise show the old form, and saving it would overwrite the OCR data.
+  useFocusEffect(useCallback(() => {
     (async () => {
       try {
         const [p, s] = await Promise.all([
@@ -147,7 +149,7 @@ export default function ProfileScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, []));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -286,9 +288,11 @@ export default function ProfileScreen() {
                   {certified && <Text style={styles.checkMark}>✓</Text>}
                 </View>
                 <Text style={styles.certifyText}>
-                  I certify that all data/information I have provided are true to the best of my knowledge. I authorize
-                  DOLE to include my profile in the PESO Employment Information System (PhilJobNet), and I understand
-                  that my name may be made available to employers with access to the registry.
+                  This is to certify that all data/information that I have provided in this form are true to the best
+                  of my knowledge. This is also to authorize the DOLE to include my profile in the PESO Employment
+                  Information System, which is a subsystem of the PhilJobNet. It is understood that my name shall be
+                  made available to employers who have access to the Registry. I am also aware that DOLE is not obliged
+                  to seek employment on my behalf.
                 </Text>
               </TouchableOpacity>
             )}

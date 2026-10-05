@@ -8,6 +8,7 @@ Test case IDs refer to `docs/OBJECTIVE_TEST_CASES.md`.
 1. Reset the demo data: `cd backend` then `npm run reset-demo`. This only touches `peso_link_demo`. **Never** run `init-db` on the real database.
 2. Start the backend on the demo database. In Windows cmd, run these as separate lines: `set DB_NAME=peso_link_demo`, then `set DB_HOST=127.0.0.1`, then `npm start`. In Git Bash: `DB_HOST=127.0.0.1 DB_NAME=peso_link_demo npm start`.
 3. Start the app: `cd frontend` then `npx expo start`, and open it in Expo Go.
+4. On the emulator, run `adb reverse tcp:8001 tcp:8001` and `adb reverse tcp:8081 tcp:8081` again if adb reconnects. A dark "Cannot connect to Expo CLI" toast at the bottom is an Expo Go development message (it never appears in a release build). Close it with its X before recording, because it covers the bottom buttons.
 
 ### Seeded accounts
 
@@ -45,7 +46,7 @@ All passwords are `Test@123` except the admin's.
    - My Applications: the card shows **PESO-Referred / For Review**.
 3. **Employer receives and updates** (TC-A-15, A-16)
    - Log in as hr@techcorp.ph. Alerts shows *New PESO-Referred Applicant*.
-   - Manage Jobs, Junior Software Developer, Applicants. Juan appears with his NSRP summary and matched/missing skills.
+   - Manage Jobs, Junior Software Developer, Applicants (or the **Applicants** tab, then tap Junior Software Developer). Juan appears with his NSRP summary and matched/missing skills.
    - Set **For Interview**.
 4. **Seeker sees the update**
    - As Juan: Alerts shows *Application Status Updated*.
@@ -80,7 +81,7 @@ All passwords are `Test@123` except the admin's.
    - *Shown:* "Sent to PESO".
 4. **Rule-based skill comparison** (TC-B-11, A-13)
    - Log in as Ana and open **Food Kiosk Cook**: 3/3 matched, "Meets the minimum", Apply button shown.
-   - Open **Junior Software Developer**: 0/4 matched, the missing skills listed, "needs at least 3 matching skills", and **Update My Skills** instead of Apply.
+   - Open **Junior Software Developer**: 0/4 matched, the missing skills listed, "You need at least 3 of this job's required skills ...", and **Update My Skills** instead of Apply.
    - Say: "This is a plain matched/missing list. No score, no ranking."
 5. **Admin compares with the uploaded form** (TC-B-14)
    - As admin: NSRP tab, Pedro, **Show Uploaded Form**. The scanned image appears next to the encoded data.
@@ -115,8 +116,9 @@ All passwords are `Test@123` except the admin's.
 ### W4: A verified job seeker changes the profile (TC-A-14)
 
 - As Ana: Profile, change Religion or add a skill, then Save.
-- *Shown:* the profile was sent back to PESO; Home shows **NSRP: Submitted**.
-- Opening a job shows "waiting for PESO" instead of Apply. Earlier applications are unaffected.
+- *Shown:* "Your NSRP profile changed, so it was sent back to PESO for re-checking." Home shows **NSRP: Submitted**.
+- Opening a job shows **Submitted**: "Your NSRP profile was sent to PESO Misamis Oriental and is waiting to be checked." instead of Apply. Earlier applications are unaffected.
+- As admin: the profile is back under **Needs Action**. The earlier "For use of PESO only" ticks are pre-filled, so tap **Verify** to keep them.
 
 ### W5: Admin deactivates an employer (TC-A-21)
 
@@ -136,9 +138,20 @@ All passwords are `Test@123` except the admin's.
 
 - Applying twice is impossible: after applying, the job page shows "Your Application" instead of the Apply button.
 - Job closed or past its closing date: it disappears from Jobs; an open job page shows **Not Accepting Applications**.
-- Seeker with no saved skills: the skill comparison asks them to add skills and lists the job's required skills.
+- Seeker with no saved skills: the skill comparison says "Save your skills in your NSRP profile to see which of this job's ... required skills you have.", lists the required skills, and shows **Add My Skills**.
 
 ### W8: Employer account approval (TC-A-23)
 
-- As admin: Employers, **Pending Approval**, Blue Mountain Resort, then **Approve**.
-- The employer can now sign in and post jobs.
+- As admin: Employers, **Pending Approval**, Blue Mountain Resort, then **Approve**, then **Approve** again in the dialog.
+- *Shown:* Pending Approval (0), Active (4). The employer can now sign in and post jobs.
+
+### W9: OCR as the form's owner (TC-B-06, B-07, B-09)
+
+The OCR samples belong to **Juan Dela Cruz Santos**, not to a seeded account. Register him first (Sign Up, any email), then:
+
+1. Profile, **Use OCR Assistant**, Gallery, page 1, **Scan and Pre-fill** (about 1 minute), OK.
+2. Gallery, page 2 (check the preview shows page 2), **Scan and Pre-fill**, OK. Both pages are now in one review.
+3. Scroll the review: every field matches the paper, NA items are blank, and the ticks (Male, Single, Unemployed / New Entrant, Local, the language grid, Computer Literate, Photography) are set.
+4. **Confirm and Save**. Back in Profile: *19/19 required items complete*.
+5. Pick skills (for example Web Development, JavaScript, Database Management), tick the certification, **Save and Submit to PESO**.
+6. Admin verifies him; he applies to Junior Software Developer (3/4 matched).
