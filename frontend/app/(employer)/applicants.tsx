@@ -19,6 +19,7 @@ export default function Applicants() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   // Opened from the tab bar there is no job selected yet: list the job posts to choose from.
   const load = async () => {
@@ -38,7 +39,8 @@ export default function Applicants() {
   useFocusEffect(useCallback(() => { load(); }, [jobId]));
 
   const updateStatus = async (newStatus: string) => {
-    if (!selected) return;
+    if (!selected || updating) return;
+    setUpdating(true);
     try {
       await api.put(`/employer/applications/${selected.application_id}/status`, { status: newStatus });
       Alert.alert('Status Updated', `Applicant status set to "${StatusLabels[newStatus as keyof typeof StatusLabels]}".`);
@@ -46,6 +48,8 @@ export default function Applicants() {
       await load();
     } catch (err) {
       Alert.alert('Error', getApiError(err));
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -85,7 +89,7 @@ export default function Applicants() {
                     <Text style={styles.name}>{item.job_title}</Text>
                     <Text style={styles.detail}>{item.location}</Text>
                   </View>
-                  <StatusBadge status={item.status} />
+                  <StatusBadge status={item.status === 'active' ? 'for_review' : 'closed'} label={item.status === 'active' ? 'Open' : 'Closed'} />
                 </View>
                 <Text style={styles.cardHint}>
                   {item.applicant_count || 0} PESO-referred applicant{Number(item.applicant_count) === 1 ? '' : 's'}. Tap to view.
@@ -203,6 +207,8 @@ export default function Applicants() {
                           title={StatusLabels[s]}
                           variant={selected.application_status === s ? 'primary' : 'secondary'}
                           onPress={() => updateStatus(s)}
+                          loading={updating}
+                          disabled={selected.application_status === s || selected.application_status === 'closed'}
                         />
                       </View>
                     ))}

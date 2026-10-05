@@ -12,9 +12,14 @@ async function authenticate(req, res, next) {
 
   const token = authHeader.split(' ')[1];
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 
+  try {
     // Look up the account on every request (one small query) so a suspension by
     // PESO Admin takes effect immediately instead of waiting for the JWT to expire.
     const [rows] = await db.query(
@@ -37,10 +42,12 @@ async function authenticate(req, res, next) {
       role: user.role,
       account_status: user.account_status,
     };
-    next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    // Database problem, not a bad token: don't tell the user their session expired.
+    console.error('[Auth]', err.message);
+    return res.status(500).json({ error: 'Server error. Please try again in a moment.' });
   }
+  next();
 }
 
 function requireRole(...allowedRoles) {

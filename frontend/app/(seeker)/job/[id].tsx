@@ -1,7 +1,7 @@
 // ============================================================
 // Job Details + Skill Match + Apply with PESO Referral (combined)
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -20,10 +20,19 @@ export default function JobDetails() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
+  const shownId = useRef<string | undefined>(id);
 
   // Reload on focus: this hidden tab stays mounted, so reopening the same job would show the old
   // apply/match state (e.g. before PESO verified the profile or before skills changed).
   useFocusEffect(useCallback(() => {
+    // A different job was opened: don't show the previous job (or its cover letter) while this one loads.
+    if (shownId.current !== id) {
+      shownId.current = id;
+      setJob(null);
+      setMatch(null);
+      setCoverLetter('');
+      setLoading(true);
+    }
     (async () => {
       try {
         const [j, m] = await Promise.all([

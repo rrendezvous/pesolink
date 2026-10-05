@@ -10,7 +10,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const nsrpOcr = require('../services/nsrpOcr');
 const { refreshProfileCompleted } = require('../services/nsrpProfileValidation');
-const { normalizeNsrpProfile } = require('../services/nsrpForm');
+const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
 router.use(authenticate, requireRole('job_seeker'));
@@ -165,19 +165,22 @@ router.post('/extract', async (req, res) => {
 
   const parsed = nsrpOcr.parseNsrpText(rawText, ocrRegions);
   const fieldCount = nsrpOcr.countExtractedFields(parsed);
-  const ocrStatus = fieldCount > 0 ? 'fields_extracted' : 'no_fields';
+  const notNsrp = pageType === 'unknown';
+  const ocrStatus = notNsrp ? 'not_nsrp' : (fieldCount > 0 ? 'fields_extracted' : 'no_fields');
 
   await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType });
 
   return res.json({
-    success: fieldCount > 0,
+    success: !notNsrp && fieldCount > 0,
     extracted_data: parsed,
     raw_text: rawText,
     ocr_regions: ocrRegions,
     ocr_status: ocrStatus,
     page_type: pageType,
     field_count: fieldCount,
-    notice: fieldCount > 0
+    notice: notNsrp
+      ? 'This image does not look like page 1 or page 2 of NSRP Form 1, so nothing was filled in. Scan the form page itself, or encode the NSRP-based profile manually below.'
+      : fieldCount > 0
       ? 'OCR is assistive only. Extracted text has been placed into editable fields. Please review, edit, and manually confirm every field before saving. OCR does not validate, rank, screen, recommend, or decide for any applicant.'
       : 'OCR ran, but no reliable NSRP fields could be extracted. Please encode the NSRP-based profile manually below.',
   });
@@ -187,6 +190,8 @@ router.post('/extract', async (req, res) => {
 router.post('/confirm', async (req, res) => {
   const { upload_id, upload_ids, confirmed_data } = req.body;
   if (!confirmed_data) return res.status(400).json({ error: 'confirmed_data is required' });
+  const dobError = dateOfBirthError(confirmed_data.date_of_birth);
+  if (dobError) return res.status(400).json({ error: dobError });
 
   const conn = await db.getConnection();
   try {

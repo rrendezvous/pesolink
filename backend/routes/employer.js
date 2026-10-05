@@ -14,6 +14,14 @@ router.use(authenticate, requireRole('employer'));
 // Employers only see and update PESO-referred applicants (the referral itself is PESO Admin's decision).
 const EMPLOYER_STATUSES = ['for_review', 'for_interview', 'hired', 'rejected'];
 
+// 'YYYY-MM-DD' that is a real calendar date (MySQL rejects 2026-13-01 with a server error).
+function isRealDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value).trim());
+  if (!m) return false;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+}
+
 async function getEmployer(userId) {
   const [rows] = await db.query('SELECT * FROM employers WHERE user_id = ?', [userId]);
   return rows[0] || null;
@@ -107,6 +115,9 @@ router.post('/jobs', async (req, res) => {
   if (!job_title || !job_description) {
     return res.status(400).json({ error: 'Job title and description are required' });
   }
+  if (closing_date && !isRealDate(closing_date)) {
+    return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
+  }
 
   const conn = await db.getConnection();
   try {
@@ -182,6 +193,12 @@ router.put('/jobs/:id', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     const job = jobs[0];
+    if (closing_date && !isRealDate(closing_date)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
+    }
+    // Optional fields: omitted keeps the saved value, blank clears it.
+    const optional = (value, saved) => (value === undefined ? saved : (value === '' ? null : value));
 
     await conn.query(
       `UPDATE job_posts SET
@@ -192,14 +209,13 @@ router.put('/jobs/:id', async (req, res) => {
         job_title || job.job_title,
         job_description || job.job_description,
         job_type || job.job_type,
-        salary_min ?? job.salary_min,
-        salary_max ?? job.salary_max,
-        location || job.location,
+        optional(salary_min, job.salary_min),
+        optional(salary_max, job.salary_max),
+        optional(location, job.location),
         vacancies || job.vacancies,
-        requirements || job.requirements,
-        // Blank clears the optional email; omitted keeps it.
-        application_email === undefined ? job.application_email : (application_email || null),
-        closing_date || job.closing_date,
+        optional(requirements, job.requirements),
+        optional(application_email, job.application_email),
+        optional(closing_date, job.closing_date),
         status || job.status,
         req.params.id,
       ]
@@ -402,6 +418,16 @@ router.put('/applications/:id/status', async (req, res) => {
     }
 
     const oldStatus = app.application_status;
+    // Closed records (job post closed, job seeker deactivated) are final; the seeker was already told why.
+    if (oldStatus === 'closed') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'This application is closed and can no longer be updated' });
+    }
+    // Same status again: nothing changes, so no duplicate history entry or notification.
+    if (oldStatus === status) {
+      await conn.rollback();
+      return res.json({ message: 'Status unchanged' });
+    }
 
     await conn.query(
       'UPDATE job_applications SET application_status = ? WHERE id = ?',

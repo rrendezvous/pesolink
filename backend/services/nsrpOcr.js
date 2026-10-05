@@ -614,12 +614,20 @@ async function recognizeBinaryRegion(worker, Tesseract, binaryImage, region, spe
   return normalizeRegionText(result.data?.text || '');
 }
 
+// Printed labels of NSRP Form 1 page 1. A photo that shows none of the page-2 headings and fewer than
+// two of these is not an NSRP page, so no field positions are read from it (they would only be noise).
+const PAGE1_MARKERS = [
+  'personal information', 'surname', 'first name', 'middle name', 'date of birth', 'place of birth',
+  'civil status', 'present address', 'philhealth', 'pag-ibig', 'employment status', 'job preference',
+  'preferred occupation', 'dialect proficiency', 'registration form', '4ps',
+];
+
 function detectNsrpPageType(rawText) {
   const text = String(rawText || '').toLowerCase();
   if (text.includes('educational background') || text.includes('technical/vocational') || text.includes('other skills acquired')) {
     return 'page2';
   }
-  return 'page1';
+  return PAGE1_MARKERS.filter((marker) => text.includes(marker)).length >= 2 ? 'page1' : 'unknown';
 }
 
 async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, binaryImage, dy = 0, options = {}, pageType = 'page1') {
@@ -708,6 +716,10 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       binaryImage = decodeTesseractBinaryImage(full.data?.imageBinary || '');
     } catch (err) {
       if (options.logWarnings) console.warn('[NSRP OCR binary decode]', err.message || err);
+    }
+
+    if (pageType === 'unknown') {
+      return { rawText, regions: { __page_type: 'unknown' }, pageBox, dy: 0, pageType };
     }
 
     const effectivePageBox = pageBox || (binaryImage ? { width: binaryImage.width, height: binaryImage.height } : null);
@@ -1078,9 +1090,11 @@ function parsePage2Text(rawText, ocrRegions = {}) {
 }
 
 function parseNsrpText(rawText, ocrRegions = {}) {
-  if ((ocrRegions.__page_type || detectNsrpPageType(rawText)) === 'page2') {
+  const pageType = ocrRegions.__page_type || detectNsrpPageType(rawText);
+  if (pageType === 'page2') {
     return parsePage2Text(rawText, ocrRegions);
   }
+  if (pageType === 'unknown') return emptyEditable();
 
   const text = String(rawText || '').replace(/\r/g, '');
   const checkboxes = ocrRegions.__checkboxes || {};

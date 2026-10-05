@@ -117,10 +117,23 @@ function normalizeNsrpProfile(profile) {
   return base;
 }
 
+// Date of birth is entered as YYYY-MM-DD and must be a real calendar date (MySQL rejects 2000-13-40).
+// Returns an error message, or null when the value is blank or valid.
+function dateOfBirthError(value) {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const d = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (!m || d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
+    return 'Date of birth must be a real date written as YYYY-MM-DD (for example 2000-05-14)';
+  }
+  return null;
+}
+
 // Base columns the app fills from other NSRP fields; left out of the change fingerprint so that
 // re-deriving them never counts as the job seeker changing their profile.
 const DERIVED_COLUMNS = ['address', 'contact_number', 'education_level', 'course', 'preferred_occupation'];
 
 module.exports = {
-  normalizeNsrpProfile, EDUCATION_LEVELS, LANGUAGES, LANGUAGE_SKILLS, DERIVED_COLUMNS,
+  normalizeNsrpProfile, EDUCATION_LEVELS, LANGUAGES, LANGUAGE_SKILLS, DERIVED_COLUMNS, dateOfBirthError,
 };

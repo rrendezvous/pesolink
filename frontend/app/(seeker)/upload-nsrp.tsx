@@ -214,6 +214,7 @@ export default function UploadNSRP() {
     if (ocrStatus === 'backend_error') return 'OCR backend error';
     if (ocrStatus === 'no_text') return 'OCR ran but found no text';
     if (ocrStatus === 'no_fields') return 'OCR ran but found no reliable NSRP fields';
+    if (ocrStatus === 'not_nsrp') return 'This is not an NSRP Form 1 page';
     return 'OCR did not extract usable text';
   };
 

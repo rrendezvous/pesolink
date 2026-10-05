@@ -6,7 +6,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted } = require('../services/nsrpProfileValidation');
 const { NSRP_STATUS_LABELS, notifyAdminsOfSubmission } = require('../services/nsrpReview');
-const { normalizeNsrpProfile } = require('../services/nsrpForm');
+const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
 
@@ -67,6 +67,8 @@ router.post('/profile', async (req, res) => {
     preferred_occupation,
     nsrp_full_data,
   } = normalizeNsrpProfile(req.body);
+  const dobError = dateOfBirthError(date_of_birth);
+  if (dobError) return res.status(400).json({ error: dobError });
 
   try {
     const jsId = await getJobSeekerId(req.user.id);

@@ -65,6 +65,12 @@ require('./migrate-referral-workflow').ensureReferralWorkflowColumns()
   .then(() => require('./seed-skills').syncSkills(require('./db')))
   .catch((err) => console.error('[Migration] Referral workflow columns check failed:', err.message));
 
+// Express 4 does not catch errors from async route code outside a try block (e.g. db.getConnection()
+// while MySQL is briefly unavailable). Log them instead of letting Node stop the whole server.
+process.on('unhandledRejection', (err) => {
+  console.error('[Unhandled Rejection]', err && err.message ? err.message : err);
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] PESO-Link MisOr backend running on http://0.0.0.0:${PORT}`);
   console.log(`[Server] Health: http://localhost:${PORT}/api/health`);
