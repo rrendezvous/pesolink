@@ -1,7 +1,73 @@
 # QA Tracker: Proposed Updates (PESO-Link sheet)
 
+## Oct 5 tracker copy (`docs/QA Tracker Upd - Oct 5 2026.xlsm`)
+
+Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sheets are byte-for-byte the same.
+
+- **Rows follow the paper's objectives (§1.3.2)**, worded simply like the other groups, and grouped by role. Each objective item is its own row:
+
+  | Objective item | Rows |
+  | --- | --- |
+  | (a) Structured and localized job vacancy browsing | 8, 9, 10 |
+  | (a) Application tracking | 14, 22 |
+  | (a) Notification-based updates | 15, 23, 31 |
+  | (a) Centralized application routing | 7, 12, 28, 29 |
+  | (b) NSRP-based digital profile encoding | 4 |
+  | (b) Optional OCR-assisted data extraction | 5 |
+  | (b) Rule-based skill matching | 6, 11, 19, 21 |
+
+  Objective (c), testing with ISO 25010 and SUS, is the evaluation itself, not an app feature, so it has no row.
+- **Left for the instructor/QA:** QA Result is "Not Yet Tested" on every row, and QA Findings or Issues, Action Required and QA Date are blank.
+- **32 rows instead of 43.** Related Oct 4 rows were merged:
+  - search + type + location filters
+  - create + edit + close job post
+  - the OCR rows
+  - the referral rows
+  - the status rows
+
+### Why each row has its status
+
+**16 Ready to Deploy, 16 Under Development.** Ready means the code is tested and little or no change is expected. Rows held back only by the manuscript wording are Ready, because the manuscript will be updated to match the app. Rows that wait on PESO answers, the skills list, or planned improvements stay Under Development. No code fixes were made for the tracker on the night before QA (Registration, Employer Account Management and Job Post Monitoring each need a small fix first).
+
+| No. | Feature or Module | Status | Reason |
+| --- | --- | --- | --- |
+| 1 | Registration | Under Development | Email format not checked by the app or the backend (`abc` is accepted). |
+| 2 | Login and Logout | Ready to Deploy | Final; tested (API, pytest, emulator). |
+| 3 | Dashboard | Ready to Deploy | NSRP status, counts and recent applications; checked on the emulator. The manuscript will be updated to match the app, so the code is not expected to change. |
+| 4 | NSRP-Based Digital Profile Encoding | Under Development | Form 1 layout matched item by item, but PESO must confirm the form version, the 19 required items and which fields to keep. Date-of-birth format differs. |
+| 5 | OCR-Assisted Data Extraction (Optional) | Under Development | 95/95 on the Jan 2017 sample only; real handwritten forms and phone photos untested; some corrections tuned to the sample. |
+| 6 | Skills Encoding | Under Development | Skills list (67) not confirmed by PESO. |
+| 7 | Submit NSRP Profile to PESO | Under Development | Approved deviation (approve-once); manuscript not updated; 19 items need PESO confirmation. |
+| 8 | Structured and Localized Job Vacancy Browsing | Ready to Deploy | Lists active jobs only (closed, expired and deactivated-employer jobs hidden); type and 26 Misamis Oriental location chips. Tested on the emulator and with pytest. |
+| 9 | Job Search and Filters | Ready to Deploy | Title/company/description search, type and location filters. Tested on the emulator and with pytest. Minor: search reloads on every keystroke (no delay), so on a slow network an older result could briefly show. |
+| 10 | Job Details | Under Development | Displayed fields not yet confirmed against the paper/adviser; includes the skill comparison and apply card, which depend on rows 11-12. |
+| 11 | Rule-Based Skill Matching | Under Development | Works, but the skills list is unconfirmed, the 3-skill minimum contradicts §3.5.1 until the manuscript update, levels are not compared, and NSRP Section VIII skills are not counted. |
+| 12 | Apply with PESO Referral | Under Development | Approved deviations (approve-once, skill minimum); manuscript not updated; PESO to confirm. |
+| 13 | Duplicate Application Prevention | Ready to Deploy | 409 plus "Your Application" card; the 500 on a double tap was fixed on `fix/pre-qa-bugfixes` (merge pending). |
+| 14 | Application Tracking | Ready to Deploy | Status timeline labelled PESO / Employer, including Closed ("not a rejection"); checked on the emulator and API. The manuscript status list will be updated to match. |
+| 15 | Notification-Based Updates (seeker) | Ready to Deploy | The seeker, employer and admin Alerts screens are the same code (only names differ); the seeker one was checked on the emulator, and every alert is created by the backend (API e2e). Seen on the emulator: For Review, Verified, For Interview, Hired, Job Post Updated. |
+| 16 | Employer Login and Authentication | Ready to Deploy | Final; tested; pending employers are refused. |
+| 17 | Dashboard and Company Profile | Ready to Deploy | Company card and counts checked on the emulator; Edit Company Profile is API-tested (not yet tried on a device). |
+| 18 | Create, Edit and Close Job Posts | Under Development | Posting a new job not tested on a device; closing applies the "Closed" rule that PESO must confirm (open question 6); skills list pending. |
+| 19 | Required Skills for Job Posts | Under Development | Skills list pending; levels saved as "beginner" and not used. |
+| 20 | View PESO-Referred Applicants | Under Development | What NSRP detail employers should see is not confirmed; the employer sees the current profile, even while it is being re-checked by PESO. |
+| 21 | Rule-Based Skill Matching (employer) | Under Development | Same as row 11. |
+| 22 | Application Status Updates | Ready to Deploy | For Review / For Interview / Hired / Rejected on the emulator and API; no auto-reject (by design). Known design choice: more hires than vacancies is allowed (the employer gets an alert). |
+| 23 | Notification-Based Updates (employer) | Ready to Deploy | The seeker, employer and admin Alerts screens are the same code (only names differ); the seeker one was checked on the emulator, and every alert is created by the backend (API e2e). |
+| 24 | PESO Admin Login and Authentication | Ready to Deploy | Final; tested. |
+| 25 | Dashboard (admin) | Ready to Deploy | NSRP waiting/verified and PESO-referred counts; checked on the emulator. |
+| 26 | Employer Account Management | Under Development | Creating an employer not tested on a device; email format not checked; the blank-email fix is uncommitted. |
+| 27 | Job Seeker Account Management | Ready to Deploy | Deactivate/reactivate; API e2e and pytest (closes in-progress applications, notifies employers). Uses the same blocking as row 32. Not yet tried on a device. |
+| 28 | NSRP Profile Review and Verification | Under Development | Approved deviation (one-time verification); manuscript not updated; PESO to confirm the process. "Show Uploaded Form" shows only the latest 4 images. |
+| 29 | Centralized Application Routing | Under Development | Referrals page works (By Job, employer filter, search) but could be improved; routing depends on the approve-once deviation. |
+| 30 | Job Post Monitoring | Under Development | Expired jobs still show as "active" in the admin list (the query has no closing-date check); no search or filter. |
+| 31 | Notification-Based Updates (admin) | Ready to Deploy | The seeker, employer and admin Alerts screens are the same code (only names differ); the seeker one was checked on the emulator, and every alert is created by the backend (API e2e). |
+| 32 | Deactivated Account Blocking | Ready to Deploy | A deactivated user's next request is refused (pytest, API e2e, emulator sign-in refused). |
+
+---
+
 - **Based on:** `docs/QA Tracker Upd - Oct 4 2026.xlsm`, sheet "PESO-Link", rows 11-53 (row numbers below are the tracker's "No." column).
-- **The tracker file was not edited.** These are proposals for the team. The adviser sets the **Status** column.
+- **The Oct 4 tracker file was not edited.** The tables below use the Oct 4 row numbers and are the detailed developer evidence behind the Oct 5 statuses.
 - **Evidence** is developer testing on the demo database, first on 2026-10-04 and re-checked on 2026-10-05: API tests, pytest, an OCR accuracy script, and Android emulator walkthroughs. It is **not** formal QA by the team. Test case IDs refer to `docs/OBJECTIVE_TEST_CASES.md`.
 - **2026-10-05 recheck:** full run as the sample's owner (register, OCR both pages, submit, verify, apply, employer status update) plus every role on the emulator. Five app bugs were found and fixed (rows 4, 9, 23, 26, 36); see "Fixed in the 2026-10-05 recheck" below.
 
