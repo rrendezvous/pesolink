@@ -7,8 +7,8 @@ import {
   View, Text, StyleSheet, FlatList, Modal, ScrollView, Alert, RefreshControl,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { Card, Button, Input, EmptyState, Row, Chip } from '../../src/components/ui';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Card, Button, Input, EmptyState, Row, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
@@ -37,6 +37,7 @@ const STATE_LABELS = {
 };
 
 export default function ManageEmployers() {
+  const router = useRouter();
   const [employers, setEmployers] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('');
@@ -136,6 +137,7 @@ export default function ManageEmployers() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <BackLink testID="back-home" label="Home" onPress={() => router.navigate('/(admin)/dashboard')} />
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Employers</Text>
         <Text style={styles.headerSub}>Employer accounts under PESO administrative control</Text>

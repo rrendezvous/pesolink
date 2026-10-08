@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TouchableOpacity } from 'react-native';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
+import { api } from '../../src/api/client';
 import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
 
@@ -40,6 +41,19 @@ export default function AdminLayout() {
   const insets = useSafeAreaInsets();
   const bottomInset = insets.bottom || 0;
   const tabBarBottomPadding = Math.max(8 + bottomInset, 16);
+  const pathname = usePathname();
+  const [pendingNsrp, setPendingNsrp] = useState(0);
+
+  // Badge on the NSRP tab: profiles waiting for PESO. Refreshed whenever the admin moves between screens.
+  useEffect(() => {
+    // Skip once the admin has signed out and left the admin screens.
+    if (!pathname || pathname === '/') return undefined;
+    let active = true;
+    api.get('/admin/stats')
+      .then((res) => { if (active) setPendingNsrp(Number(res.data?.pending_nsrp_reviews) || 0); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [pathname]);
 
   return (
     <Tabs
@@ -68,6 +82,8 @@ export default function AdminLayout() {
         tabBarHideOnKeyboard: false,
       }}
     >
+      {/* Five tabs, like the seeker and employer: daily tasks first, then Alerts and Exit.
+          Employers and Job Posts are opened from the Home dashboard. */}
       <Tabs.Screen
         name="dashboard"
         options={{
@@ -78,35 +94,13 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="monitor-jobs"
-        options={{
-          title: 'Jobs',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'briefcase' : 'briefcase-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="manage-job-seekers"
         options={{
           title: 'NSRP',
+          tabBarBadge: pendingNsrp > 0 ? pendingNsrp : undefined,
+          tabBarBadgeStyle: { backgroundColor: Colors.error, fontSize: 10, fontWeight: '800' },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'people' : 'people-outline'} size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="employer-approvals"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="manage-employers"
-        options={{
-          title: 'Employers',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'business' : 'business-outline'} size={size} color={color} />
           ),
         }}
       />
@@ -119,7 +113,6 @@ export default function AdminLayout() {
           ),
         }}
       />
-      {/* Admin notifications tab */}
       <Tabs.Screen
         name="notifications"
         options={{
@@ -140,6 +133,10 @@ export default function AdminLayout() {
           tabBarButton: (props) => <LogoutTabButton {...props} />,
         }}
       />
+      {/* Opened from the Home dashboard, not shown in the tab bar */}
+      <Tabs.Screen name="manage-employers" options={{ href: null }} />
+      <Tabs.Screen name="monitor-jobs" options={{ href: null }} />
+      <Tabs.Screen name="employer-approvals" options={{ href: null }} />
     </Tabs>
   );
 }
