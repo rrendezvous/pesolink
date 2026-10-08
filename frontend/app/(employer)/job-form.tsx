@@ -6,7 +6,7 @@ import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { Button, Input, Card, Chip } from '../../src/components/ui';
+import { Button, Input, Card, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
@@ -130,6 +130,11 @@ export default function JobForm() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
+          <BackLink
+            testID="job-form-back"
+            label="Back"
+            onPress={() => (router.canGoBack() ? router.back() : router.navigate('/(employer)/manage-jobs'))}
+          />
           <Text style={styles.kicker}>EMPLOYER JOB POST</Text>
           <Text style={styles.headerTitle}>{isEdit ? 'Update Job' : 'Post New Job'}</Text>
           <Text style={styles.headerSub}>Create structured vacancies for PESO referral routing and tracking.</Text>

@@ -7,19 +7,32 @@ import {
   View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
-import { Card, Button, StatusBadge, EmptyState, Row } from '../../src/components/ui';
+import { Card, Button, StatusBadge, EmptyState, Row, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels } from '../../src/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels, StatusColors } from '../../src/constants/theme';
+
+const amber = StatusColors.needs_revision;
 
 const STATUSES = ['for_review', 'for_interview', 'hired', 'rejected'] as const;
+// Filter chips also include Closed (job closed or seeker deactivated).
+const FILTERS = ['for_review', 'for_interview', 'hired', 'rejected', 'closed'] as const;
 
 export default function Applicants() {
   const router = useRouter();
   const { jobId, jobTitle } = useLocalSearchParams<{ jobId: string; jobTitle: string }>();
-  const [applicants, setApplicants] = useState<any[]>([]);
+  // Applicants and job details are kept with the job they belong to, so switching jobs never shows the previous job's data.
+  const [jobData, setJobData] = useState<{ jobId?: string; applicants: any[]; job: any }>({ applicants: [], job: null });
+  const isCurrent = !!jobId && jobData.jobId === jobId;
+  const applicants = isCurrent ? jobData.applicants : [];
+  const jobInfo = isCurrent ? jobData.job : null;
   const [jobs, setJobs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [updating, setUpdating] = useState(false);
+  // The filter belongs to one job post; opening another job shows every applicant again.
+  const [filter, setFilter] = useState<{ jobId?: string; status: string }>({ status: '' });
+  const statusFilter = filter.jobId === jobId ? filter.status : '';
+  const setStatusFilter = (status: string) => setFilter({ jobId, status });
 
   // Opened from the tab bar there is no job selected yet: list the job posts to choose from.
   const load = async () => {
@@ -30,7 +43,7 @@ export default function Applicants() {
         return;
       }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
-      setApplicants(res.data.applicants || []);
+      setJobData({ jobId, applicants: res.data.applicants || [], job: res.data.job || null });
     } catch (err) {
       Alert.alert('Error', getApiError(err));
     }
@@ -38,12 +51,81 @@ export default function Applicants() {
 
   useFocusEffect(useCallback(() => { load(); }, [jobId]));
 
+
+  const countFor = (status: string) => applicants.filter((a) => a.application_status === status).length;
+
+  const stopAccepting = () => {
+    if (!jobInfo) return;
+    Alert.alert(
+      `Close "${jobInfo.job_title}"?`,
+      'This job post will stop accepting applications and will no longer appear in the job list.\n\n'
+        + 'Applicants still in progress will be marked Closed and notified. This is not a rejection. '
+        + 'Hired applicants stay Hired.\n\nThe record stays available for PESO monitoring.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Close Job Post',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.put(`/employer/jobs/${jobInfo.id}/close`);
+              await load();
+            } catch (err) {
+              Alert.alert('Error', getApiError(err));
+            }
+          },
+        },
+      ],
+    );
+  };
+  const visibleApplicants = statusFilter ? applicants.filter((a) => a.application_status === statusFilter) : applicants;
+
+  const vacancies = Number(jobInfo?.vacancies) || 0;
+  const hiredCount = countFor('hired');
+  const jobClosed = jobInfo?.status === 'closed';
+  const vacanciesFilled = vacancies > 0 && hiredCount >= vacancies;
+  const otherOpen = applicants.filter((a) => ['for_review', 'for_interview'].includes(a.application_status)).length;
+
+  // What the employer can do with the other applicants once the job is filled. Nothing happens to them automatically.
+  const OTHER_APPLICANT_CHOICES =
+    'Your other applicants are not changed. You can keep them for future openings, update each one\'s status, '
+    + 'or stop accepting applications for this job post.';
+
+  // Hired and Rejected notify the job seeker, so confirm them first and say what does and does not change.
+  const requestStatus = (newStatus: string) => {
+    if (!selected) return;
+    const name = `${selected.first_name || ''} ${selected.last_name || ''}`.trim() || 'this applicant';
+    if (newStatus === 'hired') {
+      Alert.alert(
+        `Mark ${name} as Hired?`,
+        `${name} will be notified that they are hired.\n\n` + OTHER_APPLICANT_CHOICES,
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Mark as Hired', onPress: () => updateStatus(newStatus) }],
+      );
+    } else if (newStatus === 'rejected') {
+      Alert.alert(
+        `Mark ${name} as Rejected?`,
+        `${name} will be notified that they are no longer being considered for this job.`,
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Mark as Rejected', style: 'destructive', onPress: () => updateStatus(newStatus) }],
+      );
+    } else {
+      updateStatus(newStatus);
+    }
+  };
+
   const updateStatus = async (newStatus: string) => {
     if (!selected || updating) return;
     setUpdating(true);
     try {
       await api.put(`/employer/applications/${selected.application_id}/status`, { status: newStatus });
-      Alert.alert('Status Updated', `Applicant status set to "${StatusLabels[newStatus as keyof typeof StatusLabels]}".`);
+      const newHired = hiredCount + (newStatus === 'hired' && selected.application_status !== 'hired' ? 1 : 0);
+      if (newStatus === 'hired' && vacancies > 0 && newHired >= vacancies && !jobClosed) {
+        Alert.alert(
+          'All Vacancies Filled',
+          `${newHired} hired for ${vacancies} ${vacancies === 1 ? 'vacancy' : 'vacancies'}.\n\n` + OTHER_APPLICANT_CHOICES,
+        );
+      } else {
+        Alert.alert('Status Updated', `Applicant status set to "${StatusLabels[newStatus as keyof typeof StatusLabels]}".`);
+      }
       setSelected(null);
       await load();
     } catch (err) {
@@ -100,10 +182,63 @@ export default function Applicants() {
         />
       ) : (
       <FlatList
-        data={applicants}
+        data={visibleApplicants}
         keyExtractor={(item) => String(item.application_id)}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={<EmptyState message="No PESO-referred applicants yet. Job seekers whose NSRP profile is verified by PESO Misamis Oriental appear here when they apply." />}
+        ListHeaderComponent={
+          <View>
+            {!!jobInfo && vacancies > 0 && (
+              <View style={[styles.vacancyCard, vacanciesFilled && styles.vacancyCardFilled]} testID="vacancy-card">
+                <View style={styles.vacancyHead}>
+                  <Text style={styles.vacancyTitle}>
+                    {jobClosed ? 'Job post closed' : vacanciesFilled ? 'All vacancies filled' : 'Vacancies'}
+                  </Text>
+                  <Text style={styles.vacancyCount}>{Math.min(hiredCount, vacancies)} of {vacancies} filled</Text>
+                </View>
+                <View style={styles.vacancyTrack}>
+                  <View style={[styles.vacancyFill, { width: `${Math.min(100, Math.round((hiredCount / vacancies) * 100))}%` }]} />
+                </View>
+                {vacanciesFilled && !jobClosed && (
+                  <>
+                    <Text style={styles.vacancyText}>
+                      {otherOpen > 0
+                        ? `${otherOpen} other ${otherOpen === 1 ? 'applicant is' : 'applicants are'} still in progress. ${OTHER_APPLICANT_CHOICES}`
+                        : 'No other applicants are in progress.'}
+                    </Text>
+                    <TouchableOpacity testID="vacancy-stop" onPress={stopAccepting} style={styles.vacancyLink} accessibilityRole="button">
+                      <Ionicons name="lock-closed-outline" size={14} color={Colors.gray} />
+                      <Text style={styles.vacancyLinkText}>Stop accepting applications</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {jobClosed && (
+                  <Text style={styles.vacancyText}>This job post no longer accepts applications. Applicants still in progress were marked Closed (not a rejection).</Text>
+                )}
+              </View>
+            )}
+            {applicants.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+            <Chip testID="app-filter-all" label={`All (${applicants.length})`} active={!statusFilter} onPress={() => setStatusFilter('')} />
+            {FILTERS.map((f) => (
+              <Chip
+                key={f}
+                testID={`app-filter-${f}`}
+                label={`${StatusLabels[f]} (${countFor(f)})`}
+                active={statusFilter === f}
+                onPress={() => setStatusFilter(statusFilter === f ? '' : f)}
+              />
+            ))}
+          </ScrollView>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          <EmptyState
+            message={applicants.length > 0
+              ? 'No applicants with this status.'
+              : 'No PESO-referred applicants yet. Job seekers whose NSRP profile is verified by PESO Misamis Oriental appear here when they apply.'}
+          />
+        }
         renderItem={({ item }) => (
           <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
@@ -122,16 +257,15 @@ export default function Applicants() {
                 </View>
                 <View style={styles.badgeStack}>
                   <StatusBadge status={item.application_status} />
-                  <View style={[styles.referralPill, styles.referralPillReady]}>
-                    <Text style={[styles.referralPillText, styles.referralPillTextReady]}>PESO-Referred</Text>
-                  </View>
                 </View>
               </View>
               {item.total_required_skills > 0 ? (
                 <View style={styles.matchSummary}>
-                  <Text style={styles.matchSummaryText}>Matched {item.matched_count || 0}</Text>
-                  <Text style={styles.matchSummaryText}>Missing {item.missing_count || 0}</Text>
-                  <Text style={styles.matchSummaryText}>Required {item.total_required_skills || 0}</Text>
+                  <Text style={[styles.matchSummaryText, styles.matchChipGreen]}>Matched {item.matched_count || 0}</Text>
+                  <Text style={[styles.matchSummaryText, (item.missing_count || 0) > 0 ? styles.matchChipAmber : styles.matchChipNeutral]}>
+                    Missing {item.missing_count || 0}
+                  </Text>
+                  <Text style={[styles.matchSummaryText, styles.matchChipNeutral]}>Required {item.total_required_skills || 0}</Text>
                 </View>
               ) : (
                 <Text style={styles.noSkillsText}>No required skills encoded for comparison.</Text>
@@ -160,7 +294,6 @@ export default function Applicants() {
                   <Row left="Experience" right={`${selected.years_of_experience || 0} yr`} />
                   <Row left="Employment" right={selected.employment_status || 'N/A'} />
                   <Row left="Preferred Job" right={selected.preferred_occupation || 'N/A'} />
-                  <Row left="Referral Status" right="PESO-Referred" style={styles.readyText} />
                   {!!selected.referral_reviewed_at && (
                     <Row left="Applied" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
                   )}
@@ -182,6 +315,7 @@ export default function Applicants() {
                   />
                   <SkillList
                     title="Missing Required Skills"
+                    tone="missing"
                     skills={selected.missing_required_skills || []}
                     emptyText="No missing required skills."
                   />
@@ -206,7 +340,7 @@ export default function Applicants() {
                           testID={`set-${s}`}
                           title={StatusLabels[s]}
                           variant={selected.application_status === s ? 'primary' : 'secondary'}
-                          onPress={() => updateStatus(s)}
+                          onPress={() => requestStatus(s)}
                           loading={updating}
                           disabled={selected.application_status === s || selected.application_status === 'closed'}
                         />
@@ -228,21 +362,23 @@ export default function Applicants() {
 }
 
 function SkillList({
-  title, skills, matched, emptyText,
+  title, skills, matched, emptyText, tone,
 }: {
   title: string;
   skills: any[];
   matched?: boolean;
   emptyText: string;
+  tone?: 'missing';
 }) {
+  const missing = tone === 'missing';
   return (
     <View style={styles.skillSection}>
-      <Text style={styles.modalSub}>{title}</Text>
+      <Text style={[styles.modalSub, missing && styles.amberText]}>{title}</Text>
       {skills.length > 0 ? (
         <View style={styles.skillWrap}>
           {skills.map((skill) => (
-            <View key={`${title}-${skill.id}`} style={[styles.skillPill, matched && styles.skillPillMatched]}>
-              <Text style={[styles.skillText, matched && styles.skillTextMatched]}>{skill.skill_name}</Text>
+            <View key={`${title}-${skill.id}`} style={[styles.skillPill, matched && styles.skillPillMatched, missing && styles.skillPillMissing]}>
+              <Text style={[styles.skillText, matched && styles.skillTextMatched, missing && styles.amberText]}>{skill.skill_name}</Text>
             </View>
           ))}
         </View>
@@ -270,15 +406,6 @@ const styles = StyleSheet.create({
   applicantCard: { borderRadius: Radius.lg },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
   badgeStack: { alignItems: 'flex-end', gap: Spacing.xs, maxWidth: 155 },
-  referralPill: {
-    borderWidth: 1,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  referralPillReady: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  referralPillText: { color: Colors.textDark, fontSize: FontSize.xs, fontWeight: '900', textAlign: 'center' },
-  referralPillTextReady: { color: Colors.white },
   matchSummary: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -312,7 +439,6 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   modalSubtle: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginTop: 4, marginBottom: Spacing.sm },
   modalSub: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase' },
-  readyText: { color: Colors.primary },
   comparisonNotice: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: Spacing.sm },
   skillSection: { marginTop: Spacing.md },
   skillWrap: { flexDirection: 'row', flexWrap: 'wrap', marginTop: Spacing.sm },
@@ -329,6 +455,29 @@ const styles = StyleSheet.create({
   skillPillMatched: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primary },
   skillText: { color: Colors.textDark, fontSize: FontSize.xs, fontWeight: '700' },
   skillTextMatched: { color: Colors.primary, fontWeight: '800' },
+  skillPillMissing: { backgroundColor: amber.bg, borderColor: amber.border },
+  amberText: { color: amber.text },
+  matchChipGreen: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primary, color: Colors.primary },
+  matchChipAmber: { backgroundColor: amber.bg, borderColor: amber.border, color: amber.text },
+  matchChipNeutral: { backgroundColor: Colors.surface, borderColor: Colors.borderSoft, color: Colors.gray },
+  filterRow: { marginBottom: Spacing.sm },
+  vacancyCard: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.borderSoft,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  vacancyCardFilled: { borderColor: Colors.primary, borderLeftWidth: 5 },
+  vacancyHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  vacancyTitle: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '900' },
+  vacancyCount: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  vacancyTrack: { height: 8, borderRadius: 4, backgroundColor: Colors.borderSoft, marginTop: 8, overflow: 'hidden' },
+  vacancyFill: { height: 8, borderRadius: 4, backgroundColor: Colors.primary },
+  vacancyText: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18, marginTop: Spacing.sm },
+  vacancyLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: Spacing.sm },
+  vacancyLinkText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
   emptySkillText: { color: Colors.gray, fontSize: FontSize.xs, marginTop: Spacing.sm },
   coverLetter: {
     fontSize: FontSize.sm,

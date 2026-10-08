@@ -6,6 +6,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator,
   StyleSheet, ViewStyle, TextStyle, KeyboardTypeOptions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import {
   Colors, Spacing, FontSize, Radius, Shadow, StatusColors, StatusLabels,
 } from '../constants/theme';
@@ -293,4 +294,27 @@ const row = StyleSheet.create({
     flex: 1.2,
     textAlign: 'right',
   },
+});
+
+// Back link for screens opened from a dashboard instead of the tab bar (iPhones have no back button).
+export function BackLink({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={backLink.base}
+      accessibilityRole="button"
+      accessibilityLabel={`Back to ${label}`}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Ionicons name="chevron-back" size={18} color={Colors.cardHighlight} />
+      <Text style={backLink.text}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const backLink = StyleSheet.create({
+  base: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginLeft: -4, marginBottom: 6 },
+  text: { color: Colors.cardHighlight, fontSize: FontSize.sm, fontWeight: '800' },
 });

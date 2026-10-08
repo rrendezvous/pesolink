@@ -33,16 +33,18 @@ export function SignOutModal({ visible, onCancel, onConfirm }: SignOutModalProps
               style={[styles.button, styles.cancelButton]}
               activeOpacity={0.8}
               onPress={onCancel}
+              testID="signout-cancel"
             >
-              <Text style={styles.buttonText}>Cancel</Text>
+              <Text style={[styles.buttonText, styles.cancelText]}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.button, styles.exitButton]}
               activeOpacity={0.8}
               onPress={onConfirm}
+              testID="signout-confirm"
             >
-              <Text style={styles.buttonText}>Exit</Text>
+              <Text style={styles.buttonText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -100,11 +102,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Cancel is the safe choice, so it is outlined; only the sign-out action is filled.
   cancelButton: {
-    backgroundColor: '#16A34A',
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
   },
   exitButton: {
-    backgroundColor: '#DC2626',
+    backgroundColor: Colors.error,
+  },
+  cancelText: {
+    color: Colors.textDark,
   },
   buttonText: {
     color: Colors.white,

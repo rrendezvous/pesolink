@@ -6,6 +6,7 @@ import {
   View, Text, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Button, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
@@ -32,22 +33,28 @@ export default function ManageJobs() {
     setRefreshing(false);
   };
 
-  const closeJob = (id: number) => {
-    Alert.alert('Close Job Post', 'Close this job post? The record will stay available for PESO monitoring.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Close',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.put(`/employer/jobs/${id}/close`);
-            await load();
-          } catch (err) {
-            Alert.alert('Error', getApiError(err));
-          }
+  const closeJob = (id: number, title: string) => {
+    Alert.alert(
+      `Close "${title}"?`,
+      'This job post will stop accepting applications and will no longer appear in the job list.\n\n'
+        + 'Applicants still in progress will be marked Closed and notified. This is not a rejection. '
+        + 'Hired applicants stay Hired.\n\nThe record stays available for PESO monitoring.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Close Job Post',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.put(`/employer/jobs/${id}/close`);
+              await load();
+            } catch (err) {
+              Alert.alert('Error', getApiError(err));
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
@@ -80,27 +87,39 @@ export default function ManageJobs() {
               </View>
             </View>
 
+            {/* Applicants is the main action; Edit is secondary; closing is a quiet link (it still asks to confirm). */}
             <View style={styles.actionRow}>
               <TouchableOpacity
                 testID={`view-applicants-${item.id}`}
-                style={styles.linkButton}
+                style={[styles.linkButton, styles.primaryButton]}
                 onPress={() => router.push({ pathname: '/(employer)/applicants', params: { jobId: item.id, jobTitle: item.job_title } })}
+                accessibilityRole="button"
               >
-                <Text style={styles.linkButtonText}>Applicants</Text>
+                <Ionicons name="people-outline" size={18} color={Colors.white} />
+                <Text style={[styles.linkButtonText, styles.primaryButtonText]}>Applicants ({item.applicant_count || 0})</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 testID={`edit-job-${item.id}`}
-                style={styles.linkButton}
+                style={[styles.linkButton, styles.secondaryButton]}
                 onPress={() => router.push({ pathname: '/(employer)/job-form', params: { jobId: item.id } })}
+                accessibilityRole="button"
               >
+                <Ionicons name="create-outline" size={18} color={Colors.primary} />
                 <Text style={styles.linkButtonText}>Edit</Text>
               </TouchableOpacity>
-              {item.status !== 'closed' && (
-                <TouchableOpacity testID={`close-job-${item.id}`} style={[styles.linkButton, styles.closeButton]} onPress={() => closeJob(item.id)}>
-                  <Text style={[styles.linkButtonText, { color: Colors.error }]}>Close</Text>
-                </TouchableOpacity>
-              )}
             </View>
+            {item.status !== 'closed' && (
+              <TouchableOpacity
+                testID={`close-job-${item.id}`}
+                style={styles.closeLink}
+                onPress={() => closeJob(item.id, item.job_title)}
+                accessibilityRole="button"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="lock-closed-outline" size={14} color={Colors.gray} />
+                <Text style={styles.closeLinkText}>Stop accepting applications</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       />
@@ -138,15 +157,18 @@ const styles = StyleSheet.create({
   statusText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
   actionRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   linkButton: {
-    flex: 1,
     minHeight: 44,
     borderRadius: Radius.md,
-    borderColor: Colors.borderSoft,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
   },
-  closeButton: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  primaryButton: { flex: 2, backgroundColor: Colors.primary, borderColor: Colors.primary },
+  primaryButtonText: { color: Colors.white },
+  secondaryButton: { flex: 1, backgroundColor: Colors.white, borderColor: Colors.primary },
   linkButtonText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '900' },
+  closeLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-end', marginTop: Spacing.sm },
+  closeLinkText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
 });

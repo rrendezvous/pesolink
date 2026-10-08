@@ -9,7 +9,7 @@ import {
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Card } from '../../src/components/ui';
+import { Button, Card, BackLink } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
@@ -350,6 +350,7 @@ export default function UploadNSRP() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
+            <BackLink testID="ocr-back" label="Profile" onPress={() => router.navigate('/(seeker)/profile')} />
             <Text style={styles.kicker}>OCR ASSISTANT</Text>
             <Text style={styles.headerTitle}>Scan NSRP Form</Text>
             <Text style={styles.headerSub}>Auto-fill is optional. Human review is mandatory before saving.</Text>

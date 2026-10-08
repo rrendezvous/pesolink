@@ -5,6 +5,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
@@ -251,30 +252,56 @@ export default function ProfileScreen() {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <TouchableOpacity testID="profile-back" onPress={goToDashboard} activeOpacity={0.75} style={styles.backButton}>
-            <Text style={styles.backText}>{'< Back'}</Text>
-          </TouchableOpacity>
           <Text style={styles.kicker}>NSRP PROFILE</Text>
           <Text style={styles.headerTitle}>Profile and Skills</Text>
-          <Text style={styles.headerSub}>Encode your NSRP-based information for job application support.</Text>
+          <Text style={styles.headerSub}>
+            Fill in your NSRP Form 1. PESO verifies it once; after that you can apply to any job with PESO referral.
+          </Text>
         </View>
 
         <View style={styles.body}>
-          <Card style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Your NSRP-Based Profile</Text>
-            <Text style={styles.noticeText}>
-              This one profile is used for every job you apply to. PESO verifies it once; after that you can apply to any job with PESO referral in one tap.
-            </Text>
-            <Button testID="profile-upload-shortcut" title="Use OCR Assistant" variant="secondary" onPress={() => router.push('/(seeker)/upload-nsrp')} />
-          </Card>
-
-          <Card style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>PESO Verification</Text>
-            <View style={styles.nsrpStatusRow}>
+          {/* One status card: verification, required items, PESO note, then certify and submit. */}
+          <Card style={styles.statusCard} testID="profile-status-card">
+            <View style={styles.statusHead}>
+              <Text style={styles.noticeTitle}>PESO Verification</Text>
               <StatusBadge status={nsrp.status as any} />
             </View>
             <Text style={styles.noticeText}>{nsrpStatusMessage(nsrp.status)}</Text>
-            {!!nsrp.notes && <Text style={styles.pesoNote}>PESO note: {nsrp.notes}</Text>}
+            {!!nsrp.notes && (
+              <Text style={[styles.pesoNote, nsrp.status !== 'needs_revision' && styles.pesoNoteNeutral]}>
+                PESO note: {nsrp.notes}
+              </Text>
+            )}
+
+            <View style={styles.progressHead}>
+              <Text style={styles.progressLabel}>Required NSRP items</Text>
+              <Text style={[styles.progressCount, missingReferralFields.length === 0 && styles.progressCountDone]}>
+                {filledReferralCount}/{requiredReferralCount}
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.round((filledReferralCount / requiredReferralCount) * 100)}%` },
+                  missingReferralFields.length > 0 && styles.progressFillPartial,
+                ]}
+              />
+            </View>
+            {missingReferralFields.length > 0 ? (
+              <View style={styles.missingBox}>
+                <Text style={styles.requirementsIntro}>Complete these before submitting to PESO:</Text>
+                {missingReferralFields.slice(0, 8).map((field) => (
+                  <Text key={field} style={styles.missingItem}>- {field}</Text>
+                ))}
+                {missingReferralFields.length > 8 && (
+                  <Text style={styles.missingItem}>- {missingReferralFields.length - 8} more required item(s)</Text>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.readyText}>All required items are filled in.</Text>
+            )}
+
             {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
               <TouchableOpacity
                 testID="nsrp-certify"
@@ -306,26 +333,17 @@ export default function ProfileScreen() {
                 style={{ marginTop: Spacing.md }}
               />
             )}
-          </Card>
 
-          <Card style={missingReferralFields.length ? styles.requirementsCard : styles.readyCard}>
-            <Text style={styles.noticeTitle}>Required NSRP Items</Text>
-            <Text style={styles.noticeText}>
-              {filledReferralCount}/{requiredReferralCount} required items complete.
-            </Text>
-            {missingReferralFields.length > 0 ? (
-              <>
-                <Text style={styles.requirementsIntro}>Complete these before submitting to PESO:</Text>
-                {missingReferralFields.slice(0, 8).map((field) => (
-                  <Text key={field} style={styles.missingItem}>- {field}</Text>
-                ))}
-                {missingReferralFields.length > 8 && (
-                  <Text style={styles.missingItem}>- {missingReferralFields.length - 8} more required item(s)</Text>
-                )}
-              </>
-            ) : (
-              <Text style={styles.readyText}>All required items are filled in.</Text>
-            )}
+            <TouchableOpacity
+              testID="profile-upload-shortcut"
+              onPress={() => router.push('/(seeker)/upload-nsrp')}
+              style={styles.ocrLink}
+              accessibilityRole="button"
+            >
+              <Ionicons name="scan-outline" size={18} color={Colors.primary} />
+              <Text style={styles.ocrLinkText}>Fill from a scanned NSRP form (OCR Assistant, optional)</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </TouchableOpacity>
           </Card>
 
           <NsrpForm
@@ -412,8 +430,27 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.lg,
   },
-  backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginBottom: Spacing.sm },
-  backText: { color: Colors.white, fontSize: FontSize.sm, fontWeight: '900' },
+  statusCard: { marginBottom: Spacing.md },
+  statusHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, marginBottom: 4 },
+  pesoNoteNeutral: { color: Colors.textSecondary },
+  progressHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.md },
+  progressLabel: { color: Colors.textDark, fontSize: FontSize.sm, fontWeight: '800' },
+  progressCount: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  progressCountDone: { color: Colors.primary },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: Colors.borderSoft, marginTop: 6, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: Colors.primary },
+  progressFillPartial: { backgroundColor: '#D97706' },
+  missingBox: { backgroundColor: '#FEF3C7', borderRadius: Radius.md, padding: Spacing.sm, marginTop: Spacing.sm },
+  ocrLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderTopColor: Colors.borderSoft,
+    borderTopWidth: 1,
+    paddingTop: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  ocrLinkText: { flex: 1, color: Colors.primary, fontSize: FontSize.sm, fontWeight: '800' },
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, lineHeight: 20, marginTop: 8 },

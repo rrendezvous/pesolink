@@ -1,20 +1,27 @@
 // ============================================================
 // Job Seeker Dashboard
+// Order: NSRP status and next step, main actions, progress counts, recent applications.
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Card, StatusBadge, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { currentStatus, NSRP_STATUS_LABELS, nsrpStatusMessage } from '../../src/utils/referral';
-import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
+import { currentStatus, nsrpStatusMessage } from '../../src/utils/referral';
+import { Colors, Spacing, FontSize, Radius, Shadow, StatusColors } from '../../src/constants/theme';
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const amber = StatusColors.needs_revision;
 
 export default function SeekerDashboard() {
   const router = useRouter();
   const [profile, setProfile] = useState<any>(null);
   const [skills, setSkills] = useState<any[]>([]);
+  const [requirements, setRequirements] = useState<any>(null);
   const [applications, setApplications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,6 +35,7 @@ export default function SeekerDashboard() {
       ]);
       setProfile(pRes.data.profile);
       setSkills(pRes.data.skills || []);
+      setRequirements(pRes.data.referral_requirements || null);
       setApplications(aRes.data.applications || []);
       setUnreadCount(nRes.data.unread_count || 0);
     } catch (err: any) {
@@ -49,6 +57,20 @@ export default function SeekerDashboard() {
   const verified = nsrpStatus === 'verified';
   const needsAction = ['not_submitted', 'needs_revision'].includes(nsrpStatus);
   const referredCount = applications.filter((a) => a.referral_status === 'peso_referred').length;
+  const itemsText = requirements
+    ? `${requirements.filled_count}/${requirements.required_count}`
+    : profileComplete ? 'Done' : '-';
+
+  // Green when verified, amber when the seeker must act, neutral while PESO is checking.
+  const tone = verified ? 'green' : needsAction ? 'amber' : 'neutral';
+  const statusTitle = verified
+    ? 'NSRP profile verified by PESO'
+    : nsrpStatus === 'needs_revision'
+      ? 'PESO returned your NSRP profile'
+      : nsrpStatus === 'not_submitted'
+        ? 'Your NSRP profile is not submitted yet'
+        : 'PESO is checking your NSRP profile';
+  const statusIcon: IconName = verified ? 'shield-checkmark' : needsAction ? 'alert-circle' : 'hourglass-outline';
 
   return (
     <ScrollView
@@ -58,53 +80,60 @@ export default function SeekerDashboard() {
       testID="seeker-dashboard"
     >
       <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>PESO-Link MisOr</Text>
-          <Text style={styles.headerTitle}>Overview</Text>
-        </View>
+        <Text style={styles.kicker}>PESO-Link MisOr</Text>
+        <Text style={styles.headerTitle}>Hello, {displayName}!</Text>
       </View>
 
       <View style={styles.body}>
-        <Card style={styles.welcomeCard}>
-          <Text style={styles.welcomeName}>Hello, {displayName}!</Text>
-          <Text style={styles.welcomeSub}>
-            {nsrpStatusMessage(nsrpStatus)}
-          </Text>
-          <View style={[styles.referralBadge, verified ? styles.badgeComplete : styles.badgeIncomplete]}>
-            <Text style={[styles.referralBadgeText, verified && { color: Colors.white }]}>
-              NSRP: {NSRP_STATUS_LABELS[nsrpStatus] || nsrpStatus}
-            </Text>
+        <View
+          style={[styles.statusCard, tone === 'green' && styles.statusGreen, tone === 'amber' && styles.statusAmber]}
+          testID="nsrp-status-card"
+        >
+          <View style={styles.statusTop}>
+            <Ionicons
+              name={statusIcon}
+              size={22}
+              color={tone === 'amber' ? amber.text : tone === 'green' ? Colors.primary : Colors.gray}
+            />
+            <Text style={[styles.statusTitle, tone === 'amber' && { color: amber.text }]}>{statusTitle}</Text>
           </View>
+          <Text style={[styles.statusText, tone === 'amber' && { color: amber.text }]}>{nsrpStatusMessage(nsrpStatus)}</Text>
           {needsAction && (
-            <TouchableOpacity testID="complete-profile" onPress={() => router.push('/(seeker)/profile')} style={styles.noticePill}>
-              <Text style={styles.noticePillText}>
+            <TouchableOpacity testID="complete-profile" onPress={() => router.push('/(seeker)/profile')} style={styles.statusAction} accessibilityRole="button">
+              <Text style={styles.statusActionText}>
                 {nsrpStatus === 'needs_revision' ? 'Fix and Resubmit NSRP Profile' : profileComplete ? 'Submit NSRP Profile to PESO' : 'Complete NSRP Profile'}
               </Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.white} />
             </TouchableOpacity>
           )}
-        </Card>
+        </View>
 
         <View style={styles.primaryActions}>
-          <ActionTile
-            testID="action-jobs"
-            label="Find Jobs"
-            primary
-            onPress={() => router.push('/(seeker)/jobs')}
-          />
-          <ActionTile
-            testID="action-applications"
-            label="My Applications"
-            onPress={() => router.push('/(seeker)/my-applications')}
-          />
+          <ActionTile testID="action-jobs" icon="search" label="Find Jobs" primary onPress={() => router.push('/(seeker)/jobs')} />
+          <ActionTile testID="action-applications" icon="document-text-outline" label="My Applications" onPress={() => router.push('/(seeker)/my-applications')} />
         </View>
 
+        {unreadCount > 0 && (
+          <TouchableOpacity
+            testID="unread-alerts"
+            onPress={() => router.push('/(seeker)/notifications')}
+            style={styles.alertsRow}
+            accessibilityRole="button"
+          >
+            <Ionicons name="notifications" size={18} color={Colors.primary} />
+            <Text style={styles.alertsText}>
+              {unreadCount} new {unreadCount === 1 ? 'alert' : 'alerts'}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.sectionTitle}>My Progress</Text>
         <View style={styles.statsRow}>
-          <StatCard label="Profile" value={profile?.profile_completed ? 'OK' : 'Open'} sub={profile?.profile_completed ? 'Complete' : 'Incomplete'} />
-          <StatCard label="Skills" value={skills.length} sub="encoded" />
-          <StatCard label="Referred" value={referredCount} sub="by PESO" />
+          <StatCard icon="document-text-outline" value={itemsText} label="NSRP items" onPress={() => router.push('/(seeker)/profile')} />
+          <StatCard icon="construct-outline" value={skills.length} label="Skills" onPress={() => router.push('/(seeker)/profile')} />
+          <StatCard icon="checkmark-circle-outline" value={referredCount} label="PESO-Referred" onPress={() => router.push('/(seeker)/my-applications')} />
         </View>
-
-        {/* Quick Actions moved to Profile / Jobs via bottom navigation; removed to avoid duplication */}
 
         <Text style={styles.sectionTitle}>Recent Applications</Text>
         {applications.length === 0 ? (
@@ -135,89 +164,79 @@ export default function SeekerDashboard() {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: any; sub: string }) {
+function StatCard({
+  icon, value, label, onPress,
+}: { icon: IconName; value: any; label: string; onPress: () => void }) {
   return (
-    <View style={styles.statCard}>
-      <Text style={styles.statLabel}>{label}</Text>
+    <TouchableOpacity style={styles.statCard} onPress={onPress} activeOpacity={0.75} accessibilityRole="button">
       <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statSub}>{sub}</Text>
-    </View>
+      <View style={styles.statLabelRow}>
+        <Ionicons name={icon} size={14} color={Colors.primary} style={{ marginRight: 4 }} />
+        <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{label}</Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
 function ActionTile({
-  label, onPress, testID, primary,
-}: { label: string; onPress: () => void; testID?: string; primary?: boolean }) {
+  label, onPress, testID, primary, icon,
+}: { label: string; onPress: () => void; testID?: string; primary?: boolean; icon: IconName }) {
   return (
-    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.78} style={[styles.actionTile, primary && styles.actionTilePrimary]}>
+    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.78} style={[styles.actionTile, primary && styles.actionTilePrimary]} accessibilityRole="button">
+      <Ionicons name={icon} size={20} color={primary ? Colors.white : Colors.primary} />
       <Text style={[styles.actionTileText, primary && styles.actionTileTextPrimary]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-function ActionButton({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
-  return (
-    <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.75} style={styles.actionBtn}>
-      <Text style={styles.actionText}>{label}</Text>
-      <Text style={styles.actionArrow}>{'>'}</Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
-  badgeComplete: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  badgeIncomplete: { backgroundColor: '#FEF3C7', borderColor: Colors.warning },
   container: { flex: 1, backgroundColor: Colors.primaryDark },
   content: { flexGrow: 1, backgroundColor: Colors.lightBg, paddingBottom: Spacing.xl },
   header: {
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingBottom: Spacing.lg,
   },
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
-  avatar: {
-    width: 46, height: 46, borderRadius: 23,
-    backgroundColor: Colors.surface,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '800' },
   body: { padding: Spacing.md },
-  welcomeCard: {
-    padding: Spacing.lg,
-    borderRadius: Radius.xl,
+
+  // NSRP status: colour follows the state.
+  statusCard: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.borderSoft,
+    borderWidth: 1,
+    borderLeftWidth: 5,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
     marginBottom: Spacing.md,
+    ...Shadow.card,
   },
-  welcomeName: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
-  welcomeSub: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 8, lineHeight: 20 },
-  referralBadge: {
+  statusGreen: { borderColor: Colors.primary, backgroundColor: Colors.white },
+  statusAmber: { borderColor: amber.border, backgroundColor: amber.bg },
+  statusTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  statusTitle: { flex: 1, fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark },
+  statusText: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 6, lineHeight: 20 },
+  statusAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginTop: Spacing.md,
-  },
-  referralBadgeText: { color: Colors.textDark, fontSize: FontSize.xs, fontWeight: '900' },
-  noticePill: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    borderColor: Colors.warning,
-    borderWidth: 1,
+    backgroundColor: Colors.primary,
     borderRadius: Radius.pill,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     marginTop: Spacing.md,
   },
-  noticePillText: { color: '#92400E', fontSize: FontSize.xs, fontWeight: '900' },
-  primaryActions: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
+  statusActionText: { color: Colors.white, fontSize: FontSize.sm, fontWeight: '900' },
+
+  primaryActions: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
   actionTile: {
     flex: 1,
     minHeight: 56,
+    flexDirection: 'row',
+    gap: 8,
     backgroundColor: Colors.white,
     borderColor: Colors.borderSoft,
     borderWidth: 1,
@@ -231,6 +250,28 @@ const styles = StyleSheet.create({
   actionTilePrimary: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   actionTileText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '800', textAlign: 'center' },
   actionTileTextPrimary: { color: Colors.white },
+
+  alertsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.cardHighlight,
+    borderRadius: Radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: Spacing.md,
+  },
+  alertsText: { flex: 1, color: Colors.primaryDark, fontSize: FontSize.sm, fontWeight: '800' },
+
+  sectionTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '900',
+    color: Colors.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
   statCard: {
     flex: 1,
@@ -241,25 +282,10 @@ const styles = StyleSheet.create({
     padding: 12,
     ...Shadow.card,
   },
-  statLabel: { fontSize: FontSize.xs, color: Colors.gray, fontWeight: '900' },
-  statValue: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.textDark, marginTop: 4 },
-  statSub: { fontSize: 10, color: Colors.gray, marginTop: 2 },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm, marginTop: Spacing.sm },
-  actionList: { gap: Spacing.sm, marginBottom: Spacing.lg },
-  actionBtn: {
-    backgroundColor: Colors.white,
-    borderColor: Colors.borderSoft,
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    minHeight: 52,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '800' },
-  actionArrow: { color: Colors.primary, fontSize: FontSize.lg, fontWeight: '900' },
+  statValue: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.primary, fontVariant: ['tabular-nums'] },
+  statLabelRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  statLabel: { flexShrink: 1, fontSize: FontSize.xs, color: Colors.textDark, fontWeight: '800' },
+
   applicationsCard: { padding: Spacing.sm },
   applicationItem: {
     flexDirection: 'row',
@@ -272,12 +298,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   companyMark: {
-    width: 52, height: 52, borderRadius: Radius.md,
+    width: 44, height: 44, borderRadius: Radius.md,
     backgroundColor: Colors.cardHighlight,
     alignItems: 'center', justifyContent: 'center',
     marginRight: Spacing.md,
   },
-  companyMarkText: { color: Colors.primary, fontWeight: '900', fontSize: FontSize.xl },
+  companyMarkText: { color: Colors.primary, fontWeight: '900', fontSize: FontSize.lg },
   applicationTitle: { fontWeight: '900', color: Colors.textDark, fontSize: FontSize.md },
   applicationCompany: { color: Colors.gray, fontSize: FontSize.sm, marginTop: 2 },
   applicationDate: { color: Colors.gray, fontSize: FontSize.xs, marginTop: 4 },
