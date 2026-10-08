@@ -10,11 +10,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, getApiError } from '../../src/api/client';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
-import { confirmAction } from '../../src/utils/confirm';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -35,19 +34,6 @@ export default function AdminDashboard() {
     setRefreshing(false);
   };
 
-  const handleLogout = () => {
-    confirmAction(
-      'Sign out',
-      'Are you sure?',
-      async () => {
-        await logout();
-        router.replace('/');
-      },
-      'Sign out',
-      true,
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
       <ScrollView
@@ -61,9 +47,6 @@ export default function AdminDashboard() {
             <Text style={styles.kicker}>PESO-Link MisOr</Text>
             <Text style={styles.headerTitle}>Admin Console</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} testID="admin-logout" style={styles.exitButton}>
-            <Text style={styles.exitText}>Exit</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.body}>
@@ -91,14 +74,6 @@ export default function AdminDashboard() {
         </View>
 
         {/* Management actions removed; use the bottom tab navigation to reach each section. */}
-
-          <View style={styles.noteCard}>
-            <Text style={styles.noteTitle}>Scope Reminder</Text>
-            <Text style={styles.noteText}>
-              OCR is optional and assistive. PESO verifies each job seeker&apos;s NSRP profile once; their applications then
-              reach employers as PESO-Referred. This is not a hiring decision. Skill comparison remains rule-based.
-            </Text>
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -143,18 +118,6 @@ const styles = StyleSheet.create({
   },
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
-  exitButton: {
-    minWidth: 72,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.borderSoft,
-  },
-  exitText: { color: Colors.gray, fontSize: FontSize.sm, fontWeight: '800' },
   body: { padding: Spacing.md },
   officeCard: {
     backgroundColor: Colors.primary,
@@ -195,14 +158,4 @@ const styles = StyleSheet.create({
   actionText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '900' },
   actionDetail: { color: Colors.gray, fontSize: FontSize.xs, marginTop: 3 },
   actionArrow: { color: Colors.primary, fontSize: FontSize.lg, fontWeight: '900', marginLeft: Spacing.sm },
-  noteCard: {
-    backgroundColor: Colors.cardHighlight,
-    borderColor: Colors.primary,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    marginTop: Spacing.lg,
-  },
-  noteTitle: { color: Colors.primaryDark, fontSize: FontSize.sm, fontWeight: '900' },
-  noteText: { color: Colors.textDark, fontSize: FontSize.sm, lineHeight: 20, marginTop: 6 },
 });

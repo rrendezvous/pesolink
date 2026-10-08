@@ -1,33 +1,34 @@
-import React, { useCallback, useRef } from 'react';
-import { View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { confirmAction } from '../../src/utils/confirm';
+import { SignOutModal } from '../../src/components/SignOutModal';
 
 export default function EmployerLogout() {
   const router = useRouter();
   const { logout } = useAuth();
-  const confirmedRef = useRef(false);
+  const [visible, setVisible] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (confirmedRef.current) return undefined;
-
-      confirmAction(
-        'Sign out',
-        'Are you sure you want to sign out?',
-        async () => {
-          confirmedRef.current = true;
+  return (
+    <View style={styles.container}>
+      <SignOutModal
+        visible={visible}
+        onCancel={() => {
+          setVisible(false);
+          router.replace('/(employer)/dashboard');
+        }}
+        onConfirm={async () => {
+          setVisible(false);
           await logout();
           router.replace('/');
-        },
-        'Sign out',
-        true,
-      );
-
-      return undefined;
-    }, [logout, router]),
+        }}
+      />
+    </View>
   );
-
-  return <View style={{ flex: 1 }} />;
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});

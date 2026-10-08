@@ -1,8 +1,40 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
+import React, { useState } from 'react';
+import { TouchableOpacity } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../src/context/AuthContext';
+import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
+
+function LogoutTabButton({ children, ...props }: any) {
+  const router = useRouter();
+  const { logout } = useAuth();
+  const [showModal, setShowModal] = useState(false);
+
+  return (
+    <>
+      <TouchableOpacity
+        {...props}
+        onPress={(e: any) => {
+          e?.preventDefault?.();
+          setShowModal(true);
+        }}
+      >
+        {children}
+      </TouchableOpacity>
+      <SignOutModal
+        visible={showModal}
+        onCancel={() => setShowModal(false)}
+        onConfirm={async () => {
+          setShowModal(false);
+          await logout();
+          router.replace('/');
+        }}
+      />
+    </>
+  );
+}
 
 export default function AdminLayout() {
   const insets = useSafeAreaInsets();
@@ -17,6 +49,8 @@ export default function AdminLayout() {
         sceneStyle: { paddingTop: insets.top, backgroundColor: Colors.primaryDark },
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.gray,
+        tabBarShowLabel: true,
+        tabBarLabelPosition: 'below-icon',
         tabBarStyle: {
           height: 64 + bottomInset,
           paddingTop: 6,
@@ -95,6 +129,18 @@ export default function AdminLayout() {
           ),
         }}
       />
+      {/* Sign-out tab — press opens SignOutModal via LogoutTabButton */}
+      <Tabs.Screen
+        name="logout"
+        options={{
+          title: 'Exit',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'log-out' : 'log-out-outline'} size={size} color={color} />
+          ),
+          tabBarButton: (props) => <LogoutTabButton {...props} />,
+        }}
+      />
     </Tabs>
   );
 }
+

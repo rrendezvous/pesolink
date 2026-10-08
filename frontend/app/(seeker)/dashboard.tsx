@@ -88,14 +88,12 @@ export default function SeekerDashboard() {
           <ActionTile
             testID="action-jobs"
             label="Find Jobs"
-            icon="🔍"
             primary
             onPress={() => router.push('/(seeker)/jobs')}
           />
           <ActionTile
             testID="action-applications"
             label="My Applications"
-            icon="📋"
             onPress={() => router.push('/(seeker)/my-applications')}
           />
         </View>
@@ -148,11 +146,10 @@ function StatCard({ label, value, sub }: { label: string; value: any; sub: strin
 }
 
 function ActionTile({
-  label, icon, onPress, testID, primary,
-}: { label: string; icon: string; onPress: () => void; testID?: string; primary?: boolean }) {
+  label, onPress, testID, primary,
+}: { label: string; onPress: () => void; testID?: string; primary?: boolean }) {
   return (
     <TouchableOpacity testID={testID} onPress={onPress} activeOpacity={0.78} style={[styles.actionTile, primary && styles.actionTilePrimary]}>
-      <Text style={[styles.actionTileIcon, primary && styles.actionTileIconPrimary]}>{icon}</Text>
       <Text style={[styles.actionTileText, primary && styles.actionTileTextPrimary]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -220,19 +217,19 @@ const styles = StyleSheet.create({
   primaryActions: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.md },
   actionTile: {
     flex: 1,
-    minHeight: 92,
+    minHeight: 56,
     backgroundColor: Colors.white,
     borderColor: Colors.borderSoft,
     borderWidth: 1,
     borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.md,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    ...Shadow.card,
   },
   actionTilePrimary: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  actionTileIcon: { color: Colors.primary, fontSize: FontSize.xl, fontWeight: '900', marginBottom: 6 },
-  actionTileIconPrimary: { color: Colors.white },
-  actionTileText: { color: Colors.textDark, fontSize: FontSize.sm, fontWeight: '900', textAlign: 'center' },
+  actionTileText: { color: Colors.textDark, fontSize: FontSize.md, fontWeight: '800', textAlign: 'center' },
   actionTileTextPrimary: { color: Colors.white },
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
   statCard: {
