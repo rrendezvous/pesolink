@@ -198,6 +198,10 @@ Source: both pages of NSRP Form 1 (January 2017) in `samples/nsrp-ocr/`. Compare
 
 Profiles saved before 2026-10-04 keep their free-text answers ("Previously encoded" boxes) until the seeker fills the new rows. A hidden `weight` key from older profiles is kept in the data but not shown (not on the form).
 
+## Manuscript note: vacancies-filled alert (added 2026-10-08)
+
+When the hire that fills the last vacancy is saved, applicants still For Review or For Interview get an in-app alert "Vacancies Filled" (their status is not changed; not a rejection). Checked against V11.49: Figures 1-6 need no change (Fig. 6 already has Employer "Update Status" -> "Generate Push Notification & Update DB" -> "Receive Notification Alerts"; the ERD notification entity is unchanged). Requirement 6, the DFD/ERD text and §3.5.4 already cover "job posting updates". Optional for consistency: §3.5.1 says "notification alerts related to application status updates and newly posted job vacancies"; add "and job posting updates" so it matches Requirement 6 (this also covers the existing "Job Post Updated" alert).
+
 ## Open questions for PESO Misamis Oriental
 
 1. Is one NSRP verification enough for any employer, or does PESO decide per job? (The app is approve-once.)
@@ -209,6 +213,7 @@ Profiles saved before 2026-10-04 keep their free-text answers ("Previously encod
 7. The sample form's "Are you actively looking for work?" row shows only one checkbox (before "No"), yet "How long" says 1 MONTH. The app reads it as No. Is the official form printed this way, and how should PESO read it?
 8. Should the Section VIII "Other Skills" ticks (for example Computer Literate) count as matching skills? Today only the skills the seeker picks in the Skills list are used for matching. The compliance matrix says confirmed OCR skills may be used.
 9. Is typing the date of birth as YYYY-MM-DD acceptable, or should the app accept mm/dd/yyyy like the form?
+10. When a job's vacancies are filled, do employers want a one-step "reject the remaining applicants", or do they usually keep the others for future openings? (PESO said earlier that many employers keep them as a pool. The app supports keeping them, rejecting one by one, or closing the job post, which marks the rest Closed, not rejected.)
 
 ## Recommendations (Chapter 5 candidates)
 
@@ -217,4 +222,5 @@ Profiles saved before 2026-10-04 keep their free-text answers ("Previously encod
 - Remind a Hired seeker about their other open applications.
 - Real handwritten-form OCR tuning and phone-camera capture guidance.
 - Native push notifications (in-app only now).
+- Optional one-step "reject the remaining applicants" for employers once vacancies are filled. Today employers keep the others as a pool, reject them one by one, or close the job post. Build only if PESO confirms employers want it (open question 10).
 - Change the JWT secret and review security before any real deployment.

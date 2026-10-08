@@ -66,6 +66,8 @@ check('employer told all vacancies are filled', await hasNotif(cookOwner, 'All V
 r = await call('GET', `/applications/${mariaApp}`, maria);
 check('Maria is NOT auto-rejected (still For Review)', r.data.application.application_status === 'for_review', r.data.application.application_status);
 check('Maria got no rejection notice', !(await notifs(maria)).some((n) => n.related_id === mariaApp && /no longer being considered|rejected/i.test(n.message)));
+check('Maria told the vacancies are filled (status unchanged)', await hasNotif(maria, 'Vacancies Filled', mariaApp));
+check('the hired applicant gets no vacancies-filled notice', !(await hasNotif(ana, 'Vacancies Filled', anaApp)));
 
 console.log('Employer closes the job post');
 r = await call('PUT', `/employer/jobs/${cook.id}/close`, cookOwner);

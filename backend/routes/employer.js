@@ -477,11 +477,33 @@ router.put('/applications/:id/status', async (req, res) => {
           conn,
           req.user.id,
           'All Vacancies Filled',
-          `"${app.job_title}" now has ${hired.count} hired for ${job.vacancies} ${job.vacancies === 1 ? 'vacancy' : 'vacancies'}. Close the job post when you are done so the remaining applicants are informed.`,
+          `"${app.job_title}" now has ${hired.count} hired for ${job.vacancies} ${job.vacancies === 1 ? 'vacancy' : 'vacancies'}. Your other applicants are not changed. You can keep them for future openings, update each one's status, or stop accepting applications for this job post.`,
           'vacancies_filled',
           job.id,
           'job_post'
         );
+      }
+      // The hire that fills the last vacancy also tells applicants still in progress, once.
+      // Their status is not changed: the employer may keep them for future openings.
+      if (job.status === 'active' && hired.count === job.vacancies) {
+        const [waiting] = await conn.query(
+          `SELECT ja.id, js.user_id FROM job_applications ja
+           JOIN job_seekers js ON js.id = ja.job_seeker_id
+           WHERE ja.job_post_id = ? AND ja.referral_status = 'peso_referred'
+             AND ja.application_status IN ('for_review', 'for_interview')`,
+          [app.job_post_id]
+        );
+        for (const other of waiting) {
+          await notify(
+            conn,
+            other.user_id,
+            'Vacancies Filled',
+            `All vacancies for "${app.job_title}" have been filled. Your application stays with the employer, who may still contact you for future openings. This is not a rejection. You can also apply to other jobs.`,
+            'vacancies_filled',
+            other.id,
+            'application'
+          );
+        }
       }
     }
 
