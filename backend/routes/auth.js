@@ -106,8 +106,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    if (user.account_status === 'suspended') {
-      return res.status(403).json({ error: 'Account suspended. Contact PESO admin.' });
+    if (user.account_status !== 'active') {
+      const error = user.account_status === 'pending'
+        ? 'Account pending PESO admin approval.'
+        : 'Account suspended. Contact PESO admin.';
+      return res.status(403).json({ error });
     }
 
     if (user.role !== role) {
