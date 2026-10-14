@@ -1,7 +1,7 @@
 // ============================================================
 // NSRP Profile + Skills Management (combined screen)
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -120,14 +120,21 @@ export default function ProfileScreen() {
 
   // Reload on every focus: this tab stays mounted, so returning from the OCR Assistant (which saves
   // straight to the profile) would otherwise show the old form, and saving it would overwrite the OCR data.
+  // Every load shows "Loading..." in place of the form, so the previous values cannot be saved while fresh data
+  // is on its way. Replies from an older load, or arriving after leaving the screen, are ignored.
+  const loadToken = useRef(0);
   const loadProfile = useCallback(() => {
+    const token = ++loadToken.current;
+    const active = () => token === loadToken.current;
     setLoadError('');
+    setLoading(true);
     (async () => {
       try {
         const [p, s] = await Promise.all([
           api.get('/job-seeker/profile'),
           api.get('/skills'),
         ]);
+        if (!active()) return;
         const prof = p.data.profile;
         setSavedFilled(p.data.referral_requirements?.filled_count ?? null);
         const parsedFullData = parseFullData(prof.nsrp_full_data);
@@ -153,14 +160,17 @@ export default function ProfileScreen() {
         setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
         setNsrp({ status: prof.nsrp_status || 'not_submitted', notes: prof.nsrp_review_notes });
       } catch (err) {
-        setLoadError(getApiError(err));
+        if (active()) setLoadError(getApiError(err));
       } finally {
-        setLoading(false);
+        if (active()) setLoading(false);
       }
     })();
   }, []);
 
-  useFocusEffect(loadProfile);
+  useFocusEffect(useCallback(() => {
+    loadProfile();
+    return () => { loadToken.current += 1; };
+  }, [loadProfile]));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -201,8 +211,8 @@ export default function ProfileScreen() {
   };
 
   const handleSubmitToPeso = async () => {
-    // One save at a time: Save and Submit both replace the saved profile and skills list.
-    if (loadError || saving || submitting) return;
+    // Only after a successful load, and one save at a time: Save and Submit both replace the saved profile and skills.
+    if (loading || loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
       return;
@@ -228,8 +238,8 @@ export default function ProfileScreen() {
   };
 
   const handleSave = async () => {
-    // One save at a time: Save and Submit both replace the saved profile and skills list.
-    if (loadError || saving || submitting) return;
+    // Only after a successful load, and one save at a time: Save and Submit both replace the saved profile and skills.
+    if (loading || loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
       return;
