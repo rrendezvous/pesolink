@@ -40,7 +40,7 @@ export default function Register() {
       Alert.alert('Mismatch', 'Passwords do not match.');
       return;
     }
-    if (!firstName || !lastName) {
+    if (!firstName.trim() || !lastName.trim()) {
       Alert.alert('Required', 'First and last name are required.');
       return;
     }
@@ -51,7 +51,7 @@ export default function Register() {
         email: email.trim(),
         password,
         role: 'job_seeker',
-        profile: { first_name: firstName, last_name: lastName, contact_number: contact },
+        profile: { first_name: firstName.trim(), last_name: lastName.trim(), contact_number: contact.trim() },
       });
       await login(res.data.token, res.data.user);
       router.replace('/(seeker)/dashboard');

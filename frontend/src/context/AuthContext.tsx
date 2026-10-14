@@ -1,9 +1,11 @@
 // ============================================================
 // Auth Context - Manage user session
 // ============================================================
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api, TOKEN_KEY, USER_KEY } from '../api/client';
+import { router } from 'expo-router';
+import { api, TOKEN_KEY, USER_KEY, setSessionEndedHandler } from '../api/client';
 
 export type UserRole = 'job_seeker' | 'employer' | 'admin';
 
@@ -42,7 +44,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  // Several requests can fail at once when a session ends: sign out and explain only once.
+  const endingSession = useRef(false);
+  useEffect(() => {
+    setSessionEndedHandler(async (message: string) => {
+      if (endingSession.current) return;
+      endingSession.current = true;
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(USER_KEY);
+      setUser(null);
+      router.replace('/');
+      Alert.alert('Signed Out', message);
+    });
+    return () => setSessionEndedHandler(null);
+  }, []);
+
   const login = async (token: string, u: AuthUser) => {
+    endingSession.current = false;
     await AsyncStorage.setItem(TOKEN_KEY, token);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(u));
     setUser(u);

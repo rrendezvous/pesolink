@@ -1,7 +1,7 @@
 // ============================================================
 // My Applications - Job Seeker's PESO-referred applications (list + detail with status history)
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Modal, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
@@ -21,6 +21,10 @@ export default function MyApplications() {
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState<{ application: any; history: any[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // The item whose details are open. A reply for another item (opened earlier, or after closing) is ignored,
+  // so the window never switches to a different record or reopens by itself.
+  const openId = useRef<number | null>(null);
+  const closeDetail = () => { openId.current = null; setDetail(null); };
 
   const load = async () => {
     try {
@@ -40,22 +44,25 @@ export default function MyApplications() {
   };
 
   const openDetail = async (item: any) => {
+    openId.current = item.id;
     setDetail({ application: item, history: [] });
     setDetailLoading(true);
     try {
       const res = await api.get(`/applications/${item.id}`);
+      if (openId.current !== item.id) return;
       setDetail({ application: res.data.application, history: res.data.history || [] });
     } catch (err) {
+      if (openId.current !== item.id) return;
       Alert.alert('Error', getApiError(err));
-      setDetail(null);
+      closeDetail();
     } finally {
-      setDetailLoading(false);
+      if (openId.current === item.id) setDetailLoading(false);
     }
   };
 
   const viewJob = () => {
     const jobId = detail?.application?.job_post_id;
-    setDetail(null);
+    closeDetail();
     if (jobId) router.push(`/(seeker)/job/${jobId}`);
   };
 
@@ -103,7 +110,7 @@ export default function MyApplications() {
         )}
       />
 
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => closeDetail()}>
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             {detail && (
@@ -201,7 +208,7 @@ export default function MyApplications() {
                   />
                 </View>
                 <View style={{ marginTop: Spacing.sm }}>
-                  <Button testID="close-app-detail" title="Close" variant="secondary" onPress={() => setDetail(null)} />
+                  <Button testID="close-app-detail" title="Close" variant="secondary" onPress={() => closeDetail()} />
                 </View>
               </ScrollView>
             )}

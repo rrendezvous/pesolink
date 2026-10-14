@@ -3,7 +3,7 @@
 // "By Job" shows each job post with its applicant counts per status; tapping one lists its applicants.
 // PESO's decision happens once per job seeker on the NSRP Verification screen.
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, Modal, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
@@ -35,6 +35,10 @@ export default function MonitorApplications() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [detail, setDetail] = useState<any | null>(null);
+  // The item whose details are open. A reply for another item (opened earlier, or after closing) is ignored,
+  // so the window never switches to a different record or reopens by itself.
+  const openId = useRef<number | null>(null);
+  const closeDetail = () => { openId.current = null; setDetail(null); };
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   const load = async () => {
@@ -56,16 +60,19 @@ export default function MonitorApplications() {
   };
 
   const openRequest = async (item: any) => {
+    openId.current = item.id;
     setDetail({ application: item });
     setLoadingDetail(true);
     try {
       const res = await api.get(`/admin/applications/${item.id}`);
+      if (openId.current !== item.id) return;
       setDetail(res.data);
     } catch (err) {
+      if (openId.current !== item.id) return;
       Alert.alert('Error', getApiError(err));
-      setDetail(null);
+      closeDetail();
     } finally {
-      setLoadingDetail(false);
+      if (openId.current === item.id) setLoadingDetail(false);
     }
   };
 
@@ -227,7 +234,7 @@ export default function MonitorApplications() {
       />
       )}
 
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => closeDetail()}>
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             {app && (
@@ -293,7 +300,7 @@ export default function MonitorApplications() {
                 )}
 
                 <View style={{ marginTop: Spacing.md }}>
-                  <Button testID="close-referral" title="Done" variant="secondary" onPress={() => setDetail(null)} />
+                  <Button testID="close-referral" title="Done" variant="secondary" onPress={() => closeDetail()} />
                 </View>
               </ScrollView>
             )}

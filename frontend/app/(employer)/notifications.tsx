@@ -11,11 +11,15 @@ import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 export default function EmpNotifications() {
   const [notifs, setNotifs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // Only the latest 50 alerts are listed, so the unread count comes from the server (it counts all of them).
+  const [unread, setUnread] = useState(0);
+  const [markingAll, setMarkingAll] = useState(false);
 
   const load = async () => {
     try {
       const res = await api.get('/notifications');
       setNotifs(res.data.notifications || []);
+      setUnread(res.data.unread_count || 0);
     } catch (err) {
       console.warn(getApiError(err));
     }
@@ -33,10 +37,23 @@ export default function EmpNotifications() {
     try {
       await api.put(`/notifications/${id}/read`);
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnread((count) => Math.max(0, count - 1));
     } catch {}
   };
 
-  const unread = notifs.filter((n) => !n.is_read).length;
+  // Also clears unread alerts older than the 50 listed, which could not be tapped.
+  const markAllRead = async () => {
+    if (markingAll) return;
+    setMarkingAll(true);
+    try {
+      await api.put('/notifications/read-all');
+      await load();
+    } catch (err) {
+      console.warn(getApiError(err));
+    } finally {
+      setMarkingAll(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -44,6 +61,11 @@ export default function EmpNotifications() {
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Notifications</Text>
         <Text style={styles.headerSub}>{unread} unread update{unread === 1 ? '' : 's'}</Text>
+        {unread > 0 && (
+          <TouchableOpacity testID="mark-all-read" onPress={markAllRead} disabled={markingAll} activeOpacity={0.7}>
+            <Text style={styles.markAll}>{markingAll ? 'Marking...' : 'Mark all as read'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <FlatList
         data={notifs}
@@ -79,6 +101,7 @@ const styles = StyleSheet.create({
   kicker: { color: Colors.cardHighlight, fontSize: FontSize.xs, fontWeight: '900' },
   headerTitle: { color: Colors.white, fontSize: FontSize.xl, fontWeight: '900', marginTop: 4 },
   headerSub: { color: Colors.cardHighlight, fontSize: FontSize.sm, marginTop: 4 },
+  markAll: { color: Colors.white, fontSize: FontSize.sm, fontWeight: '800', marginTop: 8, textDecorationLine: 'underline' },
   listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
   notificationCard: { borderRadius: Radius.lg },
   readNotificationCard: { borderRadius: Radius.lg, backgroundColor: Colors.surface, opacity: 0.82 },
