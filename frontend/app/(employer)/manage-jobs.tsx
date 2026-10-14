@@ -9,7 +9,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
-import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
+import { jobState, JOB_STATE_LABELS } from '../../src/utils/jobs';
+import { Colors, Spacing, FontSize, Radius, Shadow, StatusColors } from '../../src/constants/theme';
 
 export default function ManageJobs() {
   const router = useRouter();
@@ -82,8 +83,8 @@ export default function ManageJobs() {
                 <Text style={styles.meta}>{item.job_type} / {item.location || 'N/A'}</Text>
                 <Text style={styles.meta}>{item.applicant_count || 0} PESO-referred applicant{item.applicant_count === 1 ? '' : 's'}</Text>
               </View>
-              <View style={[styles.statusPill, item.status === 'active' ? styles.statusActive : styles.statusInactive]}>
-                <Text style={styles.statusText}>{item.status}</Text>
+              <View style={[styles.statusPill, jobState(item) === 'active' ? styles.statusActive : jobState(item) === 'expired' ? styles.statusExpired : styles.statusInactive]}>
+                <Text style={[styles.statusText, jobState(item) === 'expired' && styles.statusTextExpired]}>{JOB_STATE_LABELS[jobState(item)]}</Text>
               </View>
             </View>
 
@@ -117,7 +118,7 @@ export default function ManageJobs() {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="lock-closed-outline" size={14} color={Colors.gray} />
-                <Text style={styles.closeLinkText}>Stop accepting applications</Text>
+                <Text style={styles.closeLinkText}>{jobState(item) === 'expired' ? 'Close job post' : 'Stop accepting applications'}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -154,6 +155,8 @@ const styles = StyleSheet.create({
   statusPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.pill },
   statusActive: { backgroundColor: Colors.cardHighlight },
   statusInactive: { backgroundColor: Colors.muted },
+  statusExpired: { backgroundColor: StatusColors.needs_revision.bg },
+  statusTextExpired: { color: StatusColors.needs_revision.text },
   statusText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase' },
   actionRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   linkButton: {

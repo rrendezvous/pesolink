@@ -5,6 +5,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { isValidEmail, INVALID_EMAIL_MESSAGE } = require('../services/email');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -20,12 +21,15 @@ router.post('/register', async (req, res) => {
   if (!cleanEmail) {
     return res.status(400).json({ error: 'Email, password and role are required' });
   }
+  if (!isValidEmail(cleanEmail)) {
+    return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
+  }
   if (role !== 'job_seeker') {
     return res.status(400).json({
       error: 'Self-registration is only available for job seekers. Employer accounts are created by PESO Admin.',
     });
   }
-  if (password.length < 6) {
+  if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 

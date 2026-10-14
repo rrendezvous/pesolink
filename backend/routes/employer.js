@@ -3,6 +3,7 @@
 // ============================================================
 const express = require('express');
 const db = require('../db');
+const { isValidEmail, INVALID_EMAIL_MESSAGE } = require('../services/email');
 const { authenticate, requireRole } = require('../middleware/auth');
 const {
   recordHistory, notify, closeJobRecords, buildSkillComparison, ACTIVE_APPLICATION_STATUSES,
@@ -20,6 +21,38 @@ function isRealDate(value) {
   if (!m) return false;
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
   return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+}
+
+// Today as YYYY-MM-DD in server time (Philippine time, same as MySQL CURDATE()).
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
+const isBlank = (v) => !String(v ?? '').trim();
+
+// Checks the job post fields; returns an error message, or null when they are fine.
+// On edit, `saved` is the stored job post: omitted fields keep their saved values.
+function jobInputError(body, saved = null) {
+  const { job_title, job_description, job_type, vacancies, salary_min, salary_max } = body;
+  const titleBlank = saved ? job_title !== undefined && isBlank(job_title) : isBlank(job_title);
+  const descBlank = saved ? job_description !== undefined && isBlank(job_description) : isBlank(job_description);
+  if (titleBlank || descBlank) return 'Job title and description are required';
+  if (!isBlank(job_type) && !JOB_TYPES.includes(job_type)) return `Job type must be one of: ${JOB_TYPES.join(', ')}`;
+  if (!isBlank(vacancies) && !(Number.isInteger(Number(vacancies)) && Number(vacancies) >= 1)) {
+    return 'Vacancies must be a whole number of at least 1';
+  }
+  // Same rule as saving: omitted keeps the saved amount, blank clears it.
+  const amount = (value, savedValue) => {
+    if (value === undefined) return saved && savedValue != null ? Number(savedValue) : null;
+    return isBlank(value) ? null : Number(value);
+  };
+  const min = amount(salary_min, saved?.salary_min);
+  const max = amount(salary_max, saved?.salary_max);
+  if ([min, max].some((v) => v !== null && !(Number.isFinite(v) && v >= 0))) return 'Salary must be an amount of 0 or more';
+  if (min !== null && max !== null && min > max) return 'Salary Min cannot be higher than Salary Max';
+  return null;
 }
 
 async function getEmployer(userId) {
@@ -55,6 +88,9 @@ router.get('/profile', async (req, res) => {
 // POST /api/employer/profile
 router.post('/profile', async (req, res) => {
   const { company_name, company_address, contact_person, contact_number, business_type, company_size } = req.body;
+  if (company_name !== undefined && !String(company_name ?? '').trim()) {
+    return res.status(400).json({ error: 'Company name is required' });
+  }
   try {
     const emp = await getEmployer(req.user.id);
     if (!emp) return res.status(404).json({ error: 'Profile not found' });
@@ -65,7 +101,7 @@ router.post('/profile', async (req, res) => {
          business_type=?, company_size=?
        WHERE id=?`,
       [
-        company_name || emp.company_name,
+        company_name ? String(company_name).trim() : emp.company_name,
         company_address || null,
         contact_person || null,
         contact_number || null,
@@ -111,12 +147,22 @@ router.post('/jobs', async (req, res) => {
     job_title, job_description, job_type, salary_min, salary_max,
     location, vacancies, requirements, closing_date, required_skills, application_email,
   } = req.body;
+  // Saved without surrounding spaces; blank or spaces only clears it.
+  const appEmail = typeof application_email === 'string' ? application_email.trim() : application_email;
 
-  if (!job_title || !job_description) {
-    return res.status(400).json({ error: 'Job title and description are required' });
+  const inputError = jobInputError(req.body);
+  if (inputError) {
+    return res.status(400).json({ error: inputError });
   }
   if (closing_date && !isRealDate(closing_date)) {
     return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
+  }
+  // A new post that is already past its closing date would be hidden from job seekers right away.
+  if (closing_date && String(closing_date).trim() < todayKey()) {
+    return res.status(400).json({ error: 'Closing date cannot be in the past' });
+  }
+  if (appEmail && !isValidEmail(appEmail)) {
+    return res.status(400).json({ error: `Application email: ${INVALID_EMAIL_MESSAGE}` });
   }
 
   const conn = await db.getConnection();
@@ -128,9 +174,9 @@ router.post('/jobs', async (req, res) => {
          location, vacancies, requirements, application_email, closing_date, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [
-        emp.id, job_title, job_description, job_type || 'full-time',
+        emp.id, String(job_title).trim(), String(job_description).trim(), job_type || 'full-time',
         salary_min || null, salary_max || null, location || null,
-        vacancies || 1, requirements || null, application_email || null, closing_date || null,
+        vacancies || 1, requirements || null, appEmail || null, closing_date ? String(closing_date).trim() : null,
       ]
     );
     const jobId = result.insertId;
@@ -179,6 +225,8 @@ router.put('/jobs/:id', async (req, res) => {
     job_title, job_description, job_type, salary_min, salary_max,
     location, vacancies, requirements, closing_date, status, required_skills, application_email,
   } = req.body;
+  // Saved without surrounding spaces; blank or spaces only clears it.
+  const appEmail = typeof application_email === 'string' ? application_email.trim() : application_email;
 
   const conn = await db.getConnection();
   try {
@@ -193,9 +241,27 @@ router.put('/jobs/:id', async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     const job = jobs[0];
+    const inputError = jobInputError(req.body, job);
+    if (inputError) {
+      await conn.rollback();
+      return res.status(400).json({ error: inputError });
+    }
+    if (!isBlank(status) && !['active', 'closed'].includes(status)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Status must be active or closed' });
+    }
+    // Reopening needs its own flow (restoring the applications the closing closed), which is not built.
+    if (status === 'active' && job.status === 'closed') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'A closed job post cannot be reopened. Post a new job instead.' });
+    }
     if (closing_date && !isRealDate(closing_date)) {
       await conn.rollback();
       return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
+    }
+    if (appEmail && !isValidEmail(appEmail)) {
+      await conn.rollback();
+      return res.status(400).json({ error: `Application email: ${INVALID_EMAIL_MESSAGE}` });
     }
     // Optional fields: omitted keeps the saved value, blank clears it.
     const optional = (value, saved) => (value === undefined ? saved : (value === '' ? null : value));
@@ -206,16 +272,16 @@ router.put('/jobs/:id', async (req, res) => {
          location=?, vacancies=?, requirements=?, application_email=?, closing_date=?, status=?
        WHERE id=?`,
       [
-        job_title || job.job_title,
-        job_description || job.job_description,
+        job_title ? String(job_title).trim() : job.job_title,
+        job_description ? String(job_description).trim() : job.job_description,
         job_type || job.job_type,
         optional(salary_min, job.salary_min),
         optional(salary_max, job.salary_max),
         optional(location, job.location),
         vacancies || job.vacancies,
         optional(requirements, job.requirements),
-        optional(application_email, job.application_email),
-        optional(closing_date, job.closing_date),
+        optional(appEmail, job.application_email),
+        optional(typeof closing_date === 'string' ? closing_date.trim() : closing_date, job.closing_date),
         status || job.status,
         req.params.id,
       ]
@@ -276,12 +342,16 @@ router.put('/jobs/:id/close', async (req, res) => {
   try {
     await conn.beginTransaction();
     const [jobs] = await conn.query(
-      'SELECT id, job_title FROM job_posts WHERE id = ? AND employer_id = ?',
+      'SELECT id, job_title, status FROM job_posts WHERE id = ? AND employer_id = ?',
       [req.params.id, emp.id]
     );
     if (jobs.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Job not found' });
+    }
+    if (jobs[0].status === 'closed') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'This job post is already closed' });
     }
 
     await conn.query("UPDATE job_posts SET status = 'closed' WHERE id = ?", [req.params.id]);

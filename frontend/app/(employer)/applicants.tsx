@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Card, Button, StatusBadge, EmptyState, Row, Chip } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { jobState, JOB_STATE_LABELS } from '../../src/utils/jobs';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels, StatusColors } from '../../src/constants/theme';
 
@@ -171,7 +172,7 @@ export default function Applicants() {
                     <Text style={styles.name}>{item.job_title}</Text>
                     <Text style={styles.detail}>{item.location}</Text>
                   </View>
-                  <StatusBadge status={item.status === 'active' ? 'for_review' : 'closed'} label={item.status === 'active' ? 'Open' : 'Closed'} />
+                  <StatusBadge status={jobState(item) === 'active' ? 'for_review' : jobState(item) === 'expired' ? 'needs_revision' : 'closed'} label={jobState(item) === 'active' ? 'Open' : JOB_STATE_LABELS[jobState(item)]} />
                 </View>
                 <Text style={styles.cardHint}>
                   {item.applicant_count || 0} PESO-referred applicant{Number(item.applicant_count) === 1 ? '' : 's'}. Tap to view.
@@ -207,7 +208,9 @@ export default function Applicants() {
                     </Text>
                     <TouchableOpacity testID="vacancy-stop" onPress={stopAccepting} style={styles.vacancyLink} accessibilityRole="button">
                       <Ionicons name="lock-closed-outline" size={14} color={Colors.gray} />
-                      <Text style={styles.vacancyLinkText}>Stop accepting applications</Text>
+                      <Text style={styles.vacancyLinkText}>
+                        {jobState(jobInfo) === 'expired' ? 'Close job post' : 'Stop accepting applications'}
+                      </Text>
                     </TouchableOpacity>
                   </>
                 )}

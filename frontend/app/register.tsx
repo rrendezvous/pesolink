@@ -28,6 +28,10 @@ export default function Register() {
       Alert.alert('Required', 'Email and password are required.');
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert('Invalid Email', 'Enter a valid email address, for example name@example.com.');
+      return;
+    }
     if (password.length < 6) {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;

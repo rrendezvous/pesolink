@@ -1,7 +1,7 @@
 // ============================================================
 // Job Browse + Search/Filter (combined)
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, RefreshControl, FlatList, ScrollView,
 } from 'react-native';
@@ -30,21 +30,40 @@ export default function JobBrowse() {
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [locationFilter, setLocationFilter] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
+  // Typed text is sent only after the user pauses, so the list doesn't reload on every letter.
+  const [query, setQuery] = useState({ search: '', location: '' });
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = { search: search.trim(), location: locationFilter.trim() };
+      setQuery((q) => (q.search === next.search && q.location === next.location ? q : next));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search, locationFilter]);
+
+  // Chip taps apply at once; only typing waits for a pause.
+  const pickLocation = (loc: string) => {
+    setLocationFilter(loc);
+    setQuery((q) => (q.location === loc ? q : { ...q, location: loc }));
+  };
 
   const load = async () => {
+    // Only the newest request may update the list; an older, slower reply is ignored.
+    const id = ++requestId.current;
     try {
       const params: any = {};
-      if (search) params.search = search;
+      if (query.search) params.search = query.search;
       if (typeFilter) params.job_type = typeFilter;
-      if (locationFilter) params.location = locationFilter;
+      if (query.location) params.location = query.location;
       const res = await api.get('/jobs', { params });
-      setJobs(res.data.jobs || []);
+      if (id === requestId.current) setJobs(res.data.jobs || []);
     } catch (err) {
       console.warn(getApiError(err));
     }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, [search, typeFilter, locationFilter]));
+  useFocusEffect(useCallback(() => { load(); }, [query, typeFilter]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -82,14 +101,14 @@ export default function JobBrowse() {
             </ScrollView>
             <Text style={styles.filterLabel}>Location</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Chip testID="loc-any" label="Any Location" active={!locationFilter} onPress={() => setLocationFilter('')} />
+              <Chip testID="loc-any" label="Any Location" active={!locationFilter} onPress={() => pickLocation('')} />
               {MISOR_LOCATIONS.map((loc) => (
                 <Chip
                   key={loc}
                   testID={`loc-${loc}`}
                   label={loc}
                   active={locationFilter === loc}
-                  onPress={() => setLocationFilter(locationFilter === loc ? '' : loc)}
+                  onPress={() => pickLocation(locationFilter === loc ? '' : loc)}
                 />
               ))}
             </ScrollView>

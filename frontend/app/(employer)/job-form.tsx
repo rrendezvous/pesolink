@@ -8,6 +8,7 @@ import {
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { todayKey } from '../../src/utils/jobs';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
@@ -77,11 +78,21 @@ export default function JobForm() {
   };
 
   const handleSave = async () => {
-    if (!form.job_title || !form.job_description) {
+    if (!form.job_title.trim() || !form.job_description.trim()) {
       Alert.alert('Required', 'Job title and description are required.');
       return;
     }
-    if (form.application_email.trim() && !/^\S+@\S+\.\S+$/.test(form.application_email.trim())) {
+    const salaryMin = form.salary_min ? parseFloat(form.salary_min) : null;
+    const salaryMax = form.salary_max ? parseFloat(form.salary_max) : null;
+    if (salaryMin !== null && salaryMax !== null && salaryMin > salaryMax) {
+      Alert.alert('Check Salary', 'Salary Min cannot be higher than Salary Max.');
+      return;
+    }
+    if (!isEdit && form.closing_date.trim() && form.closing_date.trim() < todayKey()) {
+      Alert.alert('Check Closing Date', 'The closing date cannot be in the past.');
+      return;
+    }
+    if (form.application_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.application_email.trim())) {
       Alert.alert('Invalid Email', 'Enter a valid application email, or leave it blank.');
       return;
     }

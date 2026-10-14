@@ -21,11 +21,12 @@ router.get('/skills', authenticate, async (req, res) => {
 // POST /api/skills - admin only
 router.post('/skills', authenticate, requireRole('admin'), async (req, res) => {
   const { skill_name, category } = req.body;
-  if (!skill_name) return res.status(400).json({ error: 'skill_name required' });
+  const name = String(skill_name ?? '').trim();
+  if (!name) return res.status(400).json({ error: 'skill_name required' });
   try {
     const [result] = await db.query(
       'INSERT INTO skills (skill_name, category) VALUES (?, ?)',
-      [skill_name, category || 'general']
+      [name, category || 'general']
     );
     res.status(201).json({ message: 'Skill added', id: result.insertId });
   } catch (err) {
