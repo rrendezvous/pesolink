@@ -1,7 +1,7 @@
 // ============================================================
 // Job Form - Create / Edit Job Post
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -30,23 +30,31 @@ export default function JobForm() {
   const [skillSearch, setSkillSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const loadToken = useRef(0);
 
   // Load on every focus: this hidden tab stays mounted, so editing the same job again would show the
   // values from before the last save (and saving would undo it), and a new post would keep old entries.
-  useFocusEffect(useCallback(() => {
+  // The form is cleared before loading, and a failed load shows an error instead of the form, so a
+  // previous job's values can never be submitted. Replies that arrive after leaving the screen (or from an
+  // older load) are ignored.
+  const loadForm = useCallback(() => {
+    const token = ++loadToken.current;
+    const active = () => token === loadToken.current;
+    setForm(BLANK_FORM);
+    setSelectedSkills(new Set());
+    setSkillSearch('');
+    setLoadError('');
+    setLoading(true);
     (async () => {
       try {
         const sk = await api.get('/skills');
+        if (!active()) return;
         setAllSkills(sk.data.skills);
-        setSkillSearch('');
-        if (!isEdit) {
-          setForm(BLANK_FORM);
-          setSelectedSkills(new Set());
-        }
 
         if (isEdit) {
-          setLoading(true);
           const j = await api.get(`/jobs/${jobId}`);
+          if (!active()) return;
           const job = j.data.job;
           setForm({
             job_title: job.job_title || '',
@@ -63,12 +71,17 @@ export default function JobForm() {
           setSelectedSkills(new Set((job.required_skills || []).map((s: any) => s.id)));
         }
       } catch (err) {
-        Alert.alert('Error', getApiError(err));
+        if (active()) setLoadError(getApiError(err));
       } finally {
-        setLoading(false);
+        if (active()) setLoading(false);
       }
     })();
-  }, [jobId, isEdit]));
+  }, [jobId, isEdit]);
+
+  useFocusEffect(useCallback(() => {
+    loadForm();
+    return () => { loadToken.current += 1; };
+  }, [loadForm]));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -86,6 +99,7 @@ export default function JobForm() {
   };
 
   const handleSave = async () => {
+    if (loading || loadError) return;
     if (!form.job_title.trim() || !form.job_description.trim()) {
       Alert.alert('Required', 'Job title and description are required.');
       return;
@@ -151,6 +165,30 @@ ${form.requirements}`, allSkills)
   }
 
   if (loading) return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
+
+  if (loadError) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <BackLink
+            testID="job-form-back"
+            label="Back"
+            onPress={() => (router.canGoBack() ? router.back() : router.navigate('/(employer)/manage-jobs'))}
+          />
+          <Text style={styles.headerTitle}>{isEdit ? 'Update Job' : 'Post New Job'}</Text>
+        </View>
+        <View style={styles.errorWrap}>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{isEdit ? 'Could not load this job post' : 'Could not open the job form'}</Text>
+            <Text testID="job-form-load-error" style={styles.help}>
+              Nothing was changed. Check the connection and try again. ({loadError})
+            </Text>
+            <Button testID="job-form-retry" title="Try Again" onPress={loadForm} />
+          </Card>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -271,6 +309,7 @@ ${form.requirements}`, allSkills)
 const styles = StyleSheet.create({
   helpText: { fontSize: FontSize.xs, color: Colors.gray, lineHeight: 18, marginTop: -8, marginBottom: Spacing.md },
   container: { flex: 1, backgroundColor: Colors.lightBg },
+  errorWrap: { padding: Spacing.md },
   content: { paddingBottom: Spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
   loadingText: { color: Colors.textDark, fontSize: FontSize.md },
