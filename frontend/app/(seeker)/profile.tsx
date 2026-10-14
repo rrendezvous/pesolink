@@ -12,6 +12,7 @@ import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { nsrpStatusMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
+import { orderSkillCategories } from '../../src/utils/skills';
 
 
 const defaultNsrpFullData = {
@@ -372,7 +373,7 @@ export default function ProfileScreen() {
 
           <ProfileSection title="Skills">
             <Text style={styles.help}>Tap to select skills you have. These are used for rule-based job matching only.</Text>
-            {Object.keys(skillsByCategory).sort().map((cat) => (
+            {orderSkillCategories(Object.keys(skillsByCategory)).map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>

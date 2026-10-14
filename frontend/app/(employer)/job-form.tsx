@@ -9,7 +9,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { todayKey } from '../../src/utils/jobs';
-import { findSkillNamesInText } from '../../src/utils/skills';
+import { findSkillNamesInText, orderSkillCategories } from '../../src/utils/skills';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
@@ -247,7 +247,7 @@ ${form.requirements}`, allSkills)
             </Text>
             <Input testID="skill-search" label="Search skills" value={skillSearch} onChangeText={setSkillSearch} placeholder="e.g., welding" />
             {search && visibleSkills.length === 0 && <Text style={styles.help}>No skills match your search.</Text>}
-            {Object.keys(skillsByCategory).sort().map((cat) => (
+            {orderSkillCategories(Object.keys(skillsByCategory)).map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
                 <View style={styles.chipWrap}>

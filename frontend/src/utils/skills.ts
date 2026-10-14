@@ -18,3 +18,14 @@ export function findSkillNamesInText<T extends CatalogSkill>(text: string, skill
     return new RegExp(`(^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`).test(haystack);
   });
 }
+
+// Same value as NSRP_SECTION_VIII_CATEGORY in backend/seed-skills.js. Shown first on the skill lists;
+// the other categories keep their alphabetical order.
+export const NSRP_SKILL_CATEGORY = 'NSRP Section VIII-related skills';
+
+export function orderSkillCategories(categories: string[]): string[] {
+  return [...categories].sort((a, b) => {
+    if (a === NSRP_SKILL_CATEGORY || b === NSRP_SKILL_CATEGORY) return a === NSRP_SKILL_CATEGORY ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+}

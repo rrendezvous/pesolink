@@ -44,6 +44,21 @@ const cookOwner = (await call('GET', '/employer/jobs', north)).data.jobs.some((j
 const skills = await skillIds(ana);
 const sid = (name) => skills.find((s) => s.skill_name === name).id;
 
+console.log('Skills list: NSRP Section VIII-related group (category only; names unchanged)');
+const { SKILLS: SEED_SKILLS, NSRP_SECTION_VIII_CATEGORY } = await import('../seed-skills.js').then((m) => m.default || m);
+const nsrpNames = [
+  'Automotive Servicing', 'Beauty Care', 'Carpentry', 'Computer Literacy', 'Domestic Work', 'Driving',
+  'Electrical Wiring', 'Embroidery', 'Gardening', 'Masonry', 'Painting', 'Photography', 'Plumbing',
+  'Dressmaking', 'Stenography', 'Tailoring',
+];
+check('every seeded skill name exists exactly once',
+  SEED_SKILLS.every(([n]) => skills.filter((s) => s.skill_name === n).length === 1));
+check('the 16 Section VIII-related skills share the NSRP category',
+  nsrpNames.every((n) => skills.find((s) => s.skill_name === n)?.category === NSRP_SECTION_VIII_CATEGORY),
+  JSON.stringify(skills.filter((s) => nsrpNames.includes(s.skill_name)).map((s) => [s.skill_name, s.category])));
+check('no other skill is in the NSRP category',
+  skills.filter((s) => s.category === NSRP_SECTION_VIII_CATEGORY).length === nsrpNames.length);
+
 console.log('Setup: Maria adds cook skills, PESO re-verifies, Ana and Maria apply to Food Kiosk Cook');
 const mariaSkills = (await call('GET', '/job-seeker/profile', maria)).data.skills.map((s) => s.id);
 let r = await call('POST', '/job-seeker/skills', maria, {
