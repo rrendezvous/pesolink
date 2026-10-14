@@ -23,7 +23,7 @@ Each case has a stable ID so it can become a QA-tracker row.
 
 Run the API tests with `cd backend && npm run test:e2e` (backend running on the demo database).
 
-> **Approved deviations from V11.49.** The manuscript must be updated before the defense.
+> **Deviations from V11.49** (covered in manuscript V13.5; not yet discussed with the adviser).
 > - **NSRP verification:** PESO verifies the NSRP profile once instead of reviewing each job request.
 > - **Skill minimum:** a temporary minimum of 3 matching skills (`MIN_SKILL_MATCHES`). The paper's §3.5.1 says missing skills never block a referral request. Set `MIN_SKILL_MATCHES=0` to follow the paper exactly.
 
@@ -47,7 +47,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-10 | Apply with PESO referral in one tap (§3.5.1, Req 2-3) | Seeker | Verified seeker opens a job, taps Apply | Record is PESO-Referred / For Review; employer notified | Pass | E-N; EMU2 (Junior Software Developer, 3/4 matched, with a cover letter) |
 | TC-A-11 | Unverified seeker cannot apply with PESO referral | Seeker | Submitted / Needs-Revision seeker taps Apply | Refused: "must be PESO-verified" | Pass | E-N, PY |
 | TC-A-12 | No duplicate application per job | Seeker | Apply twice to the same job | Second attempt refused (409) | Pass | E-N, PY; EMU2 (reopened job shows "Applied on ..." and no Apply button) |
-| TC-A-13 | Temporary skill minimum (approved deviation) | Seeker | Open a job with 0 of 4 skills matched; try to apply | "Needs at least 3 matching skills" and no Apply button; API refuses | Pass | E-N; EMU |
+| TC-A-13 | Temporary skill minimum (deviation from the paper) | Seeker | Open a job with 0 of 4 skills matched; try to apply | "Needs at least 3 matching skills" and no Apply button; API refuses | Pass | E-N; EMU |
 | TC-A-14 | Changed verified profile goes back to PESO; unchanged save does not | Seeker | Save with no changes; then change a field or skill | Unchanged: stays Verified. Changed: Submitted, admins and seeker notified, cannot apply until re-verified | Pass | E-N, E-F; EMU2 (both cases; the job page then shows "waiting to be checked") |
 | TC-A-15 | Employer sees only PESO-referred applicants, with NSRP summary and matched/missing skills (§3.5.2) | Employer | Open the job's applicants | Only referred applicants; contact, summary, skills, and cover letter shown | Pass | E-N; EMU2 |
 | TC-A-16 | Employer updates application status; seeker sees the timeline (§3.5.2) | Employer, seeker | Set For Interview, then Hired / Rejected | Status saved; seeker notified; timeline shows "Employer: ..." | Pass | E-N, E-A, PY; EMU2 (For Interview; seeker alert and timeline) |

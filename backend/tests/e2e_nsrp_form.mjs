@@ -43,6 +43,10 @@ const body = {
   nsrp_full_data: {
     ...full(anaProfile),
     education: { ...full(anaProfile).education, tertiary: { school: 'USTP', course: 'BS Hospitality Management', level_reached: '2nd year', year_last_attended: '2022' } },
+    training_rows: [
+      { course: 'Cookery', duration: '2019', institution: 'TESDA', certificate: 'Certificate' },
+      { course: 'Bread and Pastry', duration: '2020', institution: 'TESDA', certificate: 'NC II' },
+    ],
   },
 };
 let r = await call('POST', '/job-seeker/profile', ana, body);
@@ -50,6 +54,9 @@ check('save 200', r.status === 200, JSON.stringify(r.data));
 check('tertiary summary derived', /USTP, BS Hospitality Management/.test(full(r.data.profile).tertiary_background || ''), full(r.data.profile).tertiary_background);
 check('undergraduate highest level', r.data.profile.education_level === 'Tertiary (undergraduate)' && r.data.profile.course === 'BS Hospitality Management', `${r.data.profile.education_level} / ${r.data.profile.course}`);
 check('changing education sends verified profile back to PESO', r.data.nsrp_status_changed_to === 'submitted');
+const trainings = full(r.data.profile).trainings || '';
+check('training summary does not repeat "Certificate"', !/Certificate: Certificate/.test(trainings) && /TESDA, Certificate/.test(trainings), trainings);
+check('training summary labels other certificates', /Certificate: NC II/.test(trainings), trainings);
 
 console.log('Live-in civil status (NSRP Form 1 option)');
 p = (await call('GET', '/job-seeker/profile', pedro)).data.profile;

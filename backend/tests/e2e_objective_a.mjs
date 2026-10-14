@@ -193,6 +193,18 @@ check('profile reports uploaded form count', typeof r.data.uploaded_form_count =
 r = await call('GET', `/admin/job-seekers/${seekerId('ana.bautista@example.com')}/nsrp-forms`, admin);
 check('nsrp-forms endpoint returns a list', r.status === 200 && Array.isArray(r.data.forms));
 check('non-admin cannot read nsrp-forms', (await call('GET', `/admin/job-seekers/${seekerId('ana.bautista@example.com')}/nsrp-forms`, ana)).status === 403);
+{
+  // Every upload can be seen: 4 at a time, newest first, then the older ones with ?offset=.
+  const tinyImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  for (let i = 0; i < 5; i += 1) await call('POST', '/nsrp/upload', ana, { image_base64: tinyImage });
+  const anaId = seekerId('ana.bautista@example.com');
+  const total = (await call('GET', `/admin/job-seekers/${anaId}/profile`, admin)).data.uploaded_form_count;
+  const first = (await call('GET', `/admin/job-seekers/${anaId}/nsrp-forms`, admin)).data.forms;
+  const rest = (await call('GET', `/admin/job-seekers/${anaId}/nsrp-forms?offset=4`, admin)).data.forms;
+  const ids = new Set([...first, ...rest].map((f) => f.id));
+  check('uploaded forms load 4 at a time and the older ones are reachable',
+    total >= 5 && first.length === 4 && first.length + rest.length === total && ids.size === total, `${total} ${first.length} ${rest.length}`);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

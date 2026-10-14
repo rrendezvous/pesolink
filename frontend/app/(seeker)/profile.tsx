@@ -11,7 +11,7 @@ import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui'
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { nsrpStatusMessage } from '../../src/utils/referral';
-import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
 
 
 const defaultNsrpFullData = {
@@ -104,6 +104,8 @@ export default function ProfileScreen() {
   const [nsrpFullData, setNsrpFullData] = useState(defaultNsrpFullData);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
+  // Required items PESO's records count for the saved profile (what Home shows), to flag unsaved changes.
+  const [savedFilled, setSavedFilled] = useState<number | null>(null);
   const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
   const [submitting, setSubmitting] = useState(false);
   const [certified, setCertified] = useState(false);
@@ -122,6 +124,7 @@ export default function ProfileScreen() {
           api.get('/skills'),
         ]);
         const prof = p.data.profile;
+        setSavedFilled(p.data.referral_requirements?.filled_count ?? null);
         const parsedFullData = parseFullData(prof.nsrp_full_data);
         setForm({
           first_name: prof.first_name || '',
@@ -175,6 +178,8 @@ export default function ProfileScreen() {
     });
     const changedTo = res.data.nsrp_status_changed_to || skillsRes.data.nsrp_status_changed_to || null;
     if (changedTo) setNsrp({ status: changedTo, notes: null });
+    const fresh = await api.get('/job-seeker/profile');
+    setSavedFilled(fresh.data.referral_requirements?.filled_count ?? null);
     return changedTo;
   };
 
@@ -279,6 +284,11 @@ export default function ProfileScreen() {
                 {filledReferralCount}/{requiredReferralCount}
               </Text>
             </View>
+            {savedFilled !== null && savedFilled !== filledReferralCount && (
+              <Text testID="unsaved-progress-note" style={styles.unsavedNote}>
+                Not saved yet: Home shows {savedFilled}/{requiredReferralCount} until you tap Save Profile.
+              </Text>
+            )}
             <View style={styles.progressTrack}>
               <View
                 style={[
@@ -460,6 +470,7 @@ const styles = StyleSheet.create({
   noticeText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
   requirementsCard: { backgroundColor: '#FEF3C7', borderColor: Colors.warning, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
   readyCard: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primarySoft, borderWidth: 1, marginTop: Spacing.sm, marginBottom: Spacing.md },
+  unsavedNote: { fontSize: FontSize.xs, color: StatusColors.needs_revision.text, marginBottom: Spacing.xs },
   requirementsIntro: { fontSize: FontSize.xs, color: '#92400E', fontWeight: '900', marginBottom: 6 },
   missingItem: { fontSize: FontSize.xs, color: '#92400E', lineHeight: 18, fontWeight: '700' },
   nsrpStatusRow: { flexDirection: 'row', marginBottom: Spacing.sm },

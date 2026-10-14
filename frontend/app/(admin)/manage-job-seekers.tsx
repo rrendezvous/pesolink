@@ -86,13 +86,15 @@ export default function NsrpVerification() {
     }
   };
 
-  // Uploaded NSRP form images are large, so they load only when PESO asks to compare.
-  const loadForms = async () => {
+  // Uploaded NSRP form images are large, so they load only when PESO asks to compare, 4 at a time (newest first).
+  const loadForms = async (more = false) => {
     if (!detail?.profile) return;
     setFormsLoading(true);
     try {
-      const res = await api.get(`/admin/job-seekers/${detail.profile.id}/nsrp-forms`);
-      setForms(res.data.forms || []);
+      const offset = more && forms ? forms.length : 0;
+      const res = await api.get(`/admin/job-seekers/${detail.profile.id}/nsrp-forms`, { params: { offset } });
+      const page = res.data.forms || [];
+      setForms((prev) => (more && prev ? [...prev, ...page] : page));
     } catch (err) {
       Alert.alert('Error', getApiError(err));
     } finally {
@@ -290,18 +292,32 @@ export default function NsrpVerification() {
                           testID="show-nsrp-forms"
                           title={`Show Uploaded Form (${detail.uploaded_form_count})`}
                           variant="secondary"
-                          onPress={loadForms}
+                          onPress={() => loadForms()}
                           loading={formsLoading}
                         />
                       ) : (
-                        forms.map((f: any) => (
-                          <View key={f.id} style={styles.formImageWrap}>
-                            <Image source={{ uri: f.image_base64 }} style={styles.formImage} resizeMode="contain" />
-                            <Text style={styles.appMeta}>
-                              Uploaded {new Date(f.uploaded_at).toLocaleString()} / {f.ocr_confirmed ? 'OCR result confirmed by job seeker' : 'OCR result not confirmed'}
-                            </Text>
-                          </View>
-                        ))
+                        <>
+                          <Text style={styles.appMeta}>
+                            Showing {forms.length} of {detail.uploaded_form_count} uploads, newest first.
+                          </Text>
+                          {forms.map((f: any) => (
+                            <View key={f.id} style={styles.formImageWrap}>
+                              <Image source={{ uri: f.image_base64 }} style={styles.formImage} resizeMode="contain" />
+                              <Text style={styles.appMeta}>
+                                Uploaded {new Date(f.uploaded_at).toLocaleString()} / {f.ocr_confirmed ? 'OCR result confirmed by job seeker' : 'OCR result not confirmed'}
+                              </Text>
+                            </View>
+                          ))}
+                          {forms.length < detail.uploaded_form_count && (
+                            <Button
+                              testID="show-older-forms"
+                              title={`Show Older Uploads (${detail.uploaded_form_count - forms.length} more)`}
+                              variant="secondary"
+                              onPress={() => loadForms(true)}
+                              loading={formsLoading}
+                            />
+                          )}
+                        </>
                       )}
                     </Section>
 
