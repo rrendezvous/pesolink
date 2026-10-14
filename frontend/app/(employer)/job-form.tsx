@@ -104,6 +104,10 @@ export default function JobForm() {
       Alert.alert('Required', 'Job title and description are required.');
       return;
     }
+    if (form.vacancies.trim() && !(parseInt(form.vacancies, 10) >= 1)) {
+      Alert.alert('Check Vacancies', 'Vacancies must be at least 1.');
+      return;
+    }
     const salaryMin = form.salary_min ? parseFloat(form.salary_min) : null;
     const salaryMax = form.salary_max ? parseFloat(form.salary_max) : null;
     if (salaryMin !== null && salaryMax !== null && salaryMin > salaryMax) {
@@ -150,8 +154,7 @@ export default function JobForm() {
     }
   };
 
-  const suggestedSkills = findSkillNamesInText(`${form.job_description}
-${form.requirements}`, allSkills)
+  const suggestedSkills = findSkillNamesInText(`${form.job_description}\n${form.requirements}`, allSkills)
     .filter((sk) => !selectedSkills.has(sk.id));
   const selectedNames = allSkills.filter((sk) => selectedSkills.has(sk.id)).map((sk) => sk.skill_name);
   // The search only filters which chips are shown; selections hidden by it are kept and saved.

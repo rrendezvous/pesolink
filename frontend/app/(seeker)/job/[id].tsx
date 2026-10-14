@@ -41,12 +41,14 @@ export default function JobDetails() {
           api.get(`/jobs/${id}`),
           api.get(`/jobs/${id}/match`).catch(() => ({ data: null })),
         ]);
+        // A reply for a job that is no longer open (the seeker opened another one meanwhile) is ignored.
+        if (shownId.current !== id) return;
         setJob(j.data.job);
         setMatch(m.data);
       } catch (err) {
-        Alert.alert('Error', getApiError(err));
+        if (shownId.current === id) Alert.alert('Error', getApiError(err));
       } finally {
-        setLoading(false);
+        if (shownId.current === id) setLoading(false);
       }
     })();
   }, [id]));

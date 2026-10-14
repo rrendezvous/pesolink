@@ -110,6 +110,9 @@ export default function ProfileScreen() {
   const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
   const [submitting, setSubmitting] = useState(false);
   const [certified, setCertified] = useState(false);
+  // Set when the profile could not be loaded: the form is hidden so a blank or outdated form is never saved
+  // over the saved profile (saving replaces every field and the skills list).
+  const [loadError, setLoadError] = useState('');
 
   const goToDashboard = () => {
     router.replace('/(seeker)/dashboard');
@@ -117,7 +120,8 @@ export default function ProfileScreen() {
 
   // Reload on every focus: this tab stays mounted, so returning from the OCR Assistant (which saves
   // straight to the profile) would otherwise show the old form, and saving it would overwrite the OCR data.
-  useFocusEffect(useCallback(() => {
+  const loadProfile = useCallback(() => {
+    setLoadError('');
     (async () => {
       try {
         const [p, s] = await Promise.all([
@@ -149,12 +153,14 @@ export default function ProfileScreen() {
         setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
         setNsrp({ status: prof.nsrp_status || 'not_submitted', notes: prof.nsrp_review_notes });
       } catch (err) {
-        Alert.alert('Error', getApiError(err));
+        setLoadError(getApiError(err));
       } finally {
         setLoading(false);
       }
     })();
-  }, []));
+  }, []);
+
+  useFocusEffect(loadProfile);
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -195,6 +201,8 @@ export default function ProfileScreen() {
   };
 
   const handleSubmitToPeso = async () => {
+    // One save at a time: Save and Submit both replace the saved profile and skills list.
+    if (loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
       return;
@@ -220,6 +228,8 @@ export default function ProfileScreen() {
   };
 
   const handleSave = async () => {
+    // One save at a time: Save and Submit both replace the saved profile and skills list.
+    if (loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
       return;
@@ -249,6 +259,20 @@ export default function ProfileScreen() {
 
   if (loading) {
     return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
+  }
+
+  if (loadError) {
+    return (
+      <View style={[styles.container, styles.errorWrap]}>
+        <Card>
+          <Text style={styles.errorTitle}>Could not load your profile</Text>
+          <Text testID="prof-load-error" style={styles.errorText}>
+            Nothing was changed. Check the connection and try again. ({loadError})
+          </Text>
+          <Button testID="prof-retry" title="Try Again" onPress={loadProfile} />
+        </Card>
+      </View>
+    );
   }
 
   return (
@@ -435,6 +459,9 @@ const styles = StyleSheet.create({
   content: { paddingBottom: Spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
   loadingText: { color: Colors.textDark, fontSize: FontSize.md },
+  errorWrap: { padding: Spacing.md, justifyContent: 'center' },
+  errorTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
+  errorText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
   header: {
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.lg,
