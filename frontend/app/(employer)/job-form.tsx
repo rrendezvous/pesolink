@@ -9,6 +9,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { todayKey } from '../../src/utils/jobs';
+import { findSkillNamesInText } from '../../src/utils/skills';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
@@ -26,6 +27,7 @@ export default function JobForm() {
   const [form, setForm] = useState<any>(BLANK_FORM);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
+  const [skillSearch, setSkillSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +38,7 @@ export default function JobForm() {
       try {
         const sk = await api.get('/skills');
         setAllSkills(sk.data.skills);
+        setSkillSearch('');
         if (!isEdit) {
           setForm(BLANK_FORM);
           setSelectedSkills(new Set());
@@ -75,6 +78,11 @@ export default function JobForm() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  // Suggestions are only shown; a skill is added when the employer taps it (or "Add all").
+  const addSkills = (ids: number[]) => {
+    setSelectedSkills((prev) => new Set([...prev, ...ids]));
   };
 
   const handleSave = async () => {
@@ -128,8 +136,15 @@ export default function JobForm() {
     }
   };
 
+  const suggestedSkills = findSkillNamesInText(`${form.job_description}
+${form.requirements}`, allSkills)
+    .filter((sk) => !selectedSkills.has(sk.id));
+  const selectedNames = allSkills.filter((sk) => selectedSkills.has(sk.id)).map((sk) => sk.skill_name);
+  // The search only filters which chips are shown; selections hidden by it are kept and saved.
+  const search = skillSearch.trim().toLowerCase();
+  const visibleSkills = search ? allSkills.filter((sk) => String(sk.skill_name).toLowerCase().includes(search)) : allSkills;
   const skillsByCategory: Record<string, any[]> = {};
-  for (const sk of allSkills) {
+  for (const sk of visibleSkills) {
     const cat = sk.category || 'Other';
     if (!skillsByCategory[cat]) skillsByCategory[cat] = [];
     skillsByCategory[cat].push(sk);
@@ -204,6 +219,34 @@ export default function JobForm() {
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Required Skills</Text>
             <Text style={styles.help}>Used for rule-based matched and missing skill comparison only.</Text>
+
+            {suggestedSkills.length > 0 && (
+              <View testID="skill-suggestions" style={styles.suggestBox}>
+                <Text style={styles.catLabel}>Found in your text</Text>
+                <Text style={styles.help}>
+                  Skill names from the skills list that appear in your description or requirements. Tap a skill to add it.
+                </Text>
+                <View style={styles.chipWrap}>
+                  {suggestedSkills.map((sk) => (
+                    <Chip key={sk.id} testID={`suggest-skill-${sk.id}`} label={`+ ${sk.skill_name}`} onPress={() => addSkills([sk.id])} />
+                  ))}
+                </View>
+                {suggestedSkills.length > 1 && (
+                  <Button
+                    testID="suggest-add-all"
+                    title={`Add all ${suggestedSkills.length}`}
+                    variant="secondary"
+                    onPress={() => addSkills(suggestedSkills.map((sk) => sk.id))}
+                  />
+                )}
+              </View>
+            )}
+
+            <Text testID="selected-skills-summary" style={styles.selectedSummary}>
+              {selectedNames.length ? `Selected (${selectedNames.length}): ${selectedNames.join(', ')}` : 'No skills selected yet.'}
+            </Text>
+            <Input testID="skill-search" label="Search skills" value={skillSearch} onChangeText={setSkillSearch} placeholder="e.g., welding" />
+            {search && visibleSkills.length === 0 && <Text style={styles.help}>No skills match your search.</Text>}
             {Object.keys(skillsByCategory).sort().map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
@@ -245,6 +288,11 @@ const styles = StyleSheet.create({
   label: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.sm },
   catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
+  suggestBox: {
+    borderWidth: 1, borderColor: Colors.borderSoft, borderRadius: Radius.md,
+    padding: Spacing.sm, marginTop: Spacing.sm, marginBottom: Spacing.sm, backgroundColor: Colors.lightBg,
+  },
+  selectedSummary: { fontSize: FontSize.sm, color: Colors.textDark, fontWeight: '700', marginVertical: Spacing.sm, lineHeight: 20 },
   help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },
   twoColumn: { flexDirection: 'row' },
   sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },
