@@ -1,6 +1,28 @@
 # QA Tracker: Proposed Updates (PESO-Link sheet)
 
-## Oct 5 tracker copy (`docs/QA Tracker Upd - Oct 5 2026.xlsm`)
+## Current tracker: Oct 13 (`docs/CAPSTONE_System_QA_Tracker_Oct13.xlsm`)
+
+Downloaded from ma'am's shared spreadsheet on 2026-10-13. It is the tracker we work from now. Its PESO-Link sheet has the same 32 rows as the Oct 5 copy below (same numbers, names and statuses: 16 Ready to Deploy, 16 Under Development).
+
+**Who edits what:** the group may change only the **Status** column, and only after Joeremy has finished the updates for that row. QA Result, QA Findings or Issues, Action Required and QA Date are for ma'am.
+
+### Proposed status changes (2026-10-14)
+
+These rows were held back only by small fixes, which are now done and tested (API e2e 136/136, pytest, emulator). Set them to Ready after the group records the matching tests in the update testing guide.
+
+| No. | Feature or Module | Now | Proposed | Reason | Guide test |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Registration | Under Development | **Ready to Deploy** | Email format is checked by the app and the backend (`abc` is refused); tested on the emulator and with the API. | Test 1 |
+| 26 | Employer Account Management | Under Development | **Ready to Deploy** | Create Employer checks the email format; creating an employer was tried on the emulator; the blank-email fix is committed; pending employers cannot sign in until approved. | Tests 2, 4 |
+| 30 | Job Post Monitoring | Under Development | **Ready to Deploy** | Expired posts show as Expired (not Active) and are left out of the active count; search and an All / Active / Expired / Closed filter were added; tested on the emulator. | Test 8 |
+
+Other rows changed in the notes only (status stays the same):
+- **9 Job Search and Filters** (Ready): the "reloads on every keystroke" note is fixed; typing now waits for a pause and late replies are ignored.
+- **13 Duplicate Application Prevention** (Ready): the double-tap fix is merged into `main`.
+- **28 NSRP Profile Review and Verification** (Under Development): "Show Uploaded Form" now shows every upload, 4 at a time. It stays Under Development because PESO still has to confirm the one-time verification process, and the adviser has not been told about it yet.
+- **18 Create, Edit and Close Job Posts** (Under Development): posting a new job was tried on the emulator and new posts now refuse past closing dates and Salary Min above Max. It stays Under Development: closing rule (PESO question 6), skills list, and the paused auto-close and reopen.
+
+## Oct 5 tracker copy (history: `docs/QA Tracker Upd - Oct 5 2026.xlsm`)
 
 Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sheets are byte-for-byte the same.
 
@@ -37,12 +59,12 @@ Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sh
 | 4 | NSRP-Based Digital Profile Encoding | Under Development | Form 1 layout matched item by item, but PESO must confirm the form version, the 19 required items and which fields to keep. Date-of-birth format differs. |
 | 5 | OCR-Assisted Data Extraction (Optional) | Under Development | 95/95 on the Jan 2017 sample only; real handwritten forms and phone photos untested; some corrections tuned to the sample. |
 | 6 | Skills Encoding | Under Development | Skills list (67) not confirmed by PESO. |
-| 7 | Submit NSRP Profile to PESO | Under Development | Approved deviation (approve-once); manuscript not updated; 19 items need PESO confirmation. |
+| 7 | Submit NSRP Profile to PESO | Under Development | Deviation from the paper (approve-once), in manuscript V13.5 but not yet discussed with the adviser; 19 items need PESO confirmation. |
 | 8 | Structured and Localized Job Vacancy Browsing | Ready to Deploy | Lists active jobs only (closed, expired and deactivated-employer jobs hidden); type and 26 Misamis Oriental location chips. Tested on the emulator and with pytest. |
 | 9 | Job Search and Filters | Ready to Deploy | Title/company/description search, type and location filters. Tested on the emulator and with pytest. Minor: search reloads on every keystroke (no delay), so on a slow network an older result could briefly show. |
 | 10 | Job Details | Under Development | Displayed fields not yet confirmed against the paper/adviser; includes the skill comparison and apply card, which depend on rows 11-12. |
 | 11 | Rule-Based Skill Matching | Under Development | Works, but the skills list is unconfirmed, the 3-skill minimum contradicts §3.5.1 until the manuscript update, levels are not compared, and NSRP Section VIII skills are not counted. |
-| 12 | Apply with PESO Referral | Under Development | Approved deviations (approve-once, skill minimum); manuscript not updated; PESO to confirm. |
+| 12 | Apply with PESO Referral | Under Development | Deviations from the paper (approve-once, skill minimum), in manuscript V13.5 but not yet discussed with the adviser; PESO to confirm. |
 | 13 | Duplicate Application Prevention | Ready to Deploy | 409 plus "Your Application" card; the 500 on a double tap was fixed on `fix/pre-qa-bugfixes` (merge pending). |
 | 14 | Application Tracking | Ready to Deploy | Status timeline labelled PESO / Employer, including Closed ("not a rejection"); checked on the emulator and API. The manuscript status list will be updated to match. |
 | 15 | Notification-Based Updates (seeker) | Ready to Deploy | The seeker, employer and admin Alerts screens are the same code (only names differ); the seeker one was checked on the emulator, and every alert is created by the backend (API e2e). Seen on the emulator: For Review, Verified, For Interview, Hired, Job Post Updated. |
@@ -58,7 +80,7 @@ Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sh
 | 25 | Dashboard (admin) | Ready to Deploy | NSRP waiting/verified and PESO-referred counts; checked on the emulator. |
 | 26 | Employer Account Management | Under Development | Creating an employer not tested on a device; email format not checked; the blank-email fix is uncommitted. |
 | 27 | Job Seeker Account Management | Ready to Deploy | Deactivate/reactivate; API e2e and pytest (closes in-progress applications, notifies employers). Uses the same blocking as row 32. Not yet tried on a device. |
-| 28 | NSRP Profile Review and Verification | Under Development | Approved deviation (one-time verification); manuscript not updated; PESO to confirm the process. "Show Uploaded Form" shows only the latest 4 images. |
+| 28 | NSRP Profile Review and Verification | Under Development | Deviation from the paper (one-time verification), in manuscript V13.5 but not yet discussed with the adviser; PESO to confirm the process. ("Show Uploaded Form" now shows every upload, 4 at a time; fixed 2026-10-14.) |
 | 29 | Centralized Application Routing | Under Development | Referrals page works (By Job, employer filter, search) but could be improved; routing depends on the approve-once deviation. |
 | 30 | Job Post Monitoring | Under Development | Expired jobs still show as "active" in the admin list (the query has no closing-date check); no search or filter. |
 | 31 | Notification-Based Updates (admin) | Ready to Deploy | The seeker, employer and admin Alerts screens are the same code (only names differ); the seeker one was checked on the emulator, and every alert is created by the backend (API e2e). |
@@ -77,10 +99,10 @@ Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sh
 - **Under Development** for anything that runs but is not final. This includes:
   - NSRP fields that still need PESO confirmation
   - the unconfirmed skills list
-  - features that depend on the two approved deviations, until the manuscript and compliance matrix are updated
+  - features that depend on the two deviations, until the adviser and PESO agree and the compliance matrix is updated
 - **Passed** only where something actually ran and was seen to work. Otherwise **Not Yet Tested**.
 
-The two approved deviations are:
+The two deviations from the paper (in manuscript V13.5; not yet discussed with the adviser) are:
 - **One-time NSRP verification** instead of per-job PESO review (V11.49 §1.5, §2.5, §3.4.5, §3.5.3).
 - **Temporary 3-skill minimum** (§3.5.1 says missing skills never block; this also contradicts the compliance-matrix answer to Mr. Tanguamos).
 
@@ -101,7 +123,7 @@ The two approved deviations are:
 | 13 | Location Filtering | n/a | Under Development | Passed (dev) | Location chips checked on the emulator on 2026-10-04 and 2026-10-05. | Formal QA. |
 | 14 | Job Details View | n/a | Under Development | Passed (dev) | Checked against §3.5.1-3.5.2: position info, requirements, employer details, application email, skill comparison. "Not Accepting Applications" card for closed/expired jobs. **Bug fixed 2026-10-05:** reopening the same job showed the old apply/match state; it now reloads on every visit. | Formal QA. |
 | 15 | Rule-Based Skill Comparison (Seeker View) | n/a | Under Development | Passed (dev) | One shared comparison for all views and the apply check. Message when the seeker has no saved skills (§3.5.4). Levels not used (paper compares skills only). | Depends on the skills list and the skill-minimum deviation. |
-| 16 | Request PESO Referral for a Job (formerly Job Application Submission) | **Apply with PESO Referral (PESO-verified NSRP profile)** | Under Development | Passed (dev) | One tap for verified seekers; record created as PESO-Referred; employer notified. Blocked when unverified, below the skill minimum, or the job is closed. E-N, E-A; emulator. | Manuscript update (approved deviation); formal QA. |
+| 16 | Request PESO Referral for a Job (formerly Job Application Submission) | **Apply with PESO Referral (PESO-verified NSRP profile)** | Under Development | Passed (dev) | One tap for verified seekers; record created as PESO-Referred; employer notified. Blocked when unverified, below the skill minimum, or the job is closed. E-N, E-A; emulator. | Manuscript update (deviation); formal QA. |
 | 17 | Duplicate Application Prevention | n/a | Ready to Deploy (candidate) | Passed (dev) | 409 on a second application to the same job; the job page shows "Your Application". E-N, PY. | Adviser decision. |
 | 18 | My Applications Tracking | n/a | Under Development | Passed (dev) | Status timeline labelled PESO / Employer; Closed status with a "not a rejection" note. | Formal QA. |
 | 19 | In-App Notifications (Seeker) | n/a | Under Development | Passed (dev) | Every seeker event creates a notification (E-N, E-A). Seeker Alerts checked on the emulator on 2026-10-05: For Review, Verified, For Interview, Job Post Updated. | Formal QA. |
@@ -119,7 +141,7 @@ The two approved deviations are:
 | 33 | View and List Employer Accounts | **Manage Employer Accounts (approve/reject, edit, deactivate/reactivate)** | Under Development | Passed (dev) | Approve (Blue Mountain) and deactivate/reactivate (Northstar: "4 active job post(s) were closed.", sign-in refused, then allowed) done on the emulator on 2026-10-05. Edit: API only (E-A). | Formal QA. |
 | 34 | Manage Job Seeker Accounts | n/a | Under Development | Passed (dev, API) | Deactivation now closes in-progress applications and notifies employers. E-A, PY. | Test on device. |
 | 35 | View Job Seeker NSRP Profile Before Reviewing | n/a | Under Development | Passed (dev) | Full NSRP profile, uploaded form images (checked on the emulator with a real two-page upload on 2026-10-05), certification date. Option values now shown with the form's labels ("Male", "New Entrant/Fresh Graduate"). | Formal QA. |
-| 36 | Review Referral Request: Endorse / Reject with Reason / Close | **NSRP Verification: Verify / Return for Revision (with note); For Review automatic** | Under Development | Passed (dev) | One-time verification replaces per-job endorse/reject. "For use of PESO only" eligibility recorded on Verify. Emulator 2026-10-05: For Review on open, note required to return, Verify with JobStart. **Bug fixed:** re-verifying a changed profile wiped the earlier eligibility because the panel always opened blank; it now starts from PESO's last assessment. | Manuscript update (approved deviation); confirm the process with PESO. |
+| 36 | Review Referral Request: Endorse / Reject with Reason / Close | **NSRP Verification: Verify / Return for Revision (with note); For Review automatic** | Under Development | Passed (dev) | One-time verification replaces per-job endorse/reject. "For use of PESO only" eligibility recorded on Verify. Emulator 2026-10-05: For Review on open, note required to return, Verify with JobStart. **Bug fixed:** re-verifying a changed profile wiped the earlier eligibility because the panel always opened blank; it now starts from PESO's last assessment. | Manuscript update (deviation); confirm the process with PESO. |
 | 37 | Monitor All Job Postings | n/a | Under Development | Passed (dev) | List with status, applicant count, and Close Job checked on the emulator on 2026-10-05. | Formal QA. |
 | 38 | Close a Job Posting (Admin) | n/a | Under Development | Passed (dev) | Same closing behaviour as row 24; closed from the emulator on 2026-10-05. | Formal QA. |
 | 39 | Monitor All Applications | **Monitor PESO-Referred Applications (by job / by employer)** | Under Development | Passed (dev) | "By Job" view with per-job counts by status, employer filter, drill-down, search. Emulator. | Formal QA. |

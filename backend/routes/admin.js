@@ -309,12 +309,14 @@ router.put('/employers/:id/reactivate', async (req, res) => {
 
 // GET /api/admin/job-seekers/:id/nsrp-forms - uploaded NSRP form images, for comparing with the encoded profile.
 // Kept separate from the profile endpoint because the images are large.
+// Newest first, 4 at a time; ?offset=4 loads the next older ones, so every upload can be seen.
 router.get('/job-seekers/:id/nsrp-forms', async (req, res) => {
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
   try {
     const [forms] = await db.query(
       `SELECT id, image_base64, ocr_confirmed, uploaded_at
-       FROM uploaded_nsrp_forms WHERE job_seeker_id = ? ORDER BY uploaded_at DESC LIMIT 4`,
-      [req.params.id]
+       FROM uploaded_nsrp_forms WHERE job_seeker_id = ? ORDER BY uploaded_at DESC, id DESC LIMIT 4 OFFSET ?`,
+      [req.params.id, offset]
     );
     res.json({ forms });
   } catch (err) {

@@ -98,7 +98,9 @@ function normalizeNsrpProfile(profile) {
   // V-VII. Training, eligibility / license, work experience
   const training = rowsOf(full.training_rows);
   if (training.length) {
-    full.trainings = training.map((r) => join([r.course, r.duration, r.institution, text(r.certificate) && `Certificate: ${text(r.certificate)}`])).join('\n');
+    // "NC II" reads as "Certificate: NC II"; a cell that already says "Certificate ..." is kept as written.
+    const certificate = (value) => (/certificate/i.test(text(value)) ? text(value) : text(value) && `Certificate: ${text(value)}`);
+    full.trainings = training.map((r) => join([r.course, r.duration, r.institution, certificate(r.certificate)])).join('\n');
   }
   const eligibility = rowsOf(full.eligibility_rows);
   const licenses = rowsOf(full.license_rows);
