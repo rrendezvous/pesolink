@@ -77,7 +77,11 @@ export default function ManageEmployers() {
   };
 
   const submit = async () => {
-    if (!form.company_name.trim() || (isCreate && (!form.email || !form.password))) {
+    if (isCreate && form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      Alert.alert('Invalid Email', 'Enter a valid email address, for example name@example.com.');
+      return;
+    }
+    if (!form.company_name.trim() || (isCreate && (!form.email.trim() || !form.password))) {
       Alert.alert('Required', isCreate ? 'Email, password, and company name are required.' : 'Company name is required.');
       return;
     }

@@ -3,6 +3,7 @@
 // ============================================================
 const express = require('express');
 const db = require('../db');
+const { isValidEmail, INVALID_EMAIL_MESSAGE } = require('../services/email');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted, parseFullData } = require('../services/nsrpProfileValidation');
 const {
@@ -61,6 +62,9 @@ router.post('/employers', async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   if (!cleanEmail) {
     return res.status(400).json({ error: 'email, password and company_name are required' });
+  }
+  if (!isValidEmail(cleanEmail)) {
+    return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
   }
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -698,7 +702,10 @@ router.get('/stats', async (req, res) => {
       "SELECT COUNT(*) AS count FROM employers WHERE approval_status = 'pending'"
     );
     const [[jobCount]] = await db.query('SELECT COUNT(*) AS count FROM job_posts');
-    const [[activeJobCount]] = await db.query("SELECT COUNT(*) AS count FROM job_posts WHERE status = 'active'");
+    // Active = still accepting applications (same rule as the job list): not closed and not past its closing date.
+    const [[activeJobCount]] = await db.query(
+      "SELECT COUNT(*) AS count FROM job_posts WHERE status = 'active' AND (closing_date IS NULL OR closing_date >= CURDATE())"
+    );
     const [[appCount]] = await db.query('SELECT COUNT(*) AS count FROM job_applications');
     const [[pendingNsrpCount]] = await db.query(
       'SELECT COUNT(*) AS count FROM job_seekers WHERE nsrp_status IN (?)',

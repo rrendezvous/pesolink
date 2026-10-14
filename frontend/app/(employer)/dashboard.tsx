@@ -9,6 +9,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Card, EmptyState, Button, Input, Chip, StatusBadge } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { jobState, JOB_STATE_LABELS } from '../../src/utils/jobs';
 import { useAuth } from '../../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, Radius, Shadow, StatusColors } from '../../src/constants/theme';
@@ -99,7 +100,7 @@ export default function EmployerDashboard() {
   const isPending = profile?.approval_status === 'pending';
   const isRejected = profile?.approval_status === 'rejected';
   const totalApplicants = jobs.reduce((sum, j) => sum + (j.applicant_count || 0), 0);
-  const activeJobs = jobs.filter((j) => j.status === 'active').length;
+  const activeJobs = jobs.filter((j) => jobState(j) === 'active').length;
   const waitingJobs = waitingByJob ? jobs.filter((j) => (waitingByJob[j.id] || 0) > 0) : [];
   const waitingTotal = waitingJobs.reduce((sum, j) => sum + (waitingByJob?.[j.id] || 0), 0);
 
@@ -233,7 +234,7 @@ export default function EmployerDashboard() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.jobTitle}>{j.job_title}</Text>
                 <View style={styles.jobMetaRow}>
-                  <StatusBadge status={j.status === 'active' ? 'for_review' : 'closed'} label={j.status === 'active' ? 'Active' : 'Closed'} />
+                  <StatusBadge status={jobState(j) === 'active' ? 'for_review' : jobState(j) === 'expired' ? 'needs_revision' : 'closed'} label={JOB_STATE_LABELS[jobState(j)]} />
                   {(waitingByJob?.[j.id] || 0) > 0 && (
                     <Text style={styles.jobWaiting}>{waitingByJob?.[j.id]} waiting</Text>
                   )}

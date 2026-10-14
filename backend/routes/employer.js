@@ -3,6 +3,7 @@
 // ============================================================
 const express = require('express');
 const db = require('../db');
+const { isValidEmail, INVALID_EMAIL_MESSAGE } = require('../services/email');
 const { authenticate, requireRole } = require('../middleware/auth');
 const {
   recordHistory, notify, closeJobRecords, buildSkillComparison, ACTIVE_APPLICATION_STATUSES,
@@ -118,6 +119,9 @@ router.post('/jobs', async (req, res) => {
   if (closing_date && !isRealDate(closing_date)) {
     return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
   }
+  if (application_email && !isValidEmail(application_email)) {
+    return res.status(400).json({ error: `Application email: ${INVALID_EMAIL_MESSAGE}` });
+  }
 
   const conn = await db.getConnection();
   try {
@@ -196,6 +200,10 @@ router.put('/jobs/:id', async (req, res) => {
     if (closing_date && !isRealDate(closing_date)) {
       await conn.rollback();
       return res.status(400).json({ error: 'Closing date must be a real date written as YYYY-MM-DD' });
+    }
+    if (application_email && !isValidEmail(application_email)) {
+      await conn.rollback();
+      return res.status(400).json({ error: `Application email: ${INVALID_EMAIL_MESSAGE}` });
     }
     // Optional fields: omitted keeps the saved value, blank clears it.
     const optional = (value, saved) => (value === undefined ? saved : (value === '' ? null : value));

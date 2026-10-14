@@ -5,6 +5,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { isValidEmail, INVALID_EMAIL_MESSAGE } = require('../services/email');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -19,6 +20,9 @@ router.post('/register', async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   if (!cleanEmail) {
     return res.status(400).json({ error: 'Email, password and role are required' });
+  }
+  if (!isValidEmail(cleanEmail)) {
+    return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
   }
   if (role !== 'job_seeker') {
     return res.status(400).json({
