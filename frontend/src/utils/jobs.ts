@@ -8,7 +8,7 @@ export type JobState = 'active' | 'expired' | 'closed';
 export const JOB_STATE_LABELS: Record<JobState, string> = { active: 'Active', expired: 'Expired', closed: 'Closed' };
 
 // Today as YYYY-MM-DD in local time (the server sends closing dates in the same form).
-function todayKey() {
+export function todayKey() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

@@ -29,7 +29,7 @@ router.post('/register', async (req, res) => {
       error: 'Self-registration is only available for job seekers. Employer accounts are created by PESO Admin.',
     });
   }
-  if (password.length < 6) {
+  if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 

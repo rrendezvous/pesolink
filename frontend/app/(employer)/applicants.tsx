@@ -208,7 +208,9 @@ export default function Applicants() {
                     </Text>
                     <TouchableOpacity testID="vacancy-stop" onPress={stopAccepting} style={styles.vacancyLink} accessibilityRole="button">
                       <Ionicons name="lock-closed-outline" size={14} color={Colors.gray} />
-                      <Text style={styles.vacancyLinkText}>Stop accepting applications</Text>
+                      <Text style={styles.vacancyLinkText}>
+                        {jobState(jobInfo) === 'expired' ? 'Close job post' : 'Stop accepting applications'}
+                      </Text>
                     </TouchableOpacity>
                   </>
                 )}

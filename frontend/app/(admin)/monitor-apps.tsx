@@ -12,6 +12,7 @@ import { Card, StatusBadge, EmptyState, Input, Chip, Button, Row } from '../../s
 import { NsrpProfileView, NsrpRequirements, Section } from '../../src/components/NsrpProfileView';
 import { api, getApiError } from '../../src/api/client';
 import { REFERRAL_STATUS_LABELS, currentStatus, describeHistory } from '../../src/utils/referral';
+import { jobState, JOB_STATE_LABELS } from '../../src/utils/jobs';
 import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 // Filtered by where the application stands now (employer status, or the referral record if not referred).
@@ -161,6 +162,7 @@ export default function MonitorApplications() {
           renderItem={({ item }) => {
             const counts = statusCounts(item.id);
             const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+            const state = jobState(item);
             return (
               <TouchableOpacity testID={`job-group-${item.id}`} onPress={() => openJob(item)} activeOpacity={0.85}>
                 <Card style={styles.appCard}>
@@ -172,7 +174,10 @@ export default function MonitorApplications() {
                         {item.location || 'No location'} / {item.vacancies} {item.vacancies === 1 ? 'vacancy' : 'vacancies'}
                       </Text>
                     </View>
-                    <StatusBadge status={item.status === 'active' ? 'for_review' : 'closed'} label={item.status === 'active' ? 'Open' : 'Closed'} />
+                    <StatusBadge
+                      status={state === 'active' ? 'for_review' : state === 'expired' ? 'needs_revision' : 'closed'}
+                      label={state === 'active' ? 'Open' : JOB_STATE_LABELS[state]}
+                    />
                   </View>
                   <View style={styles.countRow}>
                     {total === 0 ? (

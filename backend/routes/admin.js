@@ -66,7 +66,7 @@ router.post('/employers', async (req, res) => {
   if (!isValidEmail(cleanEmail)) {
     return res.status(400).json({ error: INVALID_EMAIL_MESSAGE });
   }
-  if (password.length < 6) {
+  if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 
@@ -569,6 +569,10 @@ router.put('/jobs/:id/close', async (req, res) => {
       return res.status(404).json({ error: 'Job post not found' });
     }
     const job = rows[0];
+    if (job.status === 'closed') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'This job post is already closed' });
+    }
 
     await conn.query("UPDATE job_posts SET status='closed' WHERE id=?", [req.params.id]);
     await closeJobRecords(conn, job.id, req.user.id, job.job_title, 'PESO Admin');

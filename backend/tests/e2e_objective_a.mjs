@@ -79,6 +79,10 @@ check('Ana stays Hired', (await call('GET', `/applications/${anaApp}`, ana)).dat
 r = await call('GET', `/jobs/${cook.id}`, ana);
 check('closed job not accepting applications', r.data.job.accepting_applications === false);
 check('closed job hidden from browse', !(await call('GET', '/jobs', ana)).data.jobs.some((j) => j.id === cook.id));
+check('closing it again is refused (no duplicate alerts)', (await call('PUT', `/employer/jobs/${cook.id}/close`, cookOwner)).status === 400);
+check('admin closing an already-closed post is refused', (await call('PUT', `/admin/jobs/${cook.id}/close`, admin, {})).status === 400);
+check('a closed post cannot be reopened by editing its status',
+  (await call('PUT', `/employer/jobs/${cook.id}`, cookOwner, { status: 'active' })).status === 400);
 
 console.log('Closing date passed');
 const cashier = jobByTitle('Store Cashier');
@@ -129,6 +133,35 @@ check('job seeker can still register with a valid email',
   (await call('POST', '/auth/register', null, { email: `  Valid.Seeker.${Date.now()}@Example.com `, password: 'Test@123', role: 'job_seeker' })).status === 201);
 check('job post with an invalid application email rejected',
   (await call('POST', '/employer/jobs', tech, { job_title: 'Email Check', job_description: 'Test', application_email: 'not-an-email' })).status === 400);
+{
+  const devJob = jobByTitle('Junior Software Developer');
+  const before = (await call('GET', '/employer/jobs', tech)).data.jobs.find((j) => j.id === devJob.id).application_email;
+  await call('PUT', `/employer/jobs/${devJob.id}`, tech, { application_email: '  hr.jobs@techcorp.ph  ' });
+  const saved = (await call('GET', '/employer/jobs', tech)).data.jobs.find((j) => j.id === devJob.id).application_email;
+  check('application email saved without surrounding spaces', saved === 'hr.jobs@techcorp.ph', JSON.stringify(saved));
+  await call('PUT', `/employer/jobs/${devJob.id}`, tech, { application_email: before || '' });
+}
+
+check('register with a non-text password refused (not a server error)',
+  (await call('POST', '/auth/register', null, { email: `num.pass.${Date.now()}@example.com`, password: 123456, role: 'job_seeker' })).status === 400);
+check('employer company name of only spaces refused',
+  (await call('POST', '/employer/profile', tech, { company_name: '   ' })).status === 400);
+check('admin cannot add a skill with a blank name', (await call('POST', '/skills', admin, { skill_name: '   ' })).status === 400);
+
+console.log('Job post field checks');
+{
+  const post = (body) => call('POST', '/employer/jobs', tech, { job_title: 'Field Check', job_description: 'Test', ...body });
+  check('new job post with a past closing date rejected', (await post({ closing_date: '2020-01-01' })).status === 400);
+  check('job title of only spaces rejected', (await post({ job_title: '   ' })).status === 400);
+  check('salary min higher than max rejected', (await post({ salary_min: 30000, salary_max: 10000 })).status === 400);
+  check('negative vacancies rejected', (await post({ vacancies: -3 })).status === 400);
+  check('unknown job type rejected (not a server error)', (await post({ job_type: 'bogus' })).status === 400);
+  const devJob = jobByTitle('Junior Software Developer');
+  check('edit: salary max below the saved min rejected',
+    (await call('PUT', `/employer/jobs/${devJob.id}`, tech, { salary_min: 50000, salary_max: 1000 })).status === 400);
+  check('edit: unknown status rejected (not a server error)',
+    (await call('PUT', `/employer/jobs/${devJob.id}`, tech, { status: 'bogus' })).status === 400);
+}
 
 const northActive = (await call('GET', '/employer/jobs', north)).data.jobs.filter((j) => j.status === 'active');
 const riderApp = await (async () => {
