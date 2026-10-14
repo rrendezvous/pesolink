@@ -106,15 +106,19 @@ export function NsrpForm({
   ) : null);
 
   // --- checklists ---
+  // Checked items are kept in the form's own order and an empty checklist is stored blank, so ticking and
+  // unticking a box leaves the saved value exactly as it was (a verified profile is not sent back to PESO).
   const disabilities = checkedFrom(full.disabilities, full.disability, DISABILITIES.map((d) => d.value));
   const toggleDisability = (d: string) => {
-    const next = disabilities.includes(d) ? disabilities.filter((x) => x !== d) : [...disabilities, d];
+    const next = DISABILITIES.map((o) => o.value)
+      .filter((x) => (x === d ? !disabilities.includes(d) : disabilities.includes(x)));
     const summary = next.filter((x) => x !== 'others').map((x) => DISABILITIES.find((o) => o.value === x)?.label);
     if (next.includes('others')) summary.push(full.disability_other || 'Others');
-    setFull({ disabilities: next, disability: summary.length ? summary.join(', ') : 'none' });
+    setFull({ disabilities: next, disability: summary.join(', ') });
   };
   const otherSkills = checkedFrom(full.other_skills_checked, full.other_skills_acquired, OTHER_SKILLS);
-  const writeOtherSkills = (checked: string[], otherText: string) => {
+  const writeOtherSkills = (checkedList: string[], otherText: string) => {
+    const checked = OTHER_SKILLS.filter((s) => checkedList.includes(s));
     const summary = [...checked, ...(has(otherText) ? [`Others: ${otherText.trim()}`] : [])];
     setFull({ other_skills_checked: checked, other_skills_other: otherText, other_skills_acquired: summary.join('\n') });
   };

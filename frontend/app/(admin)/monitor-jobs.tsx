@@ -3,13 +3,14 @@
 // ============================================================
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { Card, Button, EmptyState } from '../../src/components/ui';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Card, Button, EmptyState, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function MonitorJobs() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -54,6 +55,7 @@ export default function MonitorJobs() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <BackLink testID="back-home" label="Home" onPress={() => router.navigate('/(admin)/dashboard')} />
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Job Posts</Text>
         <Text style={styles.headerSub}>Monitor employer postings and soft-close when needed</Text>

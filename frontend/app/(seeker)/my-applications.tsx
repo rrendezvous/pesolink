@@ -6,12 +6,14 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Modal, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { StatusBadge, EmptyState, Row, Button } from '../../src/components/ui';
+import { StatusBadge, EmptyState, Row, Button, BackLink } from '../../src/components/ui';
+import { ApplicationSteps } from '../../src/components/ApplicationSteps';
 import { api, getApiError } from '../../src/api/client';
 import {
   REFERRAL_STATUS_LABELS, canRequestAgain, currentStatus, describeHistory,
 } from '../../src/utils/referral';
-import { Colors, Spacing, FontSize, Radius, Shadow, StatusLabels } from '../../src/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
 
 export default function MyApplications() {
   const router = useRouter();
@@ -60,6 +62,7 @@ export default function MyApplications() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <BackLink testID="apps-back" label="Home" onPress={() => router.navigate('/(seeker)/dashboard')} />
         <Text style={styles.kicker}>PESO-Link MisOr</Text>
         <Text style={styles.headerTitle}>Application Status</Text>
         <Text style={styles.headerSub}>Track your PESO-referred applications. Tap one to see its full history.</Text>
@@ -85,16 +88,16 @@ export default function MyApplications() {
               <StatusBadge status={currentStatus(item).status} testID={`status-${item.id}`} />
             </View>
             <View style={styles.statusPanel}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.statusLabel}>
-                  {currentStatus(item).stage === 'Employer' ? 'With employer' : 'Referral record'}
-                </Text>
-                <Text style={styles.date}>
-                  Applied {new Date(item.applied_at).toLocaleDateString()}
-                  {item.updated_at ? ` / Updated ${new Date(item.updated_at).toLocaleDateString()}` : ''}
-                </Text>
-              </View>
-              {item.referral_status === 'peso_referred' && <PesoReferredPill />}
+              {item.referral_status === 'peso_referred' && (
+                <View style={styles.referredNote}>
+                  <Ionicons name="checkmark-circle" size={15} color={Colors.primary} />
+                  <Text style={styles.referredNoteText}>PESO-Referred</Text>
+                </View>
+              )}
+              <Text style={styles.date}>
+                Applied {new Date(item.applied_at).toLocaleDateString()}
+                {item.updated_at ? ` / Updated ${new Date(item.updated_at).toLocaleDateString()}` : ''}
+              </Text>
             </View>
           </TouchableOpacity>
         )}
@@ -114,27 +117,32 @@ export default function MyApplications() {
                 </View>
 
                 {detail.application.referral_status === 'peso_referred' && (
-                  <View style={styles.pesoBox}>
-                    <Text style={styles.pesoTitle}>PESO-Referred</Text>
+                  <View style={styles.progressBox}>
+                    <Text style={styles.progressTitle}>Progress</Text>
+                    {detailLoading ? (
+                      <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.sm }} />
+                    ) : (
+                      <ApplicationSteps
+                        testID="app-steps"
+                        applicationStatus={detail.application.application_status}
+                        history={detail.history}
+                      />
+                    )}
                     <Text style={styles.pesoText}>
-                      Sent to the employer with your PESO-verified NSRP profile. This is not a hiring decision.
+                      Sent to the employer with your PESO-verified NSRP profile. The PESO referral is not a hiring decision; the employer decides.
                     </Text>
                   </View>
                 )}
 
                 {!!detail.application.referral_notes && (
-                  <Text style={styles.pesoNote}>PESO note: {detail.application.referral_notes}</Text>
+                  <Text style={[styles.pesoNote, canRequestAgain(detail.application.referral_status) && styles.pesoNoteWarn]}>PESO note: {detail.application.referral_notes}</Text>
                 )}
 
                 <Text style={styles.sectionTitle}>Application Details</Text>
-                <Row
-                  left="Referral Status"
-                  right={REFERRAL_STATUS_LABELS[detail.application.referral_status] || detail.application.referral_status}
-                />
-                {detail.application.referral_status === 'peso_referred' && (
+                {detail.application.referral_status !== 'peso_referred' && (
                   <Row
-                    left="Employer Status"
-                    right={StatusLabels[detail.application.application_status as keyof typeof StatusLabels] || detail.application.application_status}
+                    left="Referral Status"
+                    right={REFERRAL_STATUS_LABELS[detail.application.referral_status] || detail.application.referral_status}
                   />
                 )}
                 <Row left="Location" right={detail.application.location || 'N/A'} />
@@ -204,14 +212,6 @@ export default function MyApplications() {
   );
 }
 
-function PesoReferredPill() {
-  return (
-    <View style={styles.pesoPill}>
-      <Text style={styles.pesoPillText}>PESO-Referred</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.lightBg },
   header: {
@@ -245,24 +245,14 @@ const styles = StyleSheet.create({
   company: { fontSize: FontSize.sm, color: Colors.gray, fontWeight: '700', marginTop: 2 },
   meta: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 4, textTransform: 'capitalize' },
   statusPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.cardHighlight,
-    borderColor: Colors.borderSoft,
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    padding: Spacing.sm,
+    borderTopColor: Colors.borderSoft,
+    borderTopWidth: 1,
+    paddingTop: Spacing.sm,
     marginTop: Spacing.md,
   },
-  statusLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },
+  referredNote: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  referredNoteText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },
   date: { fontSize: FontSize.xs, color: Colors.gray, marginTop: 4 },
-  pesoPill: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  pesoPillText: { color: Colors.white, fontSize: FontSize.xs, fontWeight: '900' },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: Colors.white,
@@ -275,17 +265,19 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   modalTitle: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.textDark },
   modalSubtle: { fontSize: FontSize.sm, color: Colors.gray, marginTop: 2 },
-  pesoBox: {
-    backgroundColor: Colors.cardHighlight,
-    borderColor: Colors.primary,
+  progressBox: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.borderSoft,
     borderWidth: 1,
     borderRadius: Radius.md,
-    padding: Spacing.sm,
+    padding: Spacing.md,
     marginTop: Spacing.md,
   },
-  pesoNote: { color: '#92400E', fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.md },
-  pesoTitle: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '900' },
-  pesoText: { color: Colors.textSecondary, fontSize: FontSize.xs, lineHeight: 18, marginTop: 2 },
+  progressTitle: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: Spacing.sm },
+  // Neutral by default; amber only for an older request PESO rejected or closed.
+  pesoNote: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20, marginTop: Spacing.md },
+  pesoNoteWarn: { color: '#92400E' },
+  pesoText: { color: Colors.textSecondary, fontSize: FontSize.xs, lineHeight: 18, marginTop: Spacing.sm },
   sectionTitle: {
     fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary,
     textTransform: 'uppercase', marginTop: Spacing.md, marginBottom: 4,

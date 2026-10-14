@@ -17,6 +17,9 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Email, password and role are required' });
   }
   const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanEmail) {
+    return res.status(400).json({ error: 'Email, password and role are required' });
+  }
   if (role !== 'job_seeker') {
     return res.status(400).json({
       error: 'Self-registration is only available for job seekers. Employer accounts are created by PESO Admin.',
@@ -106,8 +109,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    if (user.account_status === 'suspended') {
-      return res.status(403).json({ error: 'Account suspended. Contact PESO admin.' });
+    if (user.account_status !== 'active') {
+      const error = user.account_status === 'pending'
+        ? 'Account pending PESO admin approval.'
+        : 'Account suspended. Contact PESO admin.';
+      return res.status(403).json({ error });
     }
 
     if (user.role !== role) {

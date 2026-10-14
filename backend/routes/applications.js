@@ -122,6 +122,10 @@ router.post('/', authenticate, requireRole('job_seeker'), async (req, res) => {
     });
   } catch (err) {
     await conn.rollback();
+    // A second tap that raced the first one hits the one-record-per-job unique key.
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'You already applied to this job with PESO referral' });
+    }
     console.error('[Apply with PESO Referral]', err);
     res.status(500).json({ error: 'Failed to submit application' });
   } finally {

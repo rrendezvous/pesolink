@@ -12,6 +12,9 @@ import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/t
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
 
+// "full-time" -> "Full-Time", the same casing the job cards use.
+const typeLabel = (t: string) => t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('-');
+
 // Cities and municipalities of Misamis Oriental (plus Cagayan de Oro) for quick location filtering.
 const MISOR_LOCATIONS = [
   'Cagayan de Oro', 'Gingoog', 'El Salvador', 'Opol', 'Tagoloan', 'Villanueva', 'Jasaan',
@@ -56,45 +59,51 @@ export default function JobBrowse() {
         <Text style={styles.headerTitle}>Jobs</Text>
       </View>
 
-      <View style={styles.filterCard}>
-        <Input
-          testID="job-search"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search job title, company, or keyword"
-        />
-        <View style={styles.filterChips}>
-          <Chip testID="filter-all" label="All Types" active={!typeFilter} onPress={() => setTypeFilter('')} />
-          {JOB_TYPES.map((t) => (
-            <Chip key={t} testID={`filter-${t}`} label={t} active={typeFilter === t} onPress={() => setTypeFilter(t)} />
-          ))}
-        </View>
-        <Text style={styles.filterLabel}>Location</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Chip testID="loc-any" label="Any Location" active={!locationFilter} onPress={() => setLocationFilter('')} />
-          {MISOR_LOCATIONS.map((loc) => (
-            <Chip
-              key={loc}
-              testID={`loc-${loc}`}
-              label={loc}
-              active={locationFilter === loc}
-              onPress={() => setLocationFilter(locationFilter === loc ? '' : loc)}
-            />
-          ))}
-        </ScrollView>
-        <Input
-          testID="location-filter"
-          value={locationFilter}
-          onChangeText={setLocationFilter}
-          placeholder="Or type a location / barangay"
-        />
-      </View>
-
       <FlatList
         data={jobs}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        ListHeaderComponent={
+          <View style={styles.filterCard}>
+            <Input
+              testID="job-search"
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search job title, company, or keyword"
+            />
+            <Text style={styles.filterLabel}>Job Type</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Chip testID="filter-all" label="All Types" active={!typeFilter} onPress={() => setTypeFilter('')} />
+              {JOB_TYPES.map((t) => (
+                <Chip key={t} testID={`filter-${t}`} label={typeLabel(t)} active={typeFilter === t} onPress={() => setTypeFilter(t)} />
+              ))}
+            </ScrollView>
+            <Text style={styles.filterLabel}>Location</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Chip testID="loc-any" label="Any Location" active={!locationFilter} onPress={() => setLocationFilter('')} />
+              {MISOR_LOCATIONS.map((loc) => (
+                <Chip
+                  key={loc}
+                  testID={`loc-${loc}`}
+                  label={loc}
+                  active={locationFilter === loc}
+                  onPress={() => setLocationFilter(locationFilter === loc ? '' : loc)}
+                />
+              ))}
+            </ScrollView>
+            <Input
+              testID="location-filter"
+              value={locationFilter}
+              onChangeText={setLocationFilter}
+              placeholder="Or type a location / barangay"
+            />
+            <Text style={styles.resultCount}>
+              {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
+            </Text>
+          </View>
+        }
         ListEmptyComponent={<EmptyState message="No jobs found. Try a different search or filter." />}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => router.push(`/(seeker)/job/${item.id}`)} testID={`job-${item.id}`} activeOpacity={0.85} style={styles.jobCard}>
@@ -140,14 +149,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderSoft,
     borderWidth: 1,
     borderRadius: Radius.lg,
-    margin: Spacing.md,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
     padding: Spacing.md,
     ...Shadow.card,
   },
-  filterChips: { flexDirection: 'row', flexWrap: 'wrap' },
-  filterLabel: { fontSize: FontSize.xs, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase', marginBottom: 6 },
-  listContent: { padding: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xl },
+  filterLabel: { fontSize: FontSize.xs, fontWeight: '900', color: Colors.primary, textTransform: 'uppercase', marginBottom: 6, marginTop: 4 },
+  resultCount: { fontSize: FontSize.xs, fontWeight: '800', color: Colors.gray },
+  listContent: { padding: Spacing.md, paddingBottom: Spacing.xl },
   jobCard: {
     flexDirection: 'row',
     backgroundColor: Colors.white,

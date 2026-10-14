@@ -23,6 +23,8 @@ const EXPECTED_PAGE1 = {
   'full.tin': '', 'full.gsis_sss_no': '', 'full.pagibig_no': '', 'full.philhealth_no': '',
   'full.height': '170 CM', 'full.email_address': 'juan.santos@example.com',
   'full.landline_number': '', 'full.cell_phone_number': '09171234567', contact_number: '09171234567',
+  // Summary columns the app derives from the form's own fields
+  address: '123 RIZAL STREET, GREEN VILLAGE, BARANGAY 1', preferred_occupation: 'SOFTWARE DEVELOPER',
   // Disability: no box ticked; "NONE" on the Others line means no disability
   'full.disability': '', 'full.disability_other': '',
   employment_status: 'unemployed', 'full.employment_type': 'new entrant/fresh graduate',
@@ -49,6 +51,8 @@ const EXPECTED_PAGE2 = {
   'edu.tertiary.level_reached': '', 'edu.tertiary.year_last_attended': '', 'edu.tertiary.awards': '',
   'edu.graduate.school': '', 'edu.graduate.course': '', 'edu.graduate.year_graduated': '',
   'edu.graduate.level_reached': '', 'edu.graduate.year_last_attended': '', 'edu.graduate.awards': '',
+  // Highest level (derived from the table)
+  education_level: 'Tertiary graduate', course: 'BS Information Technology',
   // V. Training
   'training.0.course': 'Web Development Basics', 'training.0.duration': '01/2025 to 03/2025',
   'training.0.institution': 'USTP Extension', 'training.0.certificate': 'Certificate',
@@ -65,7 +69,7 @@ const EXPECTED_PAGE2 = {
   'skills.checked': ['Computer Literate', 'Photography'], 'skills.other': 'BASIC WEB DESIGN',
 };
 
-const norm = (v) => String(v ?? '').replace(/s+/g, ' ').trim();
+const norm = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 function pick(parsed, key) {
   const full = parsed.nsrp_full_data || {};

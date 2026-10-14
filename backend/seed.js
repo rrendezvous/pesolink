@@ -354,7 +354,7 @@ async function run() {
       salary_min: 9000, salary_max: 12000,
       location: 'El Salvador City, Misamis Oriental',
       vacancies: 2,
-      requirements: 'TESDA Cookery NC II preferred. Bring NSRP referral and valid ID when invited for interview.',
+      requirements: 'TESDA Cookery NC II preferred. Bring a valid ID when invited for interview.',
       skills: ['Cooking', 'Food and Beverage Service', 'Teamwork'],
     },
   ];

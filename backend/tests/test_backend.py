@@ -36,6 +36,12 @@ class TestAuth:
                           json={"email": "juan.cruz@example.com", "password": "Test@123", "role": "employer"})
         assert r.status_code == 403
 
+    def test_login_rejects_pending_employer(self):
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": "hr@bluemountain.ph", "password": "Test@123", "role": "employer"})
+        assert r.status_code == 403
+        assert "pending" in r.json().get("error", "").lower()
+
     def test_me_admin(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/auth/me", headers=headers(admin_token))
         assert r.status_code == 200
@@ -275,13 +281,6 @@ class TestEmployer:
         jobs = r.json()["jobs"]
         for j in jobs:
             assert "applicant_count" in j
-
-    def test_pending_employer_cannot_post(self, pending_employer_token):
-        r = requests.post(f"{BASE_URL}/api/employer/jobs",
-                          headers=headers(pending_employer_token),
-                          json={"job_title": "Test", "job_description": "Test",
-                                "job_type": "full_time", "location": "CDO"})
-        assert r.status_code == 403
 
     def test_employer_create_update_close_job(self, employer_token):
         # Create

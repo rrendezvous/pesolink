@@ -1,34 +1,38 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
-import { confirmAction } from '../../src/utils/confirm';
+import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
 
 function LogoutTabButton({ children, ...props }: any) {
   const router = useRouter();
   const { logout } = useAuth();
+  const [showModal, setShowModal] = useState(false);
 
   return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => {
-        confirmAction(
-          'Sign out',
-          'Are you sure you want to sign out?',
-          async () => {
-            await logout();
-            router.replace('/');
-          },
-          'Sign out',
-          true,
-        );
-      }}
-    >
-      {children}
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity
+        {...props}
+        onPress={(e: any) => {
+          e?.preventDefault?.();
+          setShowModal(true);
+        }}
+      >
+        {children}
+      </TouchableOpacity>
+      <SignOutModal
+        visible={showModal}
+        onCancel={() => setShowModal(false)}
+        onConfirm={async () => {
+          setShowModal(false);
+          await logout();
+          router.replace('/');
+        }}
+      />
+    </>
   );
 }
 
@@ -45,6 +49,8 @@ export default function SeekerLayout() {
         sceneStyle: { paddingTop: insets.top, backgroundColor: Colors.primaryDark },
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.gray,
+        tabBarShowLabel: true,
+        tabBarLabelPosition: 'below-icon',
         tabBarStyle: {
           height: 64 + bottomInset,
           paddingTop: 6,
