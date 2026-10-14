@@ -37,10 +37,5 @@ def employer_token():
     return _login("hr@techcorp.ph", "Test@123", "employer")
 
 
-@pytest.fixture(scope="session")
-def pending_employer_token():
-    return _login("hr@bluemountain.ph", "Test@123", "employer")
-
-
 def headers(token):
     return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
