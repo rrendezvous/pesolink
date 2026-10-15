@@ -15,7 +15,7 @@ import { nsrpCountChanged } from '../../src/utils/adminBadge';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
 import { currentStatus, NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES } from '../../src/utils/referral';
-import { Colors, Spacing, FontSize, Radius, Shadow } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, Shadow, StatusColors } from '../../src/constants/theme';
 
 const FILTERS = [
   { key: 'open', label: 'Needs Action' },
@@ -71,7 +71,7 @@ export default function NsrpVerification() {
     setProgramOther('');
     setDetailLoading(true);
     try {
-      if (seeker.nsrp_status === 'submitted') {
+      if (seeker.nsrp_status === 'submitted' && seeker.account_status === 'active') {
         // PESO has opened the profile: record "For Review" and notify the job seeker.
         await api.put(`/admin/job-seekers/${seeker.id}/nsrp-status`, { nsrp_status: 'for_review' });
       }
@@ -181,7 +181,8 @@ export default function NsrpVerification() {
 
   const query = search.trim().toLowerCase();
   const matchesFilter = (s: any, key: string) => {
-    if (key === 'open') return NSRP_OPEN_STATUSES.includes(s.nsrp_status);
+    // A deactivated account is not waiting for PESO; it still shows under All (with Reactivate).
+    if (key === 'open') return NSRP_OPEN_STATUSES.includes(s.nsrp_status) && s.account_status === 'active';
     return key ? s.nsrp_status === key : true;
   };
   const visibleSeekers = seekers.filter((s) => {
@@ -191,7 +192,10 @@ export default function NsrpVerification() {
   });
 
   const profile = detail?.profile;
-  const canDecide = profile && NSRP_OPEN_STATUSES.includes(profile.nsrp_status);
+  const waitingForPeso = profile && NSRP_OPEN_STATUSES.includes(profile.nsrp_status);
+  // PESO decides only on active accounts (the server refuses the others too).
+  const accountDeactivated = !!profile?.account_status && profile.account_status !== 'active';
+  const canDecide = waitingForPeso && !accountDeactivated;
 
   return (
     <View style={styles.container}>
@@ -357,6 +361,13 @@ export default function NsrpVerification() {
                       )) : <Text style={styles.emptyText}>No applications yet.</Text>}
                     </Section>
 
+                    {waitingForPeso && accountDeactivated && (
+                      <Section title="PESO Decision">
+                        <Text testID="nsrp-deactivated-note" style={styles.deactivatedNote}>
+                          This account is deactivated. Reactivate the account first.
+                        </Text>
+                      </Section>
+                    )}
                     {canDecide && (
                       <Section title="PESO Decision">
                         <Input
@@ -403,6 +414,7 @@ export default function NsrpVerification() {
 }
 
 const styles = StyleSheet.create({
+  deactivatedNote: { color: StatusColors.needs_revision.text, fontSize: FontSize.sm, fontWeight: '700', lineHeight: 20 },
   container: { flex: 1, backgroundColor: Colors.lightBg },
   header: {
     backgroundColor: Colors.primaryDark,
