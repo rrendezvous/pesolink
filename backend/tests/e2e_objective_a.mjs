@@ -221,5 +221,42 @@ check('non-admin cannot read nsrp-forms', (await call('GET', `/admin/job-seekers
     total >= 5 && first.length === 4 && first.length + rest.length === total && ids.size === total, `${total} ${first.length} ${rest.length}`);
 }
 
+console.log('"Job Post Updated" only when the posting really changes');
+{
+  // Maria's IT Support Staff application is still in progress here (TechCorp is never deactivated).
+  const itJob = jobByTitle('IT Support Staff');
+  const mariaIt = (await call('GET', '/applications/my-applications', maria)).data.applications.find((a) => a.job_post_id === itJob.id);
+  const updateAlerts = async () => (await notifs(maria)).filter((n) => n.title === 'Job Post Updated' && n.related_id === itJob.id).length;
+  const current = (await call('GET', `/jobs/${itJob.id}`, tech)).data.job;
+  const skillIdsNow = current.required_skills.map((s) => s.id);
+  // The same body the job form sends when nothing was edited.
+  const sameForm = {
+    job_title: current.job_title, job_description: current.job_description, job_type: current.job_type,
+    salary_min: current.salary_min != null ? parseFloat(current.salary_min) : null,
+    salary_max: current.salary_max != null ? parseFloat(current.salary_max) : null,
+    location: current.location || '', vacancies: current.vacancies, requirements: current.requirements || '',
+    application_email: current.application_email || '', closing_date: current.closing_date || null,
+    required_skills: skillIdsNow.map((id) => ({ skill_id: id, required_level: 'beginner' })),
+  };
+  check('Maria still has an in-progress IT Support application', mariaIt && ['for_review', 'for_interview'].includes(mariaIt.application_status), JSON.stringify(mariaIt));
+  let before = await updateAlerts();
+  check('identical save is accepted', (await call('PUT', `/employer/jobs/${itJob.id}`, tech, sameForm)).status === 200);
+  check('identical save (same skills) sends no "Job Post Updated"', (await updateAlerts()) === before);
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, required_skills: [...sameForm.required_skills].reverse() });
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, {});
+  check('same skills in another order, or an empty save, send no alert', (await updateAlerts()) === before);
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, salary_max: (sameForm.salary_max || 0) + 1000 });
+  check('a salary change notifies the in-progress applicant', (await updateAlerts()) === before + 1);
+  before += 1;
+  const extraSkill = skills.find((s) => !skillIdsNow.includes(s.id));
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, salary_max: (sameForm.salary_max || 0) + 1000,
+    required_skills: [...sameForm.required_skills, { skill_id: extraSkill.id, required_level: 'beginner' }] });
+  check('a required-skills change notifies the in-progress applicant', (await updateAlerts()) === before + 1);
+  before += 1;
+  r = await call('PUT', `/employer/jobs/${itJob.id}`, tech, { status: 'closed' });
+  check('closing by edit: applicant told "Application Closed", no "Job Post Updated"',
+    r.status === 200 && await hasNotif(maria, 'Application Closed', mariaIt.id) && (await updateAlerts()) === before);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
