@@ -428,7 +428,18 @@ router.put('/job-seekers/:id/nsrp-status', async (req, res) => {
     }
     const seeker = rows[0];
     const current = seeker.nsrp_status;
+    const [[account]] = await conn.query('SELECT account_status FROM users WHERE id = ?', [seeker.user_id]);
+    const deactivated = account?.account_status !== 'active';
 
+    // A deactivated account is not reviewed: opening it records nothing, and Verify/Return are refused.
+    if (deactivated && next === 'for_review') {
+      await conn.rollback();
+      return res.json({ message: 'This account is deactivated, so its NSRP profile is not opened for review', nsrp_status: current });
+    }
+    if (deactivated) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Reactivate the account first.', code: 'ACCOUNT_DEACTIVATED' });
+    }
     if (next === 'for_review' && current !== 'submitted') {
       await conn.rollback();
       return res.json({ message: 'NSRP profile is not waiting to be opened', nsrp_status: current });
@@ -737,8 +748,10 @@ router.get('/stats', async (req, res) => {
       "SELECT COUNT(*) AS count FROM job_posts WHERE status = 'active' AND (closing_date IS NULL OR closing_date >= CURDATE())"
     );
     const [[appCount]] = await db.query('SELECT COUNT(*) AS count FROM job_applications');
+    // Profiles waiting for PESO; a deactivated account is not waiting (it cannot sign in or be decided).
     const [[pendingNsrpCount]] = await db.query(
-      'SELECT COUNT(*) AS count FROM job_seekers WHERE nsrp_status IN (?)',
+      `SELECT COUNT(*) AS count FROM job_seekers js JOIN users u ON u.id = js.user_id
+       WHERE js.nsrp_status IN (?) AND u.account_status = 'active'`,
       [NSRP_OPEN_STATUSES]
     );
     const [[verifiedNsrpCount]] = await db.query(
