@@ -40,13 +40,20 @@ export default function Applicants() {
   // Only the newest request may update the screen: when the employer switches jobs quickly, a slower reply
   // for the previous job must not replace the current job's applicants (it would show an empty list).
   const latestRequest = useRef(0);
+  // Until the first reply for a list arrives, the screen says Loading (or shows the error), never "no applicants".
+  const [jobsLoaded, setJobsLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<{ key: string; message: string } | null>(null);
+  const listKey = jobId || 'jobs';
   const load = async () => {
     const request = ++latestRequest.current;
+    const key = listKey;
     try {
       if (!jobId) {
         const res = await api.get('/employer/jobs');
         if (request !== latestRequest.current) return;
         setJobs(res.data.jobs || []);
+        setJobsLoaded(true);
+        setLoadFailed(null);
         return;
       }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
@@ -55,10 +62,25 @@ export default function Applicants() {
       setJobData({ jobId, applicants: fresh, job: res.data.job || null });
       // An open details window shows the fresh record (e.g. the applicant changed the profile after verification).
       setSelected((prev: any) => (prev ? fresh.find((a) => a.application_id === prev.application_id) || prev : prev));
+      setLoadFailed(null);
     } catch (err) {
-      if (request === latestRequest.current) Alert.alert('Error', getApiError(err));
+      if (request !== latestRequest.current) return;
+      const hasData = jobId ? isCurrent : jobsLoaded;
+      // With a list already on screen a failed refresh keeps it and says so; without one, the error replaces "Loading".
+      if (hasData) Alert.alert('Error', getApiError(err));
+      else setLoadFailed({ key, message: getApiError(err) });
     }
   };
+
+  const loadingOrError = loadFailed?.key === listKey ? (
+    <Card style={styles.applicantCard}>
+      <Text style={styles.name}>Could not load this list</Text>
+      <Text testID="applicants-load-error" style={styles.detail}>Check the connection and try again. ({loadFailed.message})</Text>
+      <Button testID="applicants-retry" title="Try Again" variant="secondary" style={{ marginTop: Spacing.sm }} onPress={load} />
+    </Card>
+  ) : (
+    <EmptyState message="Loading..." />
+  );
 
   useFocusEffect(useCallback(() => { load(); }, [jobId]));
 
@@ -175,7 +197,7 @@ export default function Applicants() {
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-          ListEmptyComponent={<EmptyState message="No job posts yet. Post a job under Jobs." />}
+          ListEmptyComponent={jobsLoaded ? <EmptyState message="No job posts yet. Post a job under Jobs." /> : loadingOrError}
           renderItem={({ item }) => (
             <TouchableOpacity
               testID={`pick-job-${item.id}`}
@@ -252,13 +274,13 @@ export default function Applicants() {
             )}
           </View>
         }
-        ListEmptyComponent={
+        ListEmptyComponent={!isCurrent ? loadingOrError : (
           <EmptyState
             message={applicants.length > 0
               ? 'No applicants with this status.'
               : 'No PESO-referred applicants yet. Job seekers whose NSRP profile is verified by PESO Misamis Oriental appear here when they apply.'}
           />
-        }
+        )}
         renderItem={({ item }) => (
           <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => openApplicant(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
