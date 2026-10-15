@@ -2,7 +2,7 @@
 // PESO-Referred Applicants + Status Update (combined)
 // Only PESO-referred applicants appear here: job seekers whose NSRP profile PESO Admin verified.
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView,
 } from 'react-native';
@@ -36,17 +36,23 @@ export default function Applicants() {
   const setStatusFilter = (status: string) => setFilter({ jobId, status });
 
   // Opened from the tab bar there is no job selected yet: list the job posts to choose from.
+  // Only the newest request may update the screen: when the employer switches jobs quickly, a slower reply
+  // for the previous job must not replace the current job's applicants (it would show an empty list).
+  const latestRequest = useRef(0);
   const load = async () => {
+    const request = ++latestRequest.current;
     try {
       if (!jobId) {
         const res = await api.get('/employer/jobs');
+        if (request !== latestRequest.current) return;
         setJobs(res.data.jobs || []);
         return;
       }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
+      if (request !== latestRequest.current) return;
       setJobData({ jobId, applicants: res.data.applicants || [], job: res.data.job || null });
     } catch (err) {
-      Alert.alert('Error', getApiError(err));
+      if (request === latestRequest.current) Alert.alert('Error', getApiError(err));
     }
   };
 
