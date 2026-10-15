@@ -112,6 +112,8 @@ export default function UploadNSRP() {
   const [savedProfile, setSavedProfile] = useState<any | null>(null);
   // The saved profile a review started from. If the profile is saved elsewhere (Profile tab) during a review,
   // confirming would put the older values back, so the review starts over instead.
+  // Recorded only once the saved profile has loaded; without it (still loading or failed) there is nothing
+  // to compare, so no "Profile Changed" notice is shown.
   const reviewBase = useRef<string | null>(null);
   const extractedRef = useRef<any | null>(null);
   useEffect(() => { extractedRef.current = extracted; }, [extracted]);
@@ -310,7 +312,7 @@ export default function UploadNSRP() {
       const nextStatus = exRes.data.ocr_status || (exRes.data.success ? 'fields_extracted' : 'no_text');
       const nextFieldCount = Number(exRes.data.field_count || 0);
       const nextPageType = exRes.data.page_type || '';
-      if (!extractedRef.current) reviewBase.current = JSON.stringify(savedProfile);
+      if (!extractedRef.current && savedProfile) reviewBase.current = JSON.stringify(savedProfile);
       setExtracted((current: any) => mergeExtractedData(current || savedProfile, exRes.data.extracted_data));
       setRawText(exRes.data.raw_text || '');
       setOcrRegions(exRes.data.ocr_regions || null);
@@ -326,7 +328,7 @@ export default function UploadNSRP() {
       }
 
     } catch (err) {
-      if (!extractedRef.current) reviewBase.current = JSON.stringify(savedProfile);
+      if (!extractedRef.current && savedProfile) reviewBase.current = JSON.stringify(savedProfile);
       setExtracted((current: any) => current || savedProfile || emptyExtracted);
       setOcrRegions(null);
       setOcrSuccess(false);
