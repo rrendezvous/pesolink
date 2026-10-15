@@ -11,6 +11,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { Card, Button, EmptyState, Row, Chip, StatusBadge, Input } from '../../src/components/ui';
 import { NsrpProfileView, NsrpRequirements, Section } from '../../src/components/NsrpProfileView';
+import { nsrpCountChanged } from '../../src/utils/adminBadge';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
 import { currentStatus, NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES } from '../../src/utils/referral';
@@ -52,6 +53,7 @@ export default function NsrpVerification() {
     try {
       const res = await api.get('/admin/job-seekers');
       setSeekers(res.data.job_seekers || []);
+      nsrpCountChanged();
     } catch (err) {
       console.warn(getApiError(err));
     }

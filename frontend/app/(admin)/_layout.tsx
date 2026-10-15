@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api/client';
+import { onNsrpCountChanged } from '../../src/utils/adminBadge';
 import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
 
@@ -43,8 +44,14 @@ export default function AdminLayout() {
   const tabBarBottomPadding = Math.max(8 + bottomInset, 16);
   const pathname = usePathname();
   const [pendingNsrp, setPendingNsrp] = useState(0);
+  // Bumped by the NSRP screen after its list reloads, so the badge recounts without changing screens.
+  const [badgeTick, setBadgeTick] = useState(0);
+  useEffect(() => {
+    onNsrpCountChanged(() => setBadgeTick((t) => t + 1));
+    return () => onNsrpCountChanged(null);
+  }, []);
 
-  // Badge on the NSRP tab: profiles waiting for PESO. Refreshed whenever the admin moves between screens.
+  // Badge on the NSRP tab: profiles waiting for PESO. Refreshed when the admin moves between screens and after the NSRP list reloads.
   useEffect(() => {
     // Skip once the admin has signed out and left the admin screens.
     if (!pathname || pathname === '/') return undefined;
@@ -53,7 +60,7 @@ export default function AdminLayout() {
       .then((res) => { if (active) setPendingNsrp(Number(res.data?.pending_nsrp_reviews) || 0); })
       .catch(() => {});
     return () => { active = false; };
-  }, [pathname]);
+  }, [pathname, badgeTick]);
 
   return (
     <Tabs
