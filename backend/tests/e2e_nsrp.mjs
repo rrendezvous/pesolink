@@ -127,8 +127,11 @@ check('admins told to re-check', (await notifs(admin)).some((n) => n.title === '
 check('cannot apply while re-checking', (await call('POST', '/applications', juan, { job_post_id: rider.id })).data?.code === 'NSRP_NOT_VERIFIED');
 r = await call('GET', `/employer/jobs/${juniorDev.id}/applicants`, tech);
 check('existing application stays with employer', r.data.applicants.some((a) => a.application_id === juanApp));
+check('employer sees the profile is being re-checked', r.data.applicants.find((a) => a.application_id === juanApp)?.nsrp_status === 'submitted');
 r = await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'verified' });
 check('PESO re-verifies', r.status === 200);
+r = await call('GET', `/employer/jobs/${juniorDev.id}/applicants`, tech);
+check('employer sees it verified again', r.data.applicants.find((a) => a.application_id === juanApp)?.nsrp_status === 'verified');
 
 const anaSkills = (await profileOf(ana)).skills;
 r = await call('POST', '/job-seeker/skills', ana, { skills: anaSkills.slice(1).map((s) => ({ skill_id: s.id, proficiency_level: 'intermediate' })) });

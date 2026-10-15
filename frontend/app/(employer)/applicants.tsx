@@ -291,7 +291,14 @@ export default function Applicants() {
           <View style={styles.modalCard}>
             <ScrollView>
               <Text style={styles.modalTitle}>Applicant Details</Text>
-              <Text style={styles.modalSubtle}>NSRP profile verified by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
+              {/* A verified profile edited after applying goes back to PESO; the summary below is the edited, unchecked data. */}
+              {selected?.nsrp_status && selected.nsrp_status !== 'verified' ? (
+                <View style={styles.recheckNotice} testID="applicant-recheck">
+                  <Text style={styles.recheckText}>Changed after PESO verification. Not yet re-verified by PESO.</Text>
+                </View>
+              ) : (
+                <Text style={styles.modalSubtle}>NSRP profile verified by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
+              )}
               {selected && (
                 <>
                   <Row left="Name" right={`${selected.first_name} ${selected.last_name}`} />
@@ -306,7 +313,10 @@ export default function Applicants() {
                   {!!selected.referral_reviewed_at && (
                     <Row left="Applied" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
                   )}
-                  {!!selected.referral_notes && <Row left="PESO Note" right={selected.referral_notes} />}
+                  {/* The note was written when the profile was verified, so it is hidden while the profile is not verified. */}
+                  {!!selected.referral_notes && (!selected.nsrp_status || selected.nsrp_status === 'verified') && (
+                    <Row left="PESO Note" right={selected.referral_notes} />
+                  )}
                   <Row
                     left="Skill Comparison"
                     right={`${selected.matched_count || 0} matched / ${selected.missing_count || 0} missing`}
@@ -466,6 +476,8 @@ const styles = StyleSheet.create({
   skillTextMatched: { color: Colors.primary, fontWeight: '800' },
   skillPillMissing: { backgroundColor: amber.bg, borderColor: amber.border },
   amberText: { color: amber.text },
+  recheckNotice: { backgroundColor: amber.bg, borderColor: amber.border, borderWidth: 1, borderRadius: Radius.md, padding: Spacing.sm, marginTop: 4, marginBottom: Spacing.sm },
+  recheckText: { color: amber.text, fontSize: FontSize.sm, fontWeight: '800', lineHeight: 20 },
   matchChipGreen: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primary, color: Colors.primary },
   matchChipAmber: { backgroundColor: amber.bg, borderColor: amber.border, color: amber.text },
   matchChipNeutral: { backgroundColor: Colors.surface, borderColor: Colors.borderSoft, color: Colors.gray },

@@ -410,7 +410,7 @@ router.get('/jobs/:id/applicants', async (req, res) => {
               js.id AS job_seeker_id, js.first_name, js.middle_name, js.last_name,
               js.contact_number, js.city, js.province, js.education_level, js.course,
               js.years_of_experience, js.employment_status, js.preferred_occupation,
-              js.profile_completed,
+              js.profile_completed, js.nsrp_status,
               u.email
        FROM job_applications ja
        JOIN job_seekers js ON js.id = ja.job_seeker_id
