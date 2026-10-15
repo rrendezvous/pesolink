@@ -199,7 +199,11 @@ export function NsrpForm({
           label="Employment Status"
           options={EMPLOYMENT_STATUS_OPTIONS}
           value={value.employment_status}
-          onSelect={(v) => onChange({ ...value, employment_status: v, nsrp_full_data: { ...full, employment_type: '' } })}
+          // Re-tapping the current status keeps the employment type; only a real change clears it.
+          onSelect={(v) => {
+            if (v === value.employment_status) return;
+            onChange({ ...value, employment_status: v, nsrp_full_data: { ...full, employment_type: '' } });
+          }}
           testID={id('empstatus')}
         />
         {employmentTypes.length > 0 && (
