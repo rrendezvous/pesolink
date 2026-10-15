@@ -249,17 +249,10 @@ async function run() {
       approval_status: 'approved',
       user_status: 'active',
     },
-    {
-      email: 'hr@bluemountain.ph',
-      password: 'Test@123',
-      company_name: 'Blue Mountain Resort',
-      company_address: 'Initao, Misamis Oriental',
-      contact_person: 'Jenny Co', contact_number: '088-857-4000',
-      business_type: 'Hospitality', company_size: 'small',
-      approval_status: 'pending',
-      user_status: 'pending',
-    },
   ];
+  // No pending employer: employers submit their requirements to PESO and are approved outside the app;
+  // PESO Admin then creates the account, which starts approved. (The approval screen stays as a safety net
+  // for older pending records; e2e_objective_a.mjs tests it with a record it creates itself.)
 
   const employerIds = {};
   const employerUserIds = {};
@@ -424,7 +417,6 @@ async function run() {
   console.log('Job Seeker 4: ana.bautista@example.com / Test@123 (PESO-verified, no applications yet)');
   console.log('Employer 1:   hr@techcorp.ph / Test@123 (approved)');
   console.log('Employer 2:   hr@northstar.ph / Test@123 (approved)');
-  console.log('Employer 3:   hr@bluemountain.ph / Test@123 (pending approval)');
   console.log('====================================\n');
 
   process.exit(0);

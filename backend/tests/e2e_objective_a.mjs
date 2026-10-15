@@ -1,6 +1,10 @@
 // End-to-end API test: objective (a) what-if scenarios (job edits, hiring, closing, deactivation,
 // closing dates, skill comparison edge cases, employer account management).
 // Run against a freshly seeded demo DB:  node tests/e2e_objective_a.mjs
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 const BASE = process.env.BASE || 'http://localhost:8001/api';
 let pass = 0, fail = 0;
 function check(name, cond, extra = '') {
@@ -138,7 +142,6 @@ check('Juan can use the app again', (await call('GET', '/job-seeker/profile', ju
 console.log('Employer account management');
 const employers = (await call('GET', '/admin/employers', admin)).data.employers;
 const northEmp = employers.find((e) => e.email === 'hr@northstar.ph');
-const blue = employers.find((e) => e.email === 'hr@bluemountain.ph');
 r = await call('PUT', `/admin/employers/${northEmp.id}`, admin, { contact_person: 'Updated Contact', company_size: 'medium' });
 check('admin updates employer details', r.status === 200 && r.data.employer.contact_person === 'Updated Contact');
 check('employer notified of update', await hasNotif(north, 'Company Details Updated'));
@@ -208,8 +211,30 @@ check('Ana rider application closed', (await call('GET', `/applications/${riderA
 check('reactivate employer', (await call('PUT', `/admin/employers/${northEmp.id}/reactivate`, admin)).status === 200);
 const north2 = await login('hr@northstar.ph', 'Test@123', 'employer');
 check('reactivated employer signs in; posts stay closed', (await call('GET', '/employer/jobs', north2)).data.jobs.every((j) => j.status === 'closed'));
-check('cannot reactivate a pending employer', (await call('PUT', `/admin/employers/${blue.id}/reactivate`, admin)).status === 400);
-check('approve pending employer', (await call('PUT', `/admin/employers/${blue.id}/approve`, admin)).status === 200);
+check('demo has no employer waiting for approval', (await call('GET', '/admin/employers/pending', admin)).data.employers.length === 0);
+{
+  // Safety net for older records: a pending employer (self-registered before PESO stopped that) is created
+  // directly in the reset demo/test database, then handled through the approval screen's API.
+  const require = createRequire(import.meta.url);
+  const backendDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  require('dotenv').config({ path: path.join(backendDir, '.env') });
+  const dbName = process.env.DEMO_DB || 'peso_link_demo';
+  if (dbName === 'peso_link_misor') throw new Error('Refusing to run on the real database (peso_link_misor).');
+  const mysql = require('mysql2/promise');
+  const bcrypt = require('bcryptjs');
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || '127.0.0.1', port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER || 'root', password: process.env.DB_PASSWORD || '', database: dbName,
+  });
+  const [u] = await conn.query("INSERT INTO users (email, password_hash, role, account_status) VALUES ('older.pending@example.com', ?, 'employer', 'pending')", [await bcrypt.hash('Test@123', 10)]);
+  const [e] = await conn.query("INSERT INTO employers (user_id, company_name, approval_status) VALUES (?, 'Older Pending Co.', 'pending')", [u.insertId]);
+  await conn.end();
+  check('older pending employer cannot sign in', (await call('POST', '/auth/login', null, { email: 'older.pending@example.com', password: 'Test@123', role: 'employer' })).status === 403);
+  check('admin sees it waiting for approval', (await call('GET', '/admin/employers/pending', admin)).data.employers.some((x) => x.id === e.insertId));
+  check('cannot reactivate a pending employer', (await call('PUT', `/admin/employers/${e.insertId}/reactivate`, admin)).status === 400);
+  check('approve pending employer', (await call('PUT', `/admin/employers/${e.insertId}/approve`, admin)).status === 200);
+  check('approved employer signs in', (await call('POST', '/auth/login', null, { email: 'older.pending@example.com', password: 'Test@123', role: 'employer' })).status === 200);
+}
 
 console.log('Admin monitoring and NSRP form images');
 r = await call('GET', '/admin/applications', admin);
