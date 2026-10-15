@@ -13,7 +13,7 @@ Each case has a stable ID so it can become a QA-tracker row.
 
 | Code | Source |
 | --- | --- |
-| E-N | `backend/tests/e2e_nsrp.mjs` (61 checks on 2026-10-15) |
+| E-N | `backend/tests/e2e_nsrp.mjs` (69 checks on 2026-10-15) |
 | E-A | `backend/tests/e2e_objective_a.mjs` (84 checks on 2026-10-15) |
 | E-F | `backend/tests/e2e_nsrp_form.mjs` (39 checks on 2026-10-15) |
 | E-B | `backend/tests/e2e_block_letters.mjs` (29 checks on 2026-10-15) |
@@ -74,6 +74,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-41 | Mark all alerts as read (all roles); "N new alerts" link on every Home | All | Alerts → Mark all as read | 0 unread, including alerts older than the 50 listed; the Home link disappears | Pass | EMU3 (`ed6a328`, `5956206`) |
 | TC-A-42 | Signed-in user is signed out on deactivation or an expired login (Req 9) | All | Admin deactivates a signed-in user; the user taps a tab | "Signed Out" with the reason; sign-in screen; sign-in refused until reactivated | Pass | EMU3 (`ed6a328`) |
 | TC-A-43 | PESO decides only on the NSRP data it opened (review token) | Admin, seeker | Admin opens a profile; the seeker edits it, changes skills, uploads a form or confirms OCR; admin taps Verify or Return | "This profile changed since you opened it. Reload and review again."; after Reload the decision works | Pass | E-N (12 checks); EMU3 (`0536303`) |
+| TC-A-44 | Employer edits the company profile (§3.5.2) | Employer, seeker | Home → Edit Company Profile → change the contact person → Save; a seeker opens one of the employer's job posts | "Company profile updated. Job seekers will see these details on your job posts."; the company card and the job post's Employer Details show the new contact; the company name is not changed to capitals | Pass | EMU3 (guide Test 24) |
 
 ## Objective (b): NSRP-based profile encoding, optional OCR, rule-based skill matching
 
@@ -109,7 +110,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 
 | ID | Item | Result | Evidence |
 | --- | --- | --- | --- |
-| TC-C-01 | Automated API end-to-end tests | Pass: 213/213 on 2026-10-15 (E-N 61, E-A 84, E-F 39, E-B 29); 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B |
+| TC-C-01 | Automated API end-to-end tests | Pass: 221/221 on 2026-10-15 (E-N 69, E-A 84, E-F 39, E-B 29); 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B |
 | TC-C-02 | Backend regression suites (pytest) | Pass: 61 passed, 1 skipped on 2026-10-15 (conditional test; no profile waiting at that point in the run; the pending-employer sign-in test was removed with the demo's pending employer). Earlier: 62 passed, 1 skipped. On 2026-10-05, three checks first failed: one test compared the stored email case-sensitively after the backend started lowercasing emails. The test now expects the normalized email | PY |
 | TC-C-03 | TypeScript type-check and Expo lint | Pass: 0 errors (10 older warnings) | `npx tsc --noEmit`, `npx expo lint` |
 | TC-C-04 | Database upgrade on a copy of the real database | Pass: existing decisions kept; repeat run does nothing | Copy of peso_link_misor (deleted afterwards) |
