@@ -1,19 +1,24 @@
 // ============================================================
 // NSRP Profile + Skills Management (combined screen)
 // ============================================================
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { nsrpStatusMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
 import { orderSkillCategories } from '../../src/utils/skills';
+import { setUnsavedChangesGuard, confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
 
+
+// Everything Save Profile stores (profile fields, NSRP form data, selected skills), as one comparable value.
+const profileSnapshot = (form: any, fullData: any, skills: Set<number>) =>
+  JSON.stringify([form, fullData, Array.from(skills).sort((a, b) => a - b)]);
 
 const defaultNsrpFullData = {
   suffix: '',
@@ -123,7 +128,10 @@ export default function ProfileScreen() {
   // Every load shows "Loading..." in place of the form, so the previous values cannot be saved while fresh data
   // is on its way. Replies from an older load, or arriving after leaving the screen, are ignored.
   const loadToken = useRef(0);
+  // What was last loaded or saved; null while loading or after the user chose to discard their edits.
+  const savedSnapshot = useRef<string | null>(null);
   const loadProfile = useCallback(() => {
+    savedSnapshot.current = null;
     const token = ++loadToken.current;
     const active = () => token === loadToken.current;
     setLoadError('');
@@ -138,7 +146,7 @@ export default function ProfileScreen() {
         const prof = p.data.profile;
         setSavedFilled(p.data.referral_requirements?.filled_count ?? null);
         const parsedFullData = parseFullData(prof.nsrp_full_data);
-        setForm({
+        const loadedForm = {
           first_name: prof.first_name || '',
           middle_name: prof.middle_name || '',
           last_name: prof.last_name || '',
@@ -154,10 +162,14 @@ export default function ProfileScreen() {
           years_of_experience: String(prof.years_of_experience ?? 0),
           employment_status: prof.employment_status || '',
           preferred_occupation: prof.preferred_occupation || '',
-        });
-        setNsrpFullData(normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData }));
+        };
+        const loadedFullData = normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData });
+        const loadedSkills = new Set<number>((p.data.skills || []).map((sk: any) => sk.id));
+        setForm(loadedForm);
+        setNsrpFullData(loadedFullData);
         setAllSkills(s.data.skills);
-        setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
+        setSelectedSkills(loadedSkills);
+        savedSnapshot.current = profileSnapshot(loadedForm, loadedFullData, loadedSkills);
         setNsrp({ status: prof.nsrp_status || 'not_submitted', notes: prof.nsrp_review_notes });
       } catch (err) {
         if (active()) setLoadError(getApiError(err));
@@ -172,6 +184,35 @@ export default function ProfileScreen() {
     return () => { loadToken.current += 1; };
   }, [loadProfile]));
 
+  // Warning before leaving with unsaved edits (tab bar, Back, OCR Assistant link). Nothing is saved
+  // automatically; choosing to leave drops the edits, and the profile reloads from the server on return.
+  const latest = useRef({ form, nsrpFullData, selectedSkills });
+  useEffect(() => { latest.current = { form, nsrpFullData, selectedSkills }; });
+  const navigation = useNavigation();
+  useFocusEffect(useCallback(() => {
+    setUnsavedChangesGuard({
+      hasUnsavedChanges: () => savedSnapshot.current !== null
+        && profileSnapshot(latest.current.form, latest.current.nsrpFullData, latest.current.selectedSkills) !== savedSnapshot.current,
+      // Discarding also reloads the saved profile, so the edits are gone even if the user stays
+      // (e.g. cancels the sign-out box). When leaving, this reply is ignored and the profile reloads on return.
+      discard: () => { savedSnapshot.current = null; loadProfile(); },
+    });
+    // Nothing unsaved: Back works as usual. Unsaved: show the warning instead.
+    const onBack = () => {
+      if (!hasUnsavedChanges()) return false;
+      confirmLeave(() => {
+        if (navigation.canGoBack()) navigation.goBack();
+        else router.navigate('/(seeker)/dashboard');
+      });
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => {
+      sub.remove();
+      setUnsavedChangesGuard(null);
+    };
+  }, [navigation, router, loadProfile]));
+
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
   const toggleSkill = (id: number) => {
@@ -185,6 +226,7 @@ export default function ProfileScreen() {
   // Saves the profile and skills. Returns the new NSRP status if saving changed it
   // (a changed PESO-verified profile goes back to PESO for re-checking).
   const saveProfileDraft = async (): Promise<string | null> => {
+    const sent = profileSnapshot(form, nsrpFullData, selectedSkills);
     const res = await api.post('/job-seeker/profile', {
         ...form,
         years_of_experience: parseInt(form.years_of_experience, 10) || 0,
@@ -193,6 +235,8 @@ export default function ProfileScreen() {
     const skillsRes = await api.post('/job-seeker/skills', {
       skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
     });
+    // Saved: these values no longer count as unsaved (edits made while saving still do).
+    savedSnapshot.current = sent;
     const changedTo = res.data.nsrp_status_changed_to || skillsRes.data.nsrp_status_changed_to || null;
     if (changedTo) setNsrp({ status: changedTo, notes: null });
     const fresh = await api.get('/job-seeker/profile');
@@ -381,7 +425,7 @@ export default function ProfileScreen() {
 
             <TouchableOpacity
               testID="profile-upload-shortcut"
-              onPress={() => router.push('/(seeker)/upload-nsrp')}
+              onPress={() => confirmLeave(() => router.push('/(seeker)/upload-nsrp'))}
               style={styles.ocrLink}
               accessibilityRole="button"
             >
