@@ -22,11 +22,13 @@ export default function JobDetails() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
+  // A failed load (network, timeout, server error) is not the same as a job that does not exist.
+  const [loadError, setLoadError] = useState('');
   const shownId = useRef<string | undefined>(id);
 
   // Reload on focus: this hidden tab stays mounted, so reopening the same job would show the old
   // apply/match state (e.g. before PESO verified the profile or before skills changed).
-  useFocusEffect(useCallback(() => {
+  const load = useCallback(() => {
     // A different job was opened: don't show the previous job (or its cover letter) while this one loads.
     if (shownId.current !== id) {
       shownId.current = id;
@@ -35,6 +37,7 @@ export default function JobDetails() {
       setCoverLetter('');
       setLoading(true);
     }
+    setLoadError('');
     (async () => {
       try {
         const [j, m] = await Promise.all([
@@ -45,13 +48,16 @@ export default function JobDetails() {
         if (shownId.current !== id) return;
         setJob(j.data.job);
         setMatch(m.data);
-      } catch (err) {
-        if (shownId.current === id) Alert.alert('Error', getApiError(err));
+      } catch (err: any) {
+        if (shownId.current !== id) return;
+        if (err?.response?.status === 404) setJob(null);
+        else setLoadError(getApiError(err));
       } finally {
         if (shownId.current === id) setLoading(false);
       }
     })();
-  }, [id]));
+  }, [id]);
+  useFocusEffect(load);
 
   const handleApply = async () => {
     setApplying(true);
@@ -86,6 +92,17 @@ export default function JobDetails() {
 
   if (loading) {
     return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
+  }
+  if (!job && loadError) {
+    return (
+      <View style={[styles.center, { padding: Spacing.lg }]}>
+        <Card>
+          <Text style={styles.section}>Could not load this job</Text>
+          <Text testID="job-load-error" style={styles.helpText}>Check the connection and try again. ({loadError})</Text>
+          <Button testID="job-retry" title="Try Again" onPress={() => { setLoading(true); load(); }} />
+        </Card>
+      </View>
+    );
   }
   if (!job) {
     return <EmptyState message="Job not found." />;
