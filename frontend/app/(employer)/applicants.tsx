@@ -4,7 +4,7 @@
 // ============================================================
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView, RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Card, Button, StatusBadge, EmptyState, Row, Chip } from '../../src/components/ui';
@@ -30,6 +30,7 @@ export default function Applicants() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   // The filter belongs to one job post; opening another job shows every applicant again.
   const [filter, setFilter] = useState<{ jobId?: string; status: string }>({ status: '' });
   const statusFilter = filter.jobId === jobId ? filter.status : '';
@@ -50,13 +51,21 @@ export default function Applicants() {
       }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
       if (request !== latestRequest.current) return;
-      setJobData({ jobId, applicants: res.data.applicants || [], job: res.data.job || null });
+      const fresh: any[] = res.data.applicants || [];
+      setJobData({ jobId, applicants: fresh, job: res.data.job || null });
+      // An open details window shows the fresh record (e.g. the applicant changed the profile after verification).
+      setSelected((prev: any) => (prev ? fresh.find((a) => a.application_id === prev.application_id) || prev : prev));
     } catch (err) {
       if (request === latestRequest.current) Alert.alert('Error', getApiError(err));
     }
   };
 
   useFocusEffect(useCallback(() => { load(); }, [jobId]));
+
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  // Show the record right away, then reload so the details are not older than the applicant's current profile.
+  const openApplicant = (item: any) => { setSelected(item); load(); };
 
 
   const countFor = (status: string) => applicants.filter((a) => a.application_status === status).length;
@@ -165,6 +174,7 @@ export default function Applicants() {
           data={jobs}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
           ListEmptyComponent={<EmptyState message="No job posts yet. Post a job under Jobs." />}
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -192,6 +202,7 @@ export default function Applicants() {
         data={visibleApplicants}
         keyExtractor={(item) => String(item.application_id)}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         ListHeaderComponent={
           <View>
             {!!jobInfo && vacancies > 0 && (
@@ -249,7 +260,7 @@ export default function Applicants() {
           />
         }
         renderItem={({ item }) => (
-          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
+          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => openApplicant(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
