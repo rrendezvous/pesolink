@@ -9,7 +9,9 @@ const { validateReferralReadiness, refreshProfileCompleted, parseFullData } = re
 const {
   notify, closeJobRecords, closeActiveApplications, buildSkillComparison,
 } = require('../services/referral');
-const { NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES, nsrpFingerprint } = require('../services/nsrpReview');
+const {
+  NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES, nsrpFingerprint, reviewToken,
+} = require('../services/nsrpReview');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -342,8 +344,12 @@ router.get('/job-seekers', async (req, res) => {
 
 // GET /api/admin/job-seekers/:id/profile - full NSRP profile, skills, and referral requests (monitoring)
 router.get('/job-seekers/:id/profile', async (req, res) => {
+  // Everything shown to PESO and the review token come from one consistent snapshot,
+  // so the token describes exactly the data on PESO's screen.
+  const conn = await db.getConnection();
   try {
-    const [rows] = await db.query(
+    await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT');
+    const [rows] = await conn.query(
       `SELECT js.*, u.email, u.account_status, u.created_at AS registered_at,
               reviewer.email AS nsrp_reviewed_by_email
        FROM job_seekers js
@@ -352,11 +358,14 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
        WHERE js.id = ?`,
       [req.params.id]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Job seeker not found' });
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Job seeker not found' });
+    }
     const profile = rows[0];
     profile.nsrp_full_data = parseFullData(profile.nsrp_full_data);
 
-    const [skills] = await db.query(
+    const [skills] = await conn.query(
       `SELECT s.id, s.skill_name, s.category, jss.proficiency_level
        FROM job_seeker_skills jss
        JOIN skills s ON s.id = jss.skill_id
@@ -365,7 +374,7 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
       [profile.id]
     );
 
-    const [applications] = await db.query(
+    const [applications] = await conn.query(
       `SELECT ja.id, ja.application_status, ja.referral_status, ja.applied_at, jp.job_title, e.company_name
        FROM job_applications ja
        JOIN job_posts jp ON jp.id = ja.job_post_id
@@ -376,14 +385,20 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
     );
 
     const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skills.length });
-    const [[uploads]] = await db.query('SELECT COUNT(*) AS count FROM uploaded_nsrp_forms WHERE job_seeker_id = ?', [profile.id]);
+    const [[uploads]] = await conn.query('SELECT COUNT(*) AS count FROM uploaded_nsrp_forms WHERE job_seeker_id = ?', [profile.id]);
+    const token = await reviewToken(conn, profile.id);
+    await conn.commit();
 
     res.json({
       profile, skills, applications, referral_requirements: referralRequirements, uploaded_form_count: uploads.count,
+      review_token: token,
     });
   } catch (err) {
+    await conn.rollback();
     console.error('[Admin Seeker Profile]', err);
     res.status(500).json({ error: 'Failed to fetch job seeker profile' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -422,6 +437,15 @@ router.put('/job-seekers/:id/nsrp-status', async (req, res) => {
       await conn.rollback();
       return res.status(400).json({
         error: `This NSRP profile is ${NSRP_STATUS_LABELS[current]}, so there is nothing to decide`,
+      });
+    }
+    // Verify and Return apply only to the data PESO reviewed: if the profile, skills or uploaded forms
+    // changed since PESO opened it (the row lock above waits for any save in progress), refuse.
+    if (next !== 'for_review' && req.body.review_token !== await reviewToken(conn, seeker.id)) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'This profile changed since you opened it. Reload and review again.',
+        code: 'REVIEW_STALE',
       });
     }
     if (next === 'verified') {

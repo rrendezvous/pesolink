@@ -17,6 +17,12 @@ async function call(method, path, token, body) {
   try { data = await r.json(); } catch {}
   return { status: r.status, data };
 }
+
+// PESO decides on the profile it opened: read the review token the admin screen gets, then send it back.
+async function decide(adminToken, seekerId, body) {
+  const opened = await call('GET', `/admin/job-seekers/${seekerId}/profile`, adminToken);
+  return call('PUT', `/admin/job-seekers/${seekerId}/nsrp-status`, adminToken, { ...body, review_token: opened.data?.review_token });
+}
 async function login(email, password, role) {
   const r = await call('POST', '/auth/login', null, { email, password, role });
   if (r.status !== 200) throw new Error(`login ${email} ${r.status} ${JSON.stringify(r.data)}`);
@@ -65,7 +71,7 @@ let r = await call('POST', '/job-seeker/skills', maria, {
   skills: [...mariaSkills, sid('Cooking'), sid('Food and Beverage Service'), sid('Teamwork')].map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
 });
 check('Maria skill change sends NSRP back to PESO', r.data.nsrp_status_changed_to === 'submitted');
-check('PESO re-verifies Maria', (await call('PUT', `/admin/job-seekers/${seekerId('maria.santos@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 200);
+check('PESO re-verifies Maria', (await decide(admin, seekerId('maria.santos@example.com'), { nsrp_status: 'verified' })).status === 200);
 const anaApp = (await call('POST', '/applications', ana, { job_post_id: cook.id })).data.application_id;
 const mariaApp = (await call('POST', '/applications', maria, { job_post_id: cook.id })).data.application_id;
 check('both applied', anaApp && mariaApp);
@@ -118,7 +124,7 @@ r = await call('GET', `/jobs/${juniorDev.id}/match`, juan);
 check('Juan sees 4/4 matched', r.data.skills_confirmed === true && r.data.matched_count === 4);
 
 console.log('Admin deactivates a job seeker with an in-progress application');
-check('PESO verifies Juan', (await call('PUT', `/admin/job-seekers/${seekerId('juan.cruz@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 200);
+check('PESO verifies Juan', (await decide(admin, seekerId('juan.cruz@example.com'), { nsrp_status: 'verified' })).status === 200);
 const juanApp = (await call('POST', '/applications', juan, { job_post_id: juniorDev.id })).data.application_id;
 check('Juan applied', !!juanApp);
 check('deactivate Juan', (await call('PUT', `/admin/job-seekers/${seekerId('juan.cruz@example.com')}/deactivate`, admin, { reason: 'Test' })).status === 200);
@@ -190,7 +196,7 @@ const riderApp = await (async () => {
   // give Ana the rider skills so she can apply, then re-verify
   const anaSkills = (await call('GET', '/job-seeker/profile', ana)).data.skills.map((s) => s.id);
   await call('POST', '/job-seeker/skills', ana, { skills: [...anaSkills, sid('Motorcycle Delivery'), sid('Driving'), sid('Customer Service')].map((id) => ({ skill_id: id })) });
-  await call('PUT', `/admin/job-seekers/${seekerId('ana.bautista@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' });
+  await decide(admin, seekerId('ana.bautista@example.com'), { nsrp_status: 'verified' });
   return (await call('POST', '/applications', ana, { job_post_id: rider.id })).data.application_id;
 })();
 check('Ana applied to Delivery Rider', !!riderApp);

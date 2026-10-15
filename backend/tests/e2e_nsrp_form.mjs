@@ -16,6 +16,12 @@ async function call(method, path, token, body) {
   try { data = await r.json(); } catch {}
   return { status: r.status, data };
 }
+
+// PESO decides on the profile it opened: read the review token the admin screen gets, then send it back.
+async function decide(adminToken, seekerId, body) {
+  const opened = await call('GET', `/admin/job-seekers/${seekerId}/profile`, adminToken);
+  return call('PUT', `/admin/job-seekers/${seekerId}/nsrp-status`, adminToken, { ...body, review_token: opened.data?.review_token });
+}
 async function login(email, password, role) {
   const r = await call('POST', '/auth/login', null, { email, password, role });
   if (r.status !== 200) throw new Error(`login ${email} ${r.status}`);
@@ -68,7 +74,7 @@ check('submit without certification refused', (await call('POST', '/job-seeker/p
 check('submit with certification', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { certified: true })).status === 200);
 const seekers = (await call('GET', '/admin/job-seekers', admin)).data.job_seekers;
 const pedroId = seekers.find((s) => s.email === 'pedro.reyes@example.com').id;
-r = await call('PUT', `/admin/job-seekers/${pedroId}/nsrp-status`, admin, {
+r = await decide(admin, pedroId, {
   nsrp_status: 'verified', peso_assessment: { programs: ['TUPAD', 'JobStart', 'Bogus'], other: 'Livelihood' },
 });
 check('verify with assessment 200', r.status === 200, JSON.stringify(r.data));

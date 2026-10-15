@@ -96,6 +96,26 @@ async function nsrpFingerprint(queryable, jobSeekerId, version = 2) {
   return crypto.createHash('sha256').update(stableStringify(data)).digest('hex');
 }
 
+// Review token: what PESO Admin had on screen when deciding. Covers everything nsrpFingerprint covers
+// (NSRP fields, extended data, skills) plus every uploaded form's id and OCR-confirmed flag, so a new upload
+// or a newly confirmed scan also counts as a change. Computed on request; nothing is stored.
+async function reviewToken(queryable, jobSeekerId) {
+  const fingerprint = await nsrpFingerprint(queryable, jobSeekerId);
+  if (fingerprint === null) return null;
+  const [uploads] = await queryable.query(
+    'SELECT id, ocr_confirmed FROM uploaded_nsrp_forms WHERE job_seeker_id = ? ORDER BY id',
+    [jobSeekerId]
+  );
+  const data = { fingerprint, uploads: uploads.map((u) => `${u.id}:${u.ocr_confirmed ? 1 : 0}`) };
+  return crypto.createHash('sha256').update(stableStringify(data)).digest('hex');
+}
+
+// Every job seeker NSRP write (profile, skills, uploads, OCR confirm) takes this row lock first, and so does
+// PESO's Verify/Return, so a decision never mixes data from before and after a seeker's save.
+async function lockJobSeeker(conn, jobSeekerId) {
+  await conn.query('SELECT id FROM job_seekers WHERE id = ? FOR UPDATE', [jobSeekerId]);
+}
+
 // Called after every NSRP save (profile form, OCR confirm, skills).
 // - Verified profile changed -> back to PESO for re-checking (or not submitted if now incomplete).
 // - Waiting profile became incomplete -> not submitted.
@@ -166,6 +186,8 @@ module.exports = {
   minSkillMatches,
   requiredMatchesFor,
   nsrpFingerprint,
+  reviewToken,
+  lockJobSeeker,
   syncNsrpStatusAfterEdit,
   notifyAdminsOfSubmission,
 };

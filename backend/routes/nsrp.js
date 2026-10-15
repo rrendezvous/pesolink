@@ -10,6 +10,7 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const nsrpOcr = require('../services/nsrpOcr');
 const { refreshProfileCompleted } = require('../services/nsrpProfileValidation');
+const { lockJobSeeker } = require('../services/nsrpReview');
 const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
@@ -63,18 +64,26 @@ router.post('/upload', async (req, res) => {
   const { image_base64 } = req.body;
   if (!image_base64) return res.status(400).json({ error: 'image_base64 is required' });
 
+  const conn = await db.getConnection();
   try {
     const jsId = await getJobSeekerId(req.user.id);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
-    const [result] = await db.query(
+    // A new upload is part of what PESO reviews, so it takes the same lock as PESO's decision.
+    await conn.beginTransaction();
+    await lockJobSeeker(conn, jsId);
+    const [result] = await conn.query(
       'INSERT INTO uploaded_nsrp_forms (job_seeker_id, image_base64, ocr_confirmed) VALUES (?, ?, FALSE)',
       [jsId, image_base64],
     );
+    await conn.commit();
     res.status(201).json({ message: 'NSRP form uploaded', upload_id: result.insertId });
   } catch (err) {
+    await conn.rollback();
     console.error('[NSRP Upload]', err);
     res.status(500).json({ error: 'Failed to upload NSRP form' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -204,6 +213,7 @@ router.post('/confirm', async (req, res) => {
 
     // OCR confirm only adds or replaces what was reviewed; blank values never erase saved profile data
     // (scanning page 2 must not clear the page-1 fields, and vice versa).
+    await lockJobSeeker(conn, jsId);
     const [currentRows] = await conn.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
     const current = currentRows[0];
     let currentFull = current.nsrp_full_data || {};

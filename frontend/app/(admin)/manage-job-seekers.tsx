@@ -132,11 +132,18 @@ export default function NsrpVerification() {
           nsrp_status: next,
           notes: reason || null,
           peso_assessment: next === 'verified' ? { programs, other: programOther } : undefined,
+          // Identifies the data on screen; the server refuses if the profile changed since it was opened.
+          review_token: detail?.review_token,
         });
         closeDetail();
         await load();
         Alert.alert('Saved', `NSRP profile marked ${NSRP_STATUS_LABELS[next]}. The job seeker has been notified.`);
       } catch (err: any) {
+        if (err?.response?.data?.code === 'REVIEW_STALE') {
+          // The job seeker changed the profile, skills or uploaded forms after PESO opened it.
+          Alert.alert('Profile Changed', getApiError(err), [{ text: 'Reload', onPress: () => openProfile(profile) }]);
+          return;
+        }
         const missing = err?.response?.data?.missing_fields;
         Alert.alert('Error', Array.isArray(missing) && missing.length
           ? `${getApiError(err)}:\n\n${missing.join('\n')}`
