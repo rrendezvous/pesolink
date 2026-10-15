@@ -13,12 +13,14 @@ Each case has a stable ID so it can become a QA-tracker row.
 
 | Code | Source |
 | --- | --- |
-| E-N | `backend/tests/e2e_nsrp.mjs` (47 checks) |
-| E-A | `backend/tests/e2e_objective_a.mjs` (46 checks) |
-| E-F | `backend/tests/e2e_nsrp_form.mjs` (19 checks) |
+| E-N | `backend/tests/e2e_nsrp.mjs` (61 checks on 2026-10-15) |
+| E-A | `backend/tests/e2e_objective_a.mjs` (84 checks on 2026-10-15) |
+| E-F | `backend/tests/e2e_nsrp_form.mjs` (39 checks on 2026-10-15) |
+| E-B | `backend/tests/e2e_block_letters.mjs` (29 checks on 2026-10-15) |
 | PY | `backend/tests/*.py` (pytest: 62 passed, 1 skipped on 2026-10-05) |
 | OCR | `backend/scripts/ocr-accuracy.js` on `samples/nsrp-ocr` |
 | EMU | Android emulator (Pixel 7, Android 15, Expo Go) walkthrough, 2026-10-04 |
+| EMU3 | Emulator walkthroughs of the update testing guide on a freshly reset test database, 2026-10-15 (final build merged into `main` as `332250c`) |
 | EMU2 | Emulator recheck, 2026-10-05: a new seeker, Juan Dela Cruz Santos (the person on the OCR samples), registered in the app, scanned both pages, submitted to PESO, was verified by the admin, applied, and was set to For Interview by TechCorp |
 
 Run the API tests with `cd backend && npm run test:e2e` (backend running on the demo database).
@@ -38,7 +40,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-01 | Browse localized job vacancies (§3.5.1, Req 1) | Seeker | Open Jobs | Active jobs listed with company, type, location | Pass | EMU; PY test_list_jobs |
 | TC-A-02 | Search jobs (§3.5.1) | Seeker | Type "cook" in search | Only Food Kiosk Cook shown | Pass | EMU; PY test_search_jobs |
 | TC-A-03 | Filter by job type / location (§3.5.1) | Seeker | Tap a type chip, then a location chip | List narrows to matching jobs | Pass | EMU (narrowing, 2026-10-04); EMU2 (type and location chips return the right result, and "No jobs found" when nothing matches) |
-| TC-A-04 | Job details: position info, requirements, employer details, application email (§3.5.1, §3.5.2) | Seeker | Open Junior Software Developer | All sections shown; "Apply Directly" card shows careers@techcorp.ph | Pass | EMU; PY test_job_details |
+| TC-A-04 | Job details: position info, requirements, employer details, application email (§3.5.1, §3.5.2) | Seeker | Open Junior Software Developer; then a closed post | All sections shown; "Apply Directly" card shows careers@techcorp.ph; on a post that is not accepting applications the Apply Directly card is hidden | Pass | EMU; PY test_job_details; EMU3 (`6713b03`) |
 | TC-A-05 | Closed or expired jobs are not offered | Seeker | Employer closes a job / sets the closing date to yesterday; seeker browses and tries to apply | Job hidden; apply refused with "closed" message | Pass | E-A |
 | TC-A-06 | Submit NSRP profile to PESO with certification (§3.5.1) | Seeker | Complete 19 items, tick the certification, tap Submit | Status Submitted; admins notified; refused without certification | Pass | E-N, E-F; EMU2 (full NSRP Form 1 certification text; Submit disabled until 19/19 and ticked; "Sent to PESO") |
 | TC-A-07 | PESO opens a submitted profile and it becomes For Review (§3.5.3) | Admin | NSRP tab, tap the seeker | Status For Review; seeker notified | Pass | E-N; EMU2 (badge changed on open; seeker's Alerts showed "NSRP Profile For Review") |
@@ -57,7 +59,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-20 | Admin deactivates a seeker mid-flow (Req 9) | Admin | Deactivate a seeker who has an application; then reactivate | Seeker's session refused; application Closed; employer notified; works again after reactivation | Pass | E-A, PY |
 | TC-A-21 | Admin deactivates an employer (Req 7) | Admin | Deactivate Northstar; then reactivate | Login refused; active posts closed and hidden; applicants' records closed; posts stay closed after reactivation | Pass | E-A; EMU2 ("4 active job post(s) were closed."; sign-in refused, then allowed after reactivation) |
 | TC-A-22 | Admin edits employer details (§3.5.3) | Admin | Edit Details, then Save | Saved; employer notified; blank name and bad size refused | Pass | E-A; EMU (screen and buttons seen, not edited on device) |
-| TC-A-23 | Admin approves / rejects a pending employer (§3.5.3) | Admin | Employers, Pending filter, Approve | Approved; employer notified | Pass | E-A, PY; EMU2 (Blue Mountain approved) |
+| TC-A-23 | Admin approves / rejects a pending employer (§3.5.3) | Admin | Employers, Pending filter, Approve | Approved; employer notified | Pass | E-A (an older pending record created by the test: cannot sign in, listed as waiting, cannot be reactivated, approved, then signs in); EMU2. Since 2026-10-15 the demo has no pending employer: PESO approves employers outside the app and creates the account |
 | TC-A-24 | Admin creates an employer account; employers cannot self-register (§3.5.2-3) | Admin | Create Employer Account | Account active; self-registration blocked | Pass | PY test_admin_creates_employer, test_register_employer_blocked |
 | TC-A-25 | Admin monitoring of referral records (§3.5.3) | Admin | Referrals, By Job, tap a job | Per-job counts by status; drill-down to applicants; employer filter; search | Pass | EMU; EMU2 |
 | TC-A-26 | Admin dashboard counts | Admin | Open Home | Users, jobs, applications, NSRP waiting / verified, PESO-referred counts | Pass | E-N; PY; EMU2 (every number matched the database) |
@@ -66,6 +68,12 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-29 | Admin closes a job post (§3.5.3) | Admin | Jobs, Close Job | Job closed (soft); in-progress applications closed | Pass | E-A; EMU2 |
 | TC-A-30 | Employer edits a job; the form shows current values (§3.5.2) | Employer | Edit a job, save, edit it again; then Post New Job | The second edit shows the saved values; a new post starts blank | Pass (after the 2026-10-05 fix) | EMU2 |
 | TC-A-31 | Employer opens the Applicants tab directly | Employer | Tap Applicants in the tab bar | Job posts listed with PESO-referred counts; tap one to see its applicants | Pass (after the 2026-10-05 fix) | EMU2 |
+| TC-A-38 | Post New Job starts empty; vacancies at least 1; job title 255 characters or fewer (§3.5.2) | Employer | Edit a job, go back, Post New Job; Vacancies 0; a 256-character title | Empty form; "Vacancies must be at least 1"; "Job title must be 255 characters or fewer" (app and server); nothing saved | Pass | E-A; EMU3 (`49f185e`, `186273a`, `b92d74b`) |
+| TC-A-39 | "Job Post Updated" only on a real change (Req 6) | Employer, seeker | Update a job with no change, then change the salary | No alert, then exactly one alert | Pass | E-A; EMU3 (`3f10cdb`) |
+| TC-A-40 | Employer sees that a verified applicant's profile changed (§3.5.2) | Employer | Applicant edits a verified profile; employer reopens the applicant (same screen); PESO re-verifies; pull to refresh | Amber "Changed after PESO verification. Not yet re-verified by PESO.", no PESO Note; the verified text returns after re-verification | Pass | E-N; EMU3 (`aff973a`, `0e9526a`) |
+| TC-A-41 | Mark all alerts as read (all roles); "N new alerts" link on every Home | All | Alerts → Mark all as read | 0 unread, including alerts older than the 50 listed; the Home link disappears | Pass | EMU3 (`ed6a328`, `5956206`) |
+| TC-A-42 | Signed-in user is signed out on deactivation or an expired login (Req 9) | All | Admin deactivates a signed-in user; the user taps a tab | "Signed Out" with the reason; sign-in screen; sign-in refused until reactivated | Pass | EMU3 (`ed6a328`) |
+| TC-A-43 | PESO decides only on the NSRP data it opened (review token) | Admin, seeker | Admin opens a profile; the seeker edits it, changes skills, uploads a form or confirms OCR; admin taps Verify or Return | "This profile changed since you opened it. Reload and review again."; after Reload the decision works | Pass | E-N (12 checks); EMU3 (`0536303`) |
 
 ## Objective (b): NSRP-based profile encoding, optional OCR, rule-based skill matching
 
@@ -89,6 +97,11 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-B-14 | Admin views the uploaded NSRP form image | Admin | Open a profile with an upload, Show Uploaded Form | Image shown next to the encoded data | Pass | E-A; EMU2 |
 | TC-B-15 | "For use of PESO only" eligibility recorded on verify | Admin | Tick SPES/GIP/TUPAD/JobStart, then Verify | Saved with assessor and date; kept when a changed profile is re-verified | Pass (the re-verify part after the 2026-10-05 fix) | E-F; EMU2 |
 | TC-B-16 | Profile screen shows the data just saved by the OCR Assistant | Seeker | Open Profile, use OCR, Confirm and Save, return to Profile | Profile shows the OCR data (19/19), not the old form | Pass (after the 2026-10-05 fix) | EMU2 |
+| TC-B-17 | Job form skill suggestions are an input aid only | Employer | Type catalog skill names in the description; tap one; Add all | Listed under "Found in your text"; nothing selected until tapped; matching still uses the saved skill IDs | Pass | EMU3 (`6fd0018`) |
+| TC-B-18 | Skill search and grouping in the job form and Profile | Employer, seeker | Search "weld"; look at the group order | List narrows; "NSRP Section VIII-related skills" first | Pass | E-A (3 checks); EMU3 (`c8215d8`) |
+| TC-B-19 | Profile warns before leaving with unsaved changes | Seeker | Change a field; tap another tab / Back / Exit / OCR link | "Unsaved Changes": Keep Editing keeps it; Discard reloads the saved profile; no warning after a successful save or when tapping the Profile tab itself | Pass | EMU3 (`1358df1`, `d8163dc`) |
+| TC-B-20 | Date of birth as on NSRP Form 1 (mm/dd/yyyy); real, non-future dates only | Seeker, admin | Type unreal, future, incomplete, leap-day and cleared dates; Save / Submit / OCR confirm | Typed and shown as mm/dd/yyyy, stored as YYYY-MM-DD; clear messages; 02/29 only in leap years; a cleared date shows as a missing item; no minimum age | Pass | E-F (date checks); EMU3 (`9576871`) |
+| TC-B-21 | NSRP free-text answers saved in block letters (form instruction; to be confirmed with PESO) | Seeker | Type in small letters; save; first save of a profile verified before the change | Listed fields in capitals (Ñ kept); other fields as typed; a case-only first save stays PESO-Verified (v1 and v2 records); a real change re-checks | Pass | E-B (29 checks); EMU3 (`c77cb4d`, `5ebba1e`) |
 
 ## Objective (c): test and evaluate functionality and usability
 
@@ -96,8 +109,8 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 
 | ID | Item | Result | Evidence |
 | --- | --- | --- | --- |
-| TC-C-01 | Automated API end-to-end tests | Pass: 112/112 | E-N, E-A, E-F |
-| TC-C-02 | Backend regression suites (pytest) | Pass: 62 passed, 1 skipped (conditional test; no profile waiting at that point in the run). On 2026-10-05, three checks first failed: one test compared the stored email case-sensitively after the backend started lowercasing emails. The test now expects the normalized email | PY |
+| TC-C-01 | Automated API end-to-end tests | Pass: 213/213 on 2026-10-15 (E-N 61, E-A 84, E-F 39, E-B 29); 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B |
+| TC-C-02 | Backend regression suites (pytest) | Pass: 61 passed, 1 skipped on 2026-10-15 (conditional test; no profile waiting at that point in the run; the pending-employer sign-in test was removed with the demo's pending employer). Earlier: 62 passed, 1 skipped. On 2026-10-05, three checks first failed: one test compared the stored email case-sensitively after the backend started lowercasing emails. The test now expects the normalized email | PY |
 | TC-C-03 | TypeScript type-check and Expo lint | Pass: 0 errors (10 older warnings) | `npx tsc --noEmit`, `npx expo lint` |
 | TC-C-04 | Database upgrade on a copy of the real database | Pass: existing decisions kept; repeat run does nothing | Copy of peso_link_misor (deleted afterwards) |
 | TC-C-05 | ISO 25010 functional-suitability evaluation with respondents | Not run (team activity) | |
