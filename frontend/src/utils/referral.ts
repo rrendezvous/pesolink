@@ -28,6 +28,17 @@ export const NSRP_STATUS_LABELS: Record<string, string> = {
 export const NSRP_OPEN_STATUSES = ['submitted', 'for_review'];
 
 // What the job seeker should know or do next about their NSRP verification.
+// Shown after a save (Profile or OCR Assistant) that changed the NSRP status of a reviewed profile.
+export function sentBackMessage(changedTo?: string | null) {
+  if (changedTo === 'submitted') {
+    return 'Your NSRP profile changed, so it was sent back to PESO for re-checking. You can apply with PESO referral again once PESO verifies it.';
+  }
+  if (changedTo === 'not_submitted') {
+    return 'Some required NSRP items are now missing. Complete them and submit your profile to PESO again.';
+  }
+  return null;
+}
+
 export function nsrpStatusMessage(status?: string) {
   switch (status) {
     case 'verified':

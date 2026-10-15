@@ -10,7 +10,7 @@ import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
-import { nsrpStatusMessage } from '../../src/utils/referral';
+import { nsrpStatusMessage, sentBackMessage } from '../../src/utils/referral';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
 import { orderSkillCategories } from '../../src/utils/skills';
 import { setUnsavedChangesGuard, confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
@@ -244,15 +244,6 @@ export default function ProfileScreen() {
     return changedTo;
   };
 
-  const sentBackMessage = (changedTo: string | null) => {
-    if (changedTo === 'submitted') {
-      return 'Your NSRP profile changed, so it was sent back to PESO for re-checking. You can apply with PESO referral again once PESO verifies it.';
-    }
-    if (changedTo === 'not_submitted') {
-      return 'Some required NSRP items are now missing. Complete them and submit your profile to PESO again.';
-    }
-    return null;
-  };
 
   const handleSubmitToPeso = async () => {
     // Only after a successful load, and one save at a time: Save and Submit both replace the saved profile and skills.
