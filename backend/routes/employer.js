@@ -39,6 +39,8 @@ function jobInputError(body, saved = null) {
   const titleBlank = saved ? job_title !== undefined && isBlank(job_title) : isBlank(job_title);
   const descBlank = saved ? job_description !== undefined && isBlank(job_description) : isBlank(job_description);
   if (titleBlank || descBlank) return 'Job title and description are required';
+  // The column holds 255 characters; a longer title would otherwise fail with a generic database error.
+  if (job_title !== undefined && String(job_title).trim().length > 255) return 'Job title must be 255 characters or fewer';
   if (!isBlank(job_type) && !JOB_TYPES.includes(job_type)) return `Job type must be one of: ${JOB_TYPES.join(', ')}`;
   if (!isBlank(vacancies) && !(Number.isInteger(Number(vacancies)) && Number(vacancies) >= 1)) {
     return 'Vacancies must be a whole number of at least 1';

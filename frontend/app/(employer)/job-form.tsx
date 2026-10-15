@@ -104,6 +104,10 @@ export default function JobForm() {
       Alert.alert('Required', 'Job title and description are required.');
       return;
     }
+    if (form.job_title.trim().length > 255) {
+      Alert.alert('Check Job Title', `Job title must be 255 characters or fewer (now ${form.job_title.trim().length}).`);
+      return;
+    }
     if (form.vacancies.trim() && !(parseInt(form.vacancies, 10) >= 1)) {
       Alert.alert('Check Vacancies', 'Vacancies must be at least 1.');
       return;

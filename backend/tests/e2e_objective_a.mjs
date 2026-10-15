@@ -171,7 +171,12 @@ console.log('Job post field checks');
   check('salary min higher than max rejected', (await post({ salary_min: 30000, salary_max: 10000 })).status === 400);
   check('negative vacancies rejected', (await post({ vacancies: -3 })).status === 400);
   check('unknown job type rejected (not a server error)', (await post({ job_type: 'bogus' })).status === 400);
+  const longTitle = await post({ job_title: 'A'.repeat(256) });
+  check('job title over 255 characters rejected with a clear message (not a server error)',
+    longTitle.status === 400 && /255 characters/.test(longTitle.data?.error || ''), JSON.stringify(longTitle.data));
   const devJob = jobByTitle('Junior Software Developer');
+  const longEdit = await call('PUT', `/employer/jobs/${devJob.id}`, tech, { job_title: 'B'.repeat(256) });
+  check('edit: job title over 255 characters rejected', longEdit.status === 400 && /255 characters/.test(longEdit.data?.error || ''));
   check('edit: salary max below the saved min rejected',
     (await call('PUT', `/employer/jobs/${devJob.id}`, tech, { salary_min: 50000, salary_max: 1000 })).status === 400);
   check('edit: unknown status rejected (not a server error)',
