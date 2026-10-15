@@ -60,11 +60,17 @@ const BLOCK_LETTER_ROWS = {
 const BLOCK_LETTER_EDUCATION = ['school', 'course', 'level_reached', 'awards'];
 
 const caps = (v) => (typeof v === 'string' ? v.toUpperCase() : v);
-const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// The app writes "Others, specify" answers into a checklist summary too; capitalize them there as well.
-function capsInSummary(summary, original) {
+// The app writes the "Others, specify" answer as the LAST item of a checklist summary
+// (disability: "Visual, <text>"; Section VIII: "Auto Mechanic\nOthers: <text>"). Only that item is
+// capitalized, never the same letters inside other items (e.g. "car" must not change "Carpentry Work").
+function capsLastItem(summary, original, sep, label = '') {
   if (typeof summary !== 'string' || typeof original !== 'string' || !original.trim()) return summary;
-  return summary.replace(new RegExp(escapeRegExp(original.trim()), 'gi'), original.trim().toUpperCase());
+  const item = `${label}${original.trim()}`;
+  const upperItem = `${label}${original.trim().toUpperCase()}`;
+  if (summary.toLowerCase() === item.toLowerCase()) return upperItem;
+  const tail = `${sep}${item}`;
+  if (summary.toLowerCase().endsWith(tail.toLowerCase())) return `${summary.slice(0, summary.length - tail.length)}${sep}${upperItem}`;
+  return summary;
 }
 
 function toBlockLetters(profile) {
@@ -72,8 +78,8 @@ function toBlockLetters(profile) {
   for (const k of BLOCK_LETTER_BASE) base[k] = caps(base[k]);
   if (!base.nsrp_full_data || typeof base.nsrp_full_data !== 'object') return base;
   const full = { ...base.nsrp_full_data };
-  full.disability = capsInSummary(full.disability, full.disability_other);
-  full.other_skills_acquired = capsInSummary(full.other_skills_acquired, full.other_skills_other);
+  full.disability = capsLastItem(full.disability, full.disability_other, ', ');
+  full.other_skills_acquired = capsLastItem(full.other_skills_acquired, full.other_skills_other, '\n', 'Others: ');
   for (const k of BLOCK_LETTER_FULL) full[k] = caps(full[k]);
   for (const k of BLOCK_LETTER_LISTS) if (Array.isArray(full[k])) full[k] = full[k].map(caps);
   for (const [k, fields] of Object.entries(BLOCK_LETTER_ROWS)) {

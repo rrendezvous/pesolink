@@ -189,6 +189,19 @@ console.log('Profiles verified under the original (version-1) fingerprint');
   check('(b) v1, OCR confirm real change: hash not upgraded', (await storedHash(id)) !== await nsrpFingerprint(conn, id, 3));
 }
 
+console.log('"Others, specify" answers inside checklist summaries');
+{
+  const r = await saveAsLoaded(maria, {}, {
+    other_skills_checked: ['Auto Mechanic', 'Carpentry Work'], other_skills_other: 'car',
+    other_skills_acquired: 'Auto Mechanic\nCarpentry Work\nOthers: car',
+    disabilities: ['hearing', 'others'], disability_other: 'ear', disability: 'Hearing, ear',
+  });
+  const f = full(r.data.profile);
+  check('only the "Others" item is capitalized (Carpentry Work and Hearing unchanged)',
+    f.other_skills_acquired === 'Auto Mechanic\nCarpentry Work\nOthers: CAR' && f.disability === 'Hearing, EAR' && f.other_skills_other === 'CAR' && f.disability_other === 'EAR',
+    JSON.stringify({ o: f.other_skills_acquired, d: f.disability }));
+}
+
 await conn.end();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
