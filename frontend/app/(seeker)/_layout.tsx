@@ -48,7 +48,8 @@ export default function SeekerLayout() {
       // Leaving Profile with unsaved edits through the tab bar asks first (see src/utils/unsavedChanges).
       screenListeners={({ navigation, route }) => ({
         tabPress: (e) => {
-          if (!hasUnsavedChanges()) return;
+          // Pressing the tab that is already open leaves nothing, so there is nothing to warn about.
+          if (navigation.isFocused() || !hasUnsavedChanges()) return;
           e.preventDefault();
           confirmLeave(() => navigation.navigate(route.name));
         },
