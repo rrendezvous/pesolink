@@ -161,6 +161,24 @@ check('stats updated', r.data.pending_nsrp_reviews === 1 && r.data.verified_nsrp
 r = await call('GET', '/applications/my-applications', juan);
 check('Juan sees his applications', r.data.applications.length >= 1);
 
+console.log('A deactivated account is not waiting for PESO and cannot be decided');
+{
+  const anaId = idOf('ana.bautista@example.com');
+  const waiting = async () => (await call('GET', '/admin/stats', admin)).data.pending_nsrp_reviews;
+  check('Ana is waiting for PESO here (count 1)', (await waiting()) === 1);
+  check('deactivate Ana', (await call('PUT', `/admin/job-seekers/${anaId}/deactivate`, admin, { reason: 'Test' })).status === 200);
+  check('waiting count skips the deactivated account', (await waiting()) === 0);
+  r = await call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'for_review' });
+  check('opening a deactivated profile records nothing', r.status === 200 && r.data.nsrp_status === 'submitted', JSON.stringify(r.data));
+  const token = (await call('GET', `/admin/job-seekers/${anaId}/profile`, admin)).data.review_token;
+  r = await call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'verified', review_token: token });
+  check('Verify refused: "Reactivate the account first."', r.status === 400 && r.data.error === 'Reactivate the account first.' && r.data.code === 'ACCOUNT_DEACTIVATED', JSON.stringify(r.data));
+  r = await call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'needs_revision', notes: 'Fix the TIN.', review_token: token });
+  check('Return refused: "Reactivate the account first."', r.status === 400 && r.data.code === 'ACCOUNT_DEACTIVATED', JSON.stringify(r.data));
+  check('reactivate Ana', (await call('PUT', `/admin/job-seekers/${anaId}/reactivate`, admin)).status === 200);
+  check('waiting count includes her again', (await waiting()) === 1);
+}
+
 console.log('PESO decides only on the data it opened (review token)');
 {
   // Ana is waiting for PESO here (her skill change sent her back). PESO opens her profile.
