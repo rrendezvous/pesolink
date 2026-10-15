@@ -11,6 +11,7 @@ import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui'
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { nsrpStatusMessage, sentBackMessage } from '../../src/utils/referral';
+import { birthDateError } from '../../src/utils/dates';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
 import { orderSkillCategories } from '../../src/utils/skills';
 import { setUnsavedChangesGuard, confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
@@ -252,6 +253,11 @@ export default function ProfileScreen() {
       Alert.alert('Required', 'First and last name are required.');
       return;
     }
+    const dobProblem = birthDateError(form.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
+      return;
+    }
     setSubmitting(true);
     try {
       await saveProfileDraft();
@@ -277,6 +283,11 @@ export default function ProfileScreen() {
     if (loading || loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
+      return;
+    }
+    const dobProblem = birthDateError(form.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
       return;
     }
     setSaving(true);

@@ -5,10 +5,11 @@
 // Structured keys are only written when the job seeker edits them, so profiles encoded before this
 // structure keep their free-text answers ("Previously encoded") and are not marked as changed.
 // ============================================================
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card, Input } from './ui';
-import { Colors, Spacing, FontSize, Radius } from '../constants/theme';
+import { Colors, Spacing, FontSize, Radius, StatusColors } from '../constants/theme';
+import { birthDateError, isoToMdy, maskMdy, mdyToIso } from '../utils/dates';
 
 export const SEX_OPTIONS = [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }];
 export const CIVIL_OPTIONS = [
@@ -157,7 +158,7 @@ export function NsrpForm({
         {Text1({ k: "first_name", label: "First Name *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "middle_name", label: "Middle Name", base: true, autoCapitalize: "words" })}
         {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
-        {Text1({ k: "date_of_birth", label: "Date of Birth (YYYY-MM-DD)", base: true, placeholder: "1998-05-15" })}
+        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} />
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
         <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
         {Text1({ k: "religion", label: "Religion", autoCapitalize: "words" })}
@@ -417,6 +418,40 @@ function SubTitle({ text }: { text: string }) {
   return <Text style={styles.subTitle}>{text}</Text>;
 }
 
+// NSRP Form 1: "DATE OF BIRTH (mm/dd/yyyy)". Shown and typed as mm/dd/yyyy; the form value becomes
+// YYYY-MM-DD once the typed date is complete and real, otherwise it keeps the typed text (a save is then
+// refused with the message shown here).
+function BirthDateInput({ value, onChange, testID }: { value?: string; onChange: (v: string) => void; testID?: string }) {
+  const [text, setText] = useState(isoToMdy(value));
+  // Follow changes made elsewhere (profile reload, OCR results); our own typed (incomplete) text is kept.
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    const v = String(value ?? '');
+    if (v === '') setText('');
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setText(isoToMdy(v));
+  }
+  const complete = text.length === 10;
+  const problem = complete ? birthDateError(value) : null;
+  return (
+    <View>
+      <Input
+        testID={testID}
+        label="Date of Birth (mm/dd/yyyy)"
+        value={text}
+        placeholder="05/15/1998"
+        keyboardType="number-pad"
+        onChangeText={(t) => {
+          const masked = maskMdy(t);
+          setText(masked);
+          onChange(masked === '' ? '' : (mdyToIso(masked) || masked));
+        }}
+      />
+      {!!problem && <Text testID={`${testID}-error`} style={styles.dateHint}>{problem}</Text>}
+    </View>
+  );
+}
+
 function Choice({
   label, options, value, onSelect, testID,
 }: { label: string; options: { value: string; label: string }[]; value?: string; onSelect: (v: string) => void; testID?: string }) {
@@ -463,6 +498,7 @@ function SmallToggle({ label, active, onPress, testID }: { label: string; active
 }
 
 const styles = StyleSheet.create({
+  dateHint: { color: StatusColors.needs_revision.text, fontSize: FontSize.xs, fontWeight: '700', marginTop: -8, marginBottom: Spacing.sm },
   sectionCard: { marginTop: Spacing.sm },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
   subTitle: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, marginTop: Spacing.xs, marginBottom: Spacing.xs },

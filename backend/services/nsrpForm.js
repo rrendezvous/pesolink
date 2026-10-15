@@ -127,8 +127,12 @@ function dateOfBirthError(value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
   const d = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
   if (!m || d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
-    return 'Date of birth must be a real date written as YYYY-MM-DD (for example 2000-05-14)';
+    return 'Date of birth must be a real date (mm/dd/yyyy on the NSRP form; sent as YYYY-MM-DD)';
   }
+  // No minimum age is applied; only a date after today is refused (server's local date).
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (v > today) return 'Date of birth cannot be in the future';
   return null;
 }
 

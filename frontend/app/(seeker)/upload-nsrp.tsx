@@ -13,6 +13,7 @@ import { Button, Card, BackLink } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { sentBackMessage } from '../../src/utils/referral';
+import { birthDateError } from '../../src/utils/dates';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const OCR_UPLOAD_TIMEOUT_MS = 90000;
@@ -341,6 +342,11 @@ export default function UploadNSRP() {
 
   const confirmAndSave = async () => {
     if (!extracted) return;
+    const dobProblem = birthDateError(extracted.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
+      return;
+    }
     setConfirming(true);
     try {
       const res = await api.post('/nsrp/confirm', { upload_id: uploadId, upload_ids: reviewUploadIds, confirmed_data: extracted });

@@ -96,5 +96,45 @@ check('page-1 fields kept (name, birth date, city)', anaAfter.first_name === ana
 check('existing education levels kept, new level added', full(anaAfter).education?.secondary?.school === 'Tagoloan National High School' && full(anaAfter).education?.graduate?.school === 'Xavier University' && full(anaAfter).education?.elementary?.school === 'Tagoloan Central School');
 check('other NSRP data kept', full(anaAfter).house_street === 'Purok 1' && (full(anaAfter).work_rows || []).length > 0);
 
+console.log('Date of birth: real date, not in the future (no minimum age)');
+{
+  const now = new Date();
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const saveDob = (dob) => call('POST', '/job-seeker/profile', ana, { ...body, date_of_birth: dob });
+  const confirmDob = (dob) => call('POST', '/nsrp/confirm', ana, { confirmed_data: { date_of_birth: dob, nsrp_full_data: {} } });
+  r = await saveDob('2001-02-30');
+  check('profile save: unreal date refused with a clear message', r.status === 400 && /real date/.test(r.data?.error || ''), JSON.stringify(r.data));
+  r = await saveDob(tomorrow);
+  check('profile save: future date refused', r.status === 400 && /cannot be in the future/.test(r.data?.error || ''), JSON.stringify(r.data));
+  r = await confirmDob(tomorrow);
+  check('OCR confirm: future date refused', r.status === 400 && /cannot be in the future/.test(r.data?.error || ''), JSON.stringify(r.data));
+  r = await confirmDob('2001-13-01');
+  check('OCR confirm: unreal date refused', r.status === 400 && /real date/.test(r.data?.error || ''), JSON.stringify(r.data));
+  r = await saveDob(ymd(now));
+  check('profile save: today accepted (no minimum age)', r.status === 200 && r.data.profile.date_of_birth === ymd(now), JSON.stringify(r.data.profile?.date_of_birth));
+  // Incomplete dates are refused (never kept as the older date, never saved as blank).
+  for (const partial of ['08/2', '08/22/19', '2000-5-1']) {
+    const before = (await call('GET', '/job-seeker/profile', ana)).data.profile.date_of_birth;
+    r = await saveDob(partial);
+    const after = (await call('GET', '/job-seeker/profile', ana)).data.profile.date_of_birth;
+    check(`profile save: incomplete "${partial}" refused, saved date unchanged`, r.status === 400 && /real date/.test(r.data?.error || '') && after === before, JSON.stringify(r.data));
+    r = await confirmDob(partial);
+    check(`OCR confirm: incomplete "${partial}" refused`, r.status === 400 && /real date/.test(r.data?.error || ''), JSON.stringify(r.data));
+  }
+  // Leap days.
+  for (const [dob, ok] of [['2000-02-29', true], ['2001-02-29', false], ['1900-02-29', false], ['2024-02-29', true]]) {
+    r = await saveDob(dob);
+    check(`leap day ${dob} ${ok ? 'accepted' : 'refused'}`, ok ? (r.status === 200 && r.data.profile.date_of_birth === dob) : r.status === 400, JSON.stringify(r.data?.error || r.data?.profile?.date_of_birth));
+  }
+  // Clearing the field: saved as blank and shown as a missing required item (not the old value).
+  r = await saveDob('');
+  check('cleared date of birth saved as blank', r.status === 200 && !r.data.profile.date_of_birth, JSON.stringify(r.data.profile?.date_of_birth));
+  check('cleared date of birth listed as a missing required item',
+    (r.data.referral_requirements?.missing_fields || []).some((f) => /date of birth/i.test(f)), JSON.stringify(r.data.referral_requirements?.missing_fields));
+  r = await saveDob(anaBefore.date_of_birth);
+  check('original date of birth restored', r.status === 200 && r.data.profile.date_of_birth === anaBefore.date_of_birth);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
