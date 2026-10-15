@@ -287,11 +287,12 @@ export default function JobDetails() {
           {!!job.contact_person && <Row left="Contact Person" right={job.contact_person} />}
           {!!job.contact_number && <Row left="Contact Number" right={job.contact_number} />}
           <Text style={styles.employerNote}>
-            Applications are routed through PESO-Link MisOr. Track your status under My Applications.
+            PESO-Referred applications are routed through PESO-Link MisOr. Track your status under My Applications.
           </Text>
         </Card>
 
-        {!!job.application_email && (
+        {/* A closed post takes no applications, so the employer's email is not offered either. */}
+        {isOpen && !!job.application_email && (
           <Card style={styles.sectionCard}>
             <Text style={styles.section}>Apply Directly to the Employer</Text>
             <Row left="Application Email" right={job.application_email} />
