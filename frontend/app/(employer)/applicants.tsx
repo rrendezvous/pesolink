@@ -2,9 +2,9 @@
 // PESO-Referred Applicants + Status Update (combined)
 // Only PESO-referred applicants appear here: job seekers whose NSRP profile PESO Admin verified.
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, FlatList, Alert, Modal, TouchableOpacity, ScrollView, RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Card, Button, StatusBadge, EmptyState, Row, Chip } from '../../src/components/ui';
@@ -30,27 +30,70 @@ export default function Applicants() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   // The filter belongs to one job post; opening another job shows every applicant again.
   const [filter, setFilter] = useState<{ jobId?: string; status: string }>({ status: '' });
   const statusFilter = filter.jobId === jobId ? filter.status : '';
   const setStatusFilter = (status: string) => setFilter({ jobId, status });
 
   // Opened from the tab bar there is no job selected yet: list the job posts to choose from.
+  // Only the newest request may update the screen: when the employer switches jobs quickly, a slower reply
+  // for the previous job must not replace the current job's applicants (it would show an empty list).
+  const latestRequest = useRef(0);
+  // Until the first reply for a list arrives, the screen says Loading (or shows the error), never "no applicants".
+  const [jobsLoaded, setJobsLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<{ key: string; message: string } | null>(null);
+  // What is on screen right now, for load() (the focus callback keeps the load() of an earlier render,
+  // whose state values would be out of date).
+  const loadedJobRef = useRef<string | undefined>(undefined);
+  const jobsLoadedRef = useRef(false);
+  const listKey = jobId || 'jobs';
   const load = async () => {
+    const request = ++latestRequest.current;
+    const key = listKey;
     try {
       if (!jobId) {
         const res = await api.get('/employer/jobs');
+        if (request !== latestRequest.current) return;
         setJobs(res.data.jobs || []);
+        setJobsLoaded(true);
+        jobsLoadedRef.current = true;
+        setLoadFailed(null);
         return;
       }
       const res = await api.get(`/employer/jobs/${jobId}/applicants`);
-      setJobData({ jobId, applicants: res.data.applicants || [], job: res.data.job || null });
+      if (request !== latestRequest.current) return;
+      const fresh: any[] = res.data.applicants || [];
+      setJobData({ jobId, applicants: fresh, job: res.data.job || null });
+      loadedJobRef.current = jobId;
+      // An open details window shows the fresh record (e.g. the applicant changed the profile after verification).
+      setSelected((prev: any) => (prev ? fresh.find((a) => a.application_id === prev.application_id) || prev : prev));
+      setLoadFailed(null);
     } catch (err) {
-      Alert.alert('Error', getApiError(err));
+      if (request !== latestRequest.current) return;
+      const hasData = jobId ? loadedJobRef.current === jobId : jobsLoadedRef.current;
+      // With a list already on screen a failed refresh keeps it and says so; without one, the error replaces "Loading".
+      if (hasData) Alert.alert('Error', getApiError(err));
+      else setLoadFailed({ key, message: getApiError(err) });
     }
   };
 
+  const loadingOrError = loadFailed?.key === listKey ? (
+    <Card style={styles.applicantCard}>
+      <Text style={styles.name}>Could not load this list</Text>
+      <Text testID="applicants-load-error" style={styles.detail}>Check the connection and try again. ({loadFailed.message})</Text>
+      <Button testID="applicants-retry" title="Try Again" variant="secondary" style={{ marginTop: Spacing.sm }} onPress={load} />
+    </Card>
+  ) : (
+    <EmptyState message="Loading..." />
+  );
+
   useFocusEffect(useCallback(() => { load(); }, [jobId]));
+
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  // Show the record right away, then reload so the details are not older than the applicant's current profile.
+  const openApplicant = (item: any) => { setSelected(item); load(); };
 
 
   const countFor = (status: string) => applicants.filter((a) => a.application_status === status).length;
@@ -159,7 +202,8 @@ export default function Applicants() {
           data={jobs}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={<EmptyState message="No job posts yet. Post a job under Jobs." />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          ListEmptyComponent={jobsLoaded ? <EmptyState message="No job posts yet. Post a job under Jobs." /> : loadingOrError}
           renderItem={({ item }) => (
             <TouchableOpacity
               testID={`pick-job-${item.id}`}
@@ -186,6 +230,7 @@ export default function Applicants() {
         data={visibleApplicants}
         keyExtractor={(item) => String(item.application_id)}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         ListHeaderComponent={
           <View>
             {!!jobInfo && vacancies > 0 && (
@@ -235,15 +280,15 @@ export default function Applicants() {
             )}
           </View>
         }
-        ListEmptyComponent={
+        ListEmptyComponent={!isCurrent ? loadingOrError : (
           <EmptyState
             message={applicants.length > 0
               ? 'No applicants with this status.'
               : 'No PESO-referred applicants yet. Job seekers whose NSRP profile is verified by PESO Misamis Oriental appear here when they apply.'}
           />
-        }
+        )}
         renderItem={({ item }) => (
-          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => setSelected(item)} activeOpacity={0.82}>
+          <TouchableOpacity testID={`applicant-${item.application_id}`} onPress={() => openApplicant(item)} activeOpacity={0.82}>
             <Card style={styles.applicantCard}>
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
@@ -285,7 +330,14 @@ export default function Applicants() {
           <View style={styles.modalCard}>
             <ScrollView>
               <Text style={styles.modalTitle}>Applicant Details</Text>
-              <Text style={styles.modalSubtle}>NSRP profile verified by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
+              {/* A verified profile edited after applying goes back to PESO; the summary below is the edited, unchecked data. */}
+              {selected?.nsrp_status && selected.nsrp_status !== 'verified' ? (
+                <View style={styles.recheckNotice} testID="applicant-recheck">
+                  <Text style={styles.recheckText}>Changed after PESO verification. Not yet re-verified by PESO.</Text>
+                </View>
+              ) : (
+                <Text style={styles.modalSubtle}>NSRP profile verified by PESO Misamis Oriental. Review the NSRP profile summary before updating the application status.</Text>
+              )}
               {selected && (
                 <>
                   <Row left="Name" right={`${selected.first_name} ${selected.last_name}`} />
@@ -300,7 +352,10 @@ export default function Applicants() {
                   {!!selected.referral_reviewed_at && (
                     <Row left="Applied" right={new Date(selected.referral_reviewed_at).toLocaleDateString()} />
                   )}
-                  {!!selected.referral_notes && <Row left="PESO Note" right={selected.referral_notes} />}
+                  {/* The note was written when the profile was verified, so it is hidden while the profile is not verified. */}
+                  {!!selected.referral_notes && (!selected.nsrp_status || selected.nsrp_status === 'verified') && (
+                    <Row left="PESO Note" right={selected.referral_notes} />
+                  )}
                   <Row
                     left="Skill Comparison"
                     right={`${selected.matched_count || 0} matched / ${selected.missing_count || 0} missing`}
@@ -460,6 +515,8 @@ const styles = StyleSheet.create({
   skillTextMatched: { color: Colors.primary, fontWeight: '800' },
   skillPillMissing: { backgroundColor: amber.bg, borderColor: amber.border },
   amberText: { color: amber.text },
+  recheckNotice: { backgroundColor: amber.bg, borderColor: amber.border, borderWidth: 1, borderRadius: Radius.md, padding: Spacing.sm, marginTop: 4, marginBottom: Spacing.sm },
+  recheckText: { color: amber.text, fontSize: FontSize.sm, fontWeight: '800', lineHeight: 20 },
   matchChipGreen: { backgroundColor: Colors.cardHighlight, borderColor: Colors.primary, color: Colors.primary },
   matchChipAmber: { backgroundColor: amber.bg, borderColor: amber.border, color: amber.text },
   matchChipNeutral: { backgroundColor: Colors.surface, borderColor: Colors.borderSoft, color: Colors.gray },

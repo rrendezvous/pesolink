@@ -40,7 +40,7 @@ export default function Register() {
       Alert.alert('Mismatch', 'Passwords do not match.');
       return;
     }
-    if (!firstName || !lastName) {
+    if (!firstName.trim() || !lastName.trim()) {
       Alert.alert('Required', 'First and last name are required.');
       return;
     }
@@ -51,7 +51,7 @@ export default function Register() {
         email: email.trim(),
         password,
         role: 'job_seeker',
-        profile: { first_name: firstName, last_name: lastName, contact_number: contact },
+        profile: { first_name: firstName.trim(), last_name: lastName.trim(), contact_number: contact.trim() },
       });
       await login(res.data.token, res.data.user);
       router.replace('/(seeker)/dashboard');
@@ -88,11 +88,11 @@ export default function Register() {
           <Input testID="reg-confirm" label="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="Confirm password" />
           <View style={styles.nameRow}>
             <View style={{ flex: 1 }}>
-              <Input testID="reg-firstname" label="First Name" value={firstName} onChangeText={setFirstName} placeholder="Juan" autoCapitalize="words" />
+              <Input testID="reg-firstname" label="First Name" value={firstName} onChangeText={(t) => setFirstName(t.toUpperCase())} placeholder="JUAN" autoCapitalize="characters" />
             </View>
             <View style={{ width: Spacing.sm }} />
             <View style={{ flex: 1 }}>
-              <Input testID="reg-lastname" label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Cruz" autoCapitalize="words" />
+              <Input testID="reg-lastname" label="Last Name" value={lastName} onChangeText={(t) => setLastName(t.toUpperCase())} placeholder="CRUZ" autoCapitalize="characters" />
             </View>
           </View>
           <Input testID="reg-contact" label="Contact Number" value={contact} onChangeText={setContact} placeholder="09xx xxx xxxx" keyboardType="phone-pad" />

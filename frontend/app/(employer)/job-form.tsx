@@ -1,7 +1,7 @@
 // ============================================================
 // Job Form - Create / Edit Job Post
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -9,6 +9,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Button, Input, Card, Chip, BackLink } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
 import { todayKey } from '../../src/utils/jobs';
+import { findSkillNamesInText, orderSkillCategories } from '../../src/utils/skills';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'temporary'];
@@ -26,24 +27,34 @@ export default function JobForm() {
   const [form, setForm] = useState<any>(BLANK_FORM);
   const [allSkills, setAllSkills] = useState<any[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<Set<number>>(new Set());
+  const [skillSearch, setSkillSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const loadToken = useRef(0);
 
   // Load on every focus: this hidden tab stays mounted, so editing the same job again would show the
   // values from before the last save (and saving would undo it), and a new post would keep old entries.
-  useFocusEffect(useCallback(() => {
+  // The form is cleared before loading, and a failed load shows an error instead of the form, so a
+  // previous job's values can never be submitted. Replies that arrive after leaving the screen (or from an
+  // older load) are ignored.
+  const loadForm = useCallback(() => {
+    const token = ++loadToken.current;
+    const active = () => token === loadToken.current;
+    setForm(BLANK_FORM);
+    setSelectedSkills(new Set());
+    setSkillSearch('');
+    setLoadError('');
+    setLoading(true);
     (async () => {
       try {
         const sk = await api.get('/skills');
+        if (!active()) return;
         setAllSkills(sk.data.skills);
-        if (!isEdit) {
-          setForm(BLANK_FORM);
-          setSelectedSkills(new Set());
-        }
 
         if (isEdit) {
-          setLoading(true);
           const j = await api.get(`/jobs/${jobId}`);
+          if (!active()) return;
           const job = j.data.job;
           setForm({
             job_title: job.job_title || '',
@@ -60,12 +71,17 @@ export default function JobForm() {
           setSelectedSkills(new Set((job.required_skills || []).map((s: any) => s.id)));
         }
       } catch (err) {
-        Alert.alert('Error', getApiError(err));
+        if (active()) setLoadError(getApiError(err));
       } finally {
-        setLoading(false);
+        if (active()) setLoading(false);
       }
     })();
-  }, [jobId, isEdit]));
+  }, [jobId, isEdit]);
+
+  useFocusEffect(useCallback(() => {
+    loadForm();
+    return () => { loadToken.current += 1; };
+  }, [loadForm]));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -77,9 +93,23 @@ export default function JobForm() {
     });
   };
 
+  // Suggestions are only shown; a skill is added when the employer taps it (or "Add all").
+  const addSkills = (ids: number[]) => {
+    setSelectedSkills((prev) => new Set([...prev, ...ids]));
+  };
+
   const handleSave = async () => {
+    if (loading || loadError) return;
     if (!form.job_title.trim() || !form.job_description.trim()) {
       Alert.alert('Required', 'Job title and description are required.');
+      return;
+    }
+    if (form.job_title.trim().length > 255) {
+      Alert.alert('Check Job Title', `Job title must be 255 characters or fewer (now ${form.job_title.trim().length}).`);
+      return;
+    }
+    if (form.vacancies.trim() && !(parseInt(form.vacancies, 10) >= 1)) {
+      Alert.alert('Check Vacancies', 'Vacancies must be at least 1.');
       return;
     }
     const salaryMin = form.salary_min ? parseFloat(form.salary_min) : null;
@@ -128,14 +158,44 @@ export default function JobForm() {
     }
   };
 
+  const suggestedSkills = findSkillNamesInText(`${form.job_description}\n${form.requirements}`, allSkills)
+    .filter((sk) => !selectedSkills.has(sk.id));
+  const selectedNames = allSkills.filter((sk) => selectedSkills.has(sk.id)).map((sk) => sk.skill_name);
+  // The search only filters which chips are shown; selections hidden by it are kept and saved.
+  const search = skillSearch.trim().toLowerCase();
+  const visibleSkills = search ? allSkills.filter((sk) => String(sk.skill_name).toLowerCase().includes(search)) : allSkills;
   const skillsByCategory: Record<string, any[]> = {};
-  for (const sk of allSkills) {
+  for (const sk of visibleSkills) {
     const cat = sk.category || 'Other';
     if (!skillsByCategory[cat]) skillsByCategory[cat] = [];
     skillsByCategory[cat].push(sk);
   }
 
   if (loading) return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
+
+  if (loadError) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <BackLink
+            testID="job-form-back"
+            label="Back"
+            onPress={() => (router.canGoBack() ? router.back() : router.navigate('/(employer)/manage-jobs'))}
+          />
+          <Text style={styles.headerTitle}>{isEdit ? 'Update Job' : 'Post New Job'}</Text>
+        </View>
+        <View style={styles.errorWrap}>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{isEdit ? 'Could not load this job post' : 'Could not open the job form'}</Text>
+            <Text testID="job-form-load-error" style={styles.help}>
+              Nothing was changed. Check the connection and try again. ({loadError})
+            </Text>
+            <Button testID="job-form-retry" title="Try Again" onPress={loadForm} />
+          </Card>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -204,7 +264,35 @@ export default function JobForm() {
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Required Skills</Text>
             <Text style={styles.help}>Used for rule-based matched and missing skill comparison only.</Text>
-            {Object.keys(skillsByCategory).sort().map((cat) => (
+
+            {suggestedSkills.length > 0 && (
+              <View testID="skill-suggestions" style={styles.suggestBox}>
+                <Text style={styles.catLabel}>Found in your text</Text>
+                <Text style={styles.help}>
+                  Skill names from the skills list that appear in your description or requirements. Tap a skill to add it.
+                </Text>
+                <View style={styles.chipWrap}>
+                  {suggestedSkills.map((sk) => (
+                    <Chip key={sk.id} testID={`suggest-skill-${sk.id}`} label={`+ ${sk.skill_name}`} onPress={() => addSkills([sk.id])} />
+                  ))}
+                </View>
+                {suggestedSkills.length > 1 && (
+                  <Button
+                    testID="suggest-add-all"
+                    title={`Add all ${suggestedSkills.length}`}
+                    variant="secondary"
+                    onPress={() => addSkills(suggestedSkills.map((sk) => sk.id))}
+                  />
+                )}
+              </View>
+            )}
+
+            <Text testID="selected-skills-summary" style={styles.selectedSummary}>
+              {selectedNames.length ? `Selected (${selectedNames.length}): ${selectedNames.join(', ')}` : 'No skills selected yet.'}
+            </Text>
+            <Input testID="skill-search" label="Search skills" value={skillSearch} onChangeText={setSkillSearch} placeholder="e.g., welding" />
+            {search && visibleSkills.length === 0 && <Text style={styles.help}>No skills match your search.</Text>}
+            {orderSkillCategories(Object.keys(skillsByCategory)).map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
                 <View style={styles.chipWrap}>
@@ -228,6 +316,7 @@ export default function JobForm() {
 const styles = StyleSheet.create({
   helpText: { fontSize: FontSize.xs, color: Colors.gray, lineHeight: 18, marginTop: -8, marginBottom: Spacing.md },
   container: { flex: 1, backgroundColor: Colors.lightBg },
+  errorWrap: { padding: Spacing.md },
   content: { paddingBottom: Spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
   loadingText: { color: Colors.textDark, fontSize: FontSize.md },
@@ -245,6 +334,11 @@ const styles = StyleSheet.create({
   label: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textDark, marginBottom: 6 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: Spacing.sm },
   catLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
+  suggestBox: {
+    borderWidth: 1, borderColor: Colors.borderSoft, borderRadius: Radius.md,
+    padding: Spacing.sm, marginTop: Spacing.sm, marginBottom: Spacing.sm, backgroundColor: Colors.lightBg,
+  },
+  selectedSummary: { fontSize: FontSize.sm, color: Colors.textDark, fontWeight: '700', marginVertical: Spacing.sm, lineHeight: 20 },
   help: { fontSize: FontSize.xs, color: Colors.gray, marginBottom: 4, lineHeight: 18 },
   twoColumn: { flexDirection: 'row' },
   sectionCard: { marginBottom: Spacing.md, borderRadius: Radius.lg },

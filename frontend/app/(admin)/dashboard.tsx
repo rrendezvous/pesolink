@@ -23,11 +23,16 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   const load = async () => {
     try {
-      const res = await api.get('/admin/stats');
+      const [res, n] = await Promise.all([
+        api.get('/admin/stats'),
+        api.get('/notifications').catch(() => ({ data: { unread_count: 0 } })),
+      ]);
       setStats(res.data);
+      setUnread(n.data.unread_count || 0);
     } catch (err) {
       console.warn(getApiError(err));
     }
@@ -90,6 +95,20 @@ export default function AdminDashboard() {
               </View>
             )}
           </View>
+
+          {/* Same "N new alerts" link as the job seeker and employer Home screens. */}
+          {unread > 0 && (
+            <TouchableOpacity
+              testID="unread-alerts"
+              onPress={() => go('notifications')}
+              style={styles.alertsRow}
+              accessibilityRole="button"
+            >
+              <Ionicons name="notifications" size={18} color={Colors.primary} />
+              <Text style={styles.alertsText}>{unread} new {unread === 1 ? 'alert' : 'alerts'}</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
 
           <Text style={styles.sectionTitle}>Referral Routing</Text>
           <View style={styles.routingRow}>
@@ -209,6 +228,12 @@ function OverviewItem({ value, label, icon }: { value: any; label: string; icon:
 const amber = StatusColors.needs_revision;
 
 const styles = StyleSheet.create({
+  alertsRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.cardHighlight, borderRadius: Radius.md,
+    paddingVertical: 10, paddingHorizontal: 14, marginBottom: Spacing.md,
+  },
+  alertsText: { flex: 1, color: Colors.primaryDark, fontSize: FontSize.sm, fontWeight: '800' },
   safeArea: { flex: 1, backgroundColor: Colors.primaryDark },
   container: { flex: 1, backgroundColor: Colors.primaryDark },
   // flexGrow keeps the light background down to the tab bar when the page is shorter than the screen.

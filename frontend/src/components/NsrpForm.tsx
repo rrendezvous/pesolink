@@ -5,16 +5,27 @@
 // Structured keys are only written when the job seeker edits them, so profiles encoded before this
 // structure keep their free-text answers ("Previously encoded") and are not marked as changed.
 // ============================================================
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card, Input } from './ui';
-import { Colors, Spacing, FontSize, Radius } from '../constants/theme';
+import { Colors, Spacing, FontSize, Radius, StatusColors } from '../constants/theme';
+import { birthDateError, isoToMdy, maskMdy, mdyToIso } from '../utils/dates';
 
 export const SEX_OPTIONS = [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }];
 export const CIVIL_OPTIONS = [
   { value: 'single', label: 'Single' }, { value: 'married', label: 'Married' }, { value: 'widowed', label: 'Widowed' },
   { value: 'separated', label: 'Separated' }, { value: 'live-in', label: 'Live-in' },
 ];
+// NSRP Form 1 asks for block letters: these answers show in capitals while typing and are saved in capitals
+// (server: toBlockLetters in backend/services/nsrpForm.js, which is the rule that counts). ñ becomes Ñ.
+const BLOCK_LETTER_KEYS = [
+  'first_name', 'middle_name', 'last_name', 'city', 'province',
+  'suffix', 'place_of_birth', 'religion', 'house_street', 'village', 'barangay',
+  'disability_other', 'employment_type_other', 'terminated_abroad_country', 'available_when',
+  'preferred_occupations', 'preferred_local_locations', 'preferred_overseas_locations',
+];
+const caps = (v: string) => v.toUpperCase();
+
 export const EMPLOYMENT_STATUS_OPTIONS = [{ value: 'employed', label: 'Employed' }, { value: 'unemployed', label: 'Unemployed' }];
 export const EMPLOYMENT_TYPE_OPTIONS: Record<string, { value: string; label: string }[]> = {
   employed: [
@@ -72,15 +83,22 @@ export function NsrpForm({
 
   // --- helpers bound to this form ---
   // Called as a function (not <Text1 />) so the TextInput keeps focus while typing.
-  const Text1 = ({ k, label, base, ...rest }: { k: string; label: string; base?: boolean; [x: string]: any }) => (
-    <Input
-      testID={id(k)}
-      label={label}
-      value={String((base ? value[k] : full[k]) ?? '')}
-      onChangeText={(v) => (base ? setBase(k, v) : setFull({ [k]: v }))}
-      {...rest}
-    />
-  );
+  const Text1 = ({ k, label, base, ...rest }: { k: string; label: string; base?: boolean; [x: string]: any }) => {
+    const block = BLOCK_LETTER_KEYS.includes(k);
+    return (
+      <Input
+        testID={id(k)}
+        label={label}
+        value={String((base ? value[k] : full[k]) ?? '')}
+        onChangeText={(v) => {
+          const t = block ? caps(v) : v;
+          return base ? setBase(k, t) : setFull({ [k]: t });
+        }}
+        {...rest}
+        {...(block ? { autoCapitalize: 'characters' } : {})}
+      />
+    );
+  };
   const list = (k: string, size: number) => {
     const arr = Array.isArray(full[k]) ? [...full[k]] : [];
     while (arr.length < size) arr.push('');
@@ -102,7 +120,7 @@ export function NsrpForm({
     setFull({ [k]: arr });
   };
   const legacyBox = (show: boolean, k: string, label = 'Previously encoded (free text)') => (show && has(full[k]) ? (
-    <Input testID={id(`legacy-${k}`)} label={label} value={String(full[k])} onChangeText={(v) => setFull({ [k]: v })} multiline numberOfLines={3} />
+    <Input testID={id(`legacy-${k}`)} label={label} value={String(full[k])} onChangeText={(v) => setFull({ [k]: BLOCK_LETTER_KEYS.includes(k) ? caps(v) : v })} multiline numberOfLines={3} />
   ) : null);
 
   // --- checklists ---
@@ -157,7 +175,7 @@ export function NsrpForm({
         {Text1({ k: "first_name", label: "First Name *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "middle_name", label: "Middle Name", base: true, autoCapitalize: "words" })}
         {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
-        {Text1({ k: "date_of_birth", label: "Date of Birth (YYYY-MM-DD)", base: true, placeholder: "1998-05-15" })}
+        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} />
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
         <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
         {Text1({ k: "religion", label: "Religion", autoCapitalize: "words" })}
@@ -199,7 +217,11 @@ export function NsrpForm({
           label="Employment Status"
           options={EMPLOYMENT_STATUS_OPTIONS}
           value={value.employment_status}
-          onSelect={(v) => onChange({ ...value, employment_status: v, nsrp_full_data: { ...full, employment_type: '' } })}
+          // Re-tapping the current status keeps the employment type; only a real change clears it.
+          onSelect={(v) => {
+            if (v === value.employment_status) return;
+            onChange({ ...value, employment_status: v, nsrp_full_data: { ...full, employment_type: '' } });
+          }}
           testID={id('empstatus')}
         />
         {employmentTypes.length > 0 && (
@@ -240,7 +262,7 @@ export function NsrpForm({
       <Section title="II. Job Preference">
         <SubTitle text="Preferred Occupation" />
         {list('preferred_occupation_list', 4).map((v, i) => (
-          <Input key={`occ-${i}`} testID={id(`occupation-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('preferred_occupation_list', 4, i, t)} autoCapitalize="words" />
+          <Input key={`occ-${i}`} testID={id(`occupation-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('preferred_occupation_list', 4, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.preferred_occupation_list), 'preferred_occupations')}
 
@@ -256,12 +278,12 @@ export function NsrpForm({
         )}
         <SubTitle text="Local - specify cities/municipalities" />
         {list('local_location_list', 3).map((v, i) => (
-          <Input key={`loc-${i}`} testID={id(`local-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('local_location_list', 3, i, t)} autoCapitalize="words" />
+          <Input key={`loc-${i}`} testID={id(`local-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('local_location_list', 3, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.local_location_list), 'preferred_local_locations')}
         <SubTitle text="Overseas - specify countries" />
         {list('overseas_location_list', 3).map((v, i) => (
-          <Input key={`ovs-${i}`} testID={id(`overseas-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('overseas_location_list', 3, i, t)} autoCapitalize="words" />
+          <Input key={`ovs-${i}`} testID={id(`overseas-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('overseas_location_list', 3, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.overseas_location_list), 'preferred_overseas_locations')}
         {Text1({ k: "expected_salary", label: "Expected Salary (Range)", placeholder: "e.g., PHP 15,000 - 20,000" })}
@@ -280,7 +302,8 @@ export function NsrpForm({
                 testID={id('language-other-name')}
                 label="Others (specify)"
                 value={String(languages.other?.name || '')}
-                onChangeText={(t) => setFull({ languages: { ...languages, other: { ...(languages.other || {}), name: t } } })}
+                onChangeText={(t) => setFull({ languages: { ...languages, other: { ...(languages.other || {}), name: caps(t) } } })}
+                autoCapitalize="characters"
               />
             ) : (
               <Text style={styles.langName}>{lang.label}</Text>
@@ -307,15 +330,15 @@ export function NsrpForm({
           return (
             <View key={level.key} style={styles.rowCard}>
               <Text style={styles.rowTitle}>{level.label}</Text>
-              <Input testID={id(`edu-${level.key}-school`)} label="School" value={row.school || ''} onChangeText={(t) => setEducation(level.key, 'school', t)} autoCapitalize="words" />
-              <Input testID={id(`edu-${level.key}-course`)} label="Course" value={row.course || ''} onChangeText={(t) => setEducation(level.key, 'course', t)} />
+              <Input testID={id(`edu-${level.key}-school`)} label="School" value={row.school || ''} onChangeText={(t) => setEducation(level.key, 'school', caps(t))} autoCapitalize="characters" />
+              <Input testID={id(`edu-${level.key}-course`)} label="Course" value={row.course || ''} onChangeText={(t) => setEducation(level.key, 'course', caps(t))} autoCapitalize="characters" />
               <Input testID={id(`edu-${level.key}-year`)} label="Year Graduated" value={row.year_graduated || ''} onChangeText={(t) => setEducation(level.key, 'year_graduated', t)} keyboardType="number-pad" />
               <Text style={styles.hint}>If undergraduate:</Text>
               <View style={styles.twoCol}>
-                <View style={styles.col}><Input testID={id(`edu-${level.key}-level`)} label="What level?" value={row.level_reached || ''} onChangeText={(t) => setEducation(level.key, 'level_reached', t)} /></View>
+                <View style={styles.col}><Input testID={id(`edu-${level.key}-level`)} label="What level?" value={row.level_reached || ''} onChangeText={(t) => setEducation(level.key, 'level_reached', caps(t))} autoCapitalize="characters" /></View>
                 <View style={styles.col}><Input testID={id(`edu-${level.key}-last`)} label="Year last attended" value={row.year_last_attended || ''} onChangeText={(t) => setEducation(level.key, 'year_last_attended', t)} keyboardType="number-pad" /></View>
               </View>
-              <Input testID={id(`edu-${level.key}-awards`)} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', t)} />
+              <Input testID={id(`edu-${level.key}-awards`)} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', caps(t))} autoCapitalize="characters" />
             </View>
           );
         })}
@@ -328,10 +351,10 @@ export function NsrpForm({
         {rows('training_rows', 3).map((r: any, i: number) => (
           <View key={`tr-${i}`} style={styles.rowCard}>
             <Text style={styles.rowTitle}>{i + 1}.</Text>
-            <Input testID={id(`training-${i + 1}-course`)} label="Training/Vocational Course" value={r.course || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'course', t)} />
+            <Input testID={id(`training-${i + 1}-course`)} label="Training/Vocational Course" value={r.course || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'course', caps(t))} autoCapitalize="characters" />
             <Input testID={id(`training-${i + 1}-duration`)} label="Duration (mm/dd/yyyy to mm/dd/yyyy)" value={r.duration || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'duration', t)} />
-            <Input testID={id(`training-${i + 1}-institution`)} label="Training Institution" value={r.institution || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'institution', t)} />
-            <Input testID={id(`training-${i + 1}-cert`)} label="Certificates Received (NC I, NC II, NC III, NC IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', t)} />
+            <Input testID={id(`training-${i + 1}-institution`)} label="Training Institution" value={r.institution || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'institution', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`training-${i + 1}-cert`)} label="Certificates Received (NC I, NC II, NC III, NC IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', caps(t))} autoCapitalize="characters" />
           </View>
         ))}
         {legacyBox(!anyRow(full.training_rows), 'trainings')}
@@ -341,7 +364,7 @@ export function NsrpForm({
         <SubTitle text="Eligibility (Civil Service)" />
         {rows('eligibility_rows', 2).map((r: any, i: number) => (
           <View key={`el-${i}`} style={styles.rowCard}>
-            <Input testID={id(`eligibility-${i + 1}`)} label={`${i + 1}. Eligibility`} value={r.eligibility || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'eligibility', t)} />
+            <Input testID={id(`eligibility-${i + 1}`)} label={`${i + 1}. Eligibility`} value={r.eligibility || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'eligibility', caps(t))} autoCapitalize="characters" />
             <View style={styles.twoCol}>
               <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-rating`)} label="Rating" value={r.rating || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'rating', t)} /></View>
               <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-date`)} label="Date of Examination" value={r.exam_date || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'exam_date', t)} /></View>
@@ -351,7 +374,7 @@ export function NsrpForm({
         <SubTitle text="Professional License (PRC)" />
         {rows('license_rows', 2).map((r: any, i: number) => (
           <View key={`lic-${i}`} style={styles.twoCol}>
-            <View style={styles.col}><Input testID={id(`license-${i + 1}`)} label={`${i + 1}. License`} value={r.license || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'license', t)} /></View>
+            <View style={styles.col}><Input testID={id(`license-${i + 1}`)} label={`${i + 1}. License`} value={r.license || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'license', caps(t))} autoCapitalize="characters" /></View>
             <View style={styles.col}><Input testID={id(`license-${i + 1}-valid`)} label="Valid Until" value={r.valid_until || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'valid_until', t)} /></View>
           </View>
         ))}
@@ -363,9 +386,9 @@ export function NsrpForm({
         {rows('work_rows', Math.min(5, Math.max(2, (full.work_rows || []).filter((r: any) => r && Object.values(r).some(has)).length + 1))).map((r: any, i: number, all: any[]) => (
           <View key={`wk-${i}`} style={styles.rowCard}>
             <Text style={styles.rowTitle}>{i + 1}.</Text>
-            <Input testID={id(`work-${i + 1}-company`)} label="Company Name" value={r.company || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'company', t)} />
-            <Input testID={id(`work-${i + 1}-address`)} label="Address (City/Municipality)" value={r.address || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'address', t)} />
-            <Input testID={id(`work-${i + 1}-position`)} label="Position" value={r.position || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'position', t)} />
+            <Input testID={id(`work-${i + 1}-company`)} label="Company Name" value={r.company || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'company', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`work-${i + 1}-address`)} label="Address (City/Municipality)" value={r.address || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'address', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`work-${i + 1}-position`)} label="Position" value={r.position || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'position', caps(t))} autoCapitalize="characters" />
             <View style={styles.twoCol}>
               <View style={styles.col}><Input testID={id(`work-${i + 1}-dates`)} label="Inclusive Dates (mm/yyyy to mm/yyyy)" value={r.dates || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'dates', t)} /></View>
               <View style={styles.col}><Input testID={id(`work-${i + 1}-status`)} label="Status (Permanent, Contractual, Part-time, Probationary)" value={r.status || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'status', t)} /></View>
@@ -390,7 +413,8 @@ export function NsrpForm({
           testID={id('other-skills-other')}
           label="Others"
           value={String(full.other_skills_other || '')}
-          onChangeText={(t) => writeOtherSkills(otherSkills, t)}
+          onChangeText={(t) => writeOtherSkills(otherSkills, caps(t))}
+          autoCapitalize="characters"
         />
         {legacyBox(!Array.isArray(full.other_skills_checked), 'other_skills_acquired')}
       </Section>
@@ -411,6 +435,40 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function SubTitle({ text }: { text: string }) {
   return <Text style={styles.subTitle}>{text}</Text>;
+}
+
+// NSRP Form 1: "DATE OF BIRTH (mm/dd/yyyy)". Shown and typed as mm/dd/yyyy; the form value becomes
+// YYYY-MM-DD once the typed date is complete and real, otherwise it keeps the typed text (a save is then
+// refused with the message shown here).
+function BirthDateInput({ value, onChange, testID }: { value?: string; onChange: (v: string) => void; testID?: string }) {
+  const [text, setText] = useState(isoToMdy(value));
+  // Follow changes made elsewhere (profile reload, OCR results); our own typed (incomplete) text is kept.
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    const v = String(value ?? '');
+    if (v === '') setText('');
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setText(isoToMdy(v));
+  }
+  const complete = text.length === 10;
+  const problem = complete ? birthDateError(value) : null;
+  return (
+    <View>
+      <Input
+        testID={testID}
+        label="Date of Birth (mm/dd/yyyy)"
+        value={text}
+        placeholder="05/15/1998"
+        keyboardType="number-pad"
+        onChangeText={(t) => {
+          const masked = maskMdy(t);
+          setText(masked);
+          onChange(masked === '' ? '' : (mdyToIso(masked) || masked));
+        }}
+      />
+      {!!problem && <Text testID={`${testID}-error`} style={styles.dateHint}>{problem}</Text>}
+    </View>
+  );
 }
 
 function Choice({
@@ -459,6 +517,7 @@ function SmallToggle({ label, active, onPress, testID }: { label: string; active
 }
 
 const styles = StyleSheet.create({
+  dateHint: { color: StatusColors.needs_revision.text, fontSize: FontSize.xs, fontWeight: '700', marginTop: -8, marginBottom: Spacing.sm },
   sectionCard: { marginTop: Spacing.sm },
   sectionTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
   subTitle: { fontSize: FontSize.sm, fontWeight: '900', color: Colors.primary, marginTop: Spacing.xs, marginBottom: Spacing.xs },

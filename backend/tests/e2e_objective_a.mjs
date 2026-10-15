@@ -1,6 +1,10 @@
 // End-to-end API test: objective (a) what-if scenarios (job edits, hiring, closing, deactivation,
 // closing dates, skill comparison edge cases, employer account management).
 // Run against a freshly seeded demo DB:  node tests/e2e_objective_a.mjs
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 const BASE = process.env.BASE || 'http://localhost:8001/api';
 let pass = 0, fail = 0;
 function check(name, cond, extra = '') {
@@ -16,6 +20,12 @@ async function call(method, path, token, body) {
   let data = null;
   try { data = await r.json(); } catch {}
   return { status: r.status, data };
+}
+
+// PESO decides on the profile it opened: read the review token the admin screen gets, then send it back.
+async function decide(adminToken, seekerId, body) {
+  const opened = await call('GET', `/admin/job-seekers/${seekerId}/profile`, adminToken);
+  return call('PUT', `/admin/job-seekers/${seekerId}/nsrp-status`, adminToken, { ...body, review_token: opened.data?.review_token });
 }
 async function login(email, password, role) {
   const r = await call('POST', '/auth/login', null, { email, password, role });
@@ -44,13 +54,28 @@ const cookOwner = (await call('GET', '/employer/jobs', north)).data.jobs.some((j
 const skills = await skillIds(ana);
 const sid = (name) => skills.find((s) => s.skill_name === name).id;
 
+console.log('Skills list: NSRP Section VIII-related group (category only; names unchanged)');
+const { SKILLS: SEED_SKILLS, NSRP_SECTION_VIII_CATEGORY } = await import('../seed-skills.js').then((m) => m.default || m);
+const nsrpNames = [
+  'Automotive Servicing', 'Beauty Care', 'Carpentry', 'Computer Literacy', 'Domestic Work', 'Driving',
+  'Electrical Wiring', 'Embroidery', 'Gardening', 'Masonry', 'Painting', 'Photography', 'Plumbing',
+  'Dressmaking', 'Stenography', 'Tailoring',
+];
+check('every seeded skill name exists exactly once',
+  SEED_SKILLS.every(([n]) => skills.filter((s) => s.skill_name === n).length === 1));
+check('the 16 Section VIII-related skills share the NSRP category',
+  nsrpNames.every((n) => skills.find((s) => s.skill_name === n)?.category === NSRP_SECTION_VIII_CATEGORY),
+  JSON.stringify(skills.filter((s) => nsrpNames.includes(s.skill_name)).map((s) => [s.skill_name, s.category])));
+check('no other skill is in the NSRP category',
+  skills.filter((s) => s.category === NSRP_SECTION_VIII_CATEGORY).length === nsrpNames.length);
+
 console.log('Setup: Maria adds cook skills, PESO re-verifies, Ana and Maria apply to Food Kiosk Cook');
 const mariaSkills = (await call('GET', '/job-seeker/profile', maria)).data.skills.map((s) => s.id);
 let r = await call('POST', '/job-seeker/skills', maria, {
   skills: [...mariaSkills, sid('Cooking'), sid('Food and Beverage Service'), sid('Teamwork')].map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
 });
 check('Maria skill change sends NSRP back to PESO', r.data.nsrp_status_changed_to === 'submitted');
-check('PESO re-verifies Maria', (await call('PUT', `/admin/job-seekers/${seekerId('maria.santos@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 200);
+check('PESO re-verifies Maria', (await decide(admin, seekerId('maria.santos@example.com'), { nsrp_status: 'verified' })).status === 200);
 const anaApp = (await call('POST', '/applications', ana, { job_post_id: cook.id })).data.application_id;
 const mariaApp = (await call('POST', '/applications', maria, { job_post_id: cook.id })).data.application_id;
 check('both applied', anaApp && mariaApp);
@@ -103,7 +128,7 @@ r = await call('GET', `/jobs/${juniorDev.id}/match`, juan);
 check('Juan sees 4/4 matched', r.data.skills_confirmed === true && r.data.matched_count === 4);
 
 console.log('Admin deactivates a job seeker with an in-progress application');
-check('PESO verifies Juan', (await call('PUT', `/admin/job-seekers/${seekerId('juan.cruz@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 200);
+check('PESO verifies Juan', (await decide(admin, seekerId('juan.cruz@example.com'), { nsrp_status: 'verified' })).status === 200);
 const juanApp = (await call('POST', '/applications', juan, { job_post_id: juniorDev.id })).data.application_id;
 check('Juan applied', !!juanApp);
 check('deactivate Juan', (await call('PUT', `/admin/job-seekers/${seekerId('juan.cruz@example.com')}/deactivate`, admin, { reason: 'Test' })).status === 200);
@@ -117,7 +142,6 @@ check('Juan can use the app again', (await call('GET', '/job-seeker/profile', ju
 console.log('Employer account management');
 const employers = (await call('GET', '/admin/employers', admin)).data.employers;
 const northEmp = employers.find((e) => e.email === 'hr@northstar.ph');
-const blue = employers.find((e) => e.email === 'hr@bluemountain.ph');
 r = await call('PUT', `/admin/employers/${northEmp.id}`, admin, { contact_person: 'Updated Contact', company_size: 'medium' });
 check('admin updates employer details', r.status === 200 && r.data.employer.contact_person === 'Updated Contact');
 check('employer notified of update', await hasNotif(north, 'Company Details Updated'));
@@ -156,7 +180,12 @@ console.log('Job post field checks');
   check('salary min higher than max rejected', (await post({ salary_min: 30000, salary_max: 10000 })).status === 400);
   check('negative vacancies rejected', (await post({ vacancies: -3 })).status === 400);
   check('unknown job type rejected (not a server error)', (await post({ job_type: 'bogus' })).status === 400);
+  const longTitle = await post({ job_title: 'A'.repeat(256) });
+  check('job title over 255 characters rejected with a clear message (not a server error)',
+    longTitle.status === 400 && /255 characters/.test(longTitle.data?.error || ''), JSON.stringify(longTitle.data));
   const devJob = jobByTitle('Junior Software Developer');
+  const longEdit = await call('PUT', `/employer/jobs/${devJob.id}`, tech, { job_title: 'B'.repeat(256) });
+  check('edit: job title over 255 characters rejected', longEdit.status === 400 && /255 characters/.test(longEdit.data?.error || ''));
   check('edit: salary max below the saved min rejected',
     (await call('PUT', `/employer/jobs/${devJob.id}`, tech, { salary_min: 50000, salary_max: 1000 })).status === 400);
   check('edit: unknown status rejected (not a server error)',
@@ -170,7 +199,7 @@ const riderApp = await (async () => {
   // give Ana the rider skills so she can apply, then re-verify
   const anaSkills = (await call('GET', '/job-seeker/profile', ana)).data.skills.map((s) => s.id);
   await call('POST', '/job-seeker/skills', ana, { skills: [...anaSkills, sid('Motorcycle Delivery'), sid('Driving'), sid('Customer Service')].map((id) => ({ skill_id: id })) });
-  await call('PUT', `/admin/job-seekers/${seekerId('ana.bautista@example.com')}/nsrp-status`, admin, { nsrp_status: 'verified' });
+  await decide(admin, seekerId('ana.bautista@example.com'), { nsrp_status: 'verified' });
   return (await call('POST', '/applications', ana, { job_post_id: rider.id })).data.application_id;
 })();
 check('Ana applied to Delivery Rider', !!riderApp);
@@ -182,8 +211,30 @@ check('Ana rider application closed', (await call('GET', `/applications/${riderA
 check('reactivate employer', (await call('PUT', `/admin/employers/${northEmp.id}/reactivate`, admin)).status === 200);
 const north2 = await login('hr@northstar.ph', 'Test@123', 'employer');
 check('reactivated employer signs in; posts stay closed', (await call('GET', '/employer/jobs', north2)).data.jobs.every((j) => j.status === 'closed'));
-check('cannot reactivate a pending employer', (await call('PUT', `/admin/employers/${blue.id}/reactivate`, admin)).status === 400);
-check('approve pending employer', (await call('PUT', `/admin/employers/${blue.id}/approve`, admin)).status === 200);
+check('demo has no employer waiting for approval', (await call('GET', '/admin/employers/pending', admin)).data.employers.length === 0);
+{
+  // Safety net for older records: a pending employer (self-registered before PESO stopped that) is created
+  // directly in the reset demo/test database, then handled through the approval screen's API.
+  const require = createRequire(import.meta.url);
+  const backendDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  require('dotenv').config({ path: path.join(backendDir, '.env') });
+  const dbName = process.env.DEMO_DB || 'peso_link_demo';
+  if (dbName === 'peso_link_misor') throw new Error('Refusing to run on the real database (peso_link_misor).');
+  const mysql = require('mysql2/promise');
+  const bcrypt = require('bcryptjs');
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || '127.0.0.1', port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER || 'root', password: process.env.DB_PASSWORD || '', database: dbName,
+  });
+  const [u] = await conn.query("INSERT INTO users (email, password_hash, role, account_status) VALUES ('older.pending@example.com', ?, 'employer', 'pending')", [await bcrypt.hash('Test@123', 10)]);
+  const [e] = await conn.query("INSERT INTO employers (user_id, company_name, approval_status) VALUES (?, 'Older Pending Co.', 'pending')", [u.insertId]);
+  await conn.end();
+  check('older pending employer cannot sign in', (await call('POST', '/auth/login', null, { email: 'older.pending@example.com', password: 'Test@123', role: 'employer' })).status === 403);
+  check('admin sees it waiting for approval', (await call('GET', '/admin/employers/pending', admin)).data.employers.some((x) => x.id === e.insertId));
+  check('cannot reactivate a pending employer', (await call('PUT', `/admin/employers/${e.insertId}/reactivate`, admin)).status === 400);
+  check('approve pending employer', (await call('PUT', `/admin/employers/${e.insertId}/approve`, admin)).status === 200);
+  check('approved employer signs in', (await call('POST', '/auth/login', null, { email: 'older.pending@example.com', password: 'Test@123', role: 'employer' })).status === 200);
+}
 
 console.log('Admin monitoring and NSRP form images');
 r = await call('GET', '/admin/applications', admin);
@@ -204,6 +255,43 @@ check('non-admin cannot read nsrp-forms', (await call('GET', `/admin/job-seekers
   const ids = new Set([...first, ...rest].map((f) => f.id));
   check('uploaded forms load 4 at a time and the older ones are reachable',
     total >= 5 && first.length === 4 && first.length + rest.length === total && ids.size === total, `${total} ${first.length} ${rest.length}`);
+}
+
+console.log('"Job Post Updated" only when the posting really changes');
+{
+  // Maria's IT Support Staff application is still in progress here (TechCorp is never deactivated).
+  const itJob = jobByTitle('IT Support Staff');
+  const mariaIt = (await call('GET', '/applications/my-applications', maria)).data.applications.find((a) => a.job_post_id === itJob.id);
+  const updateAlerts = async () => (await notifs(maria)).filter((n) => n.title === 'Job Post Updated' && n.related_id === itJob.id).length;
+  const current = (await call('GET', `/jobs/${itJob.id}`, tech)).data.job;
+  const skillIdsNow = current.required_skills.map((s) => s.id);
+  // The same body the job form sends when nothing was edited.
+  const sameForm = {
+    job_title: current.job_title, job_description: current.job_description, job_type: current.job_type,
+    salary_min: current.salary_min != null ? parseFloat(current.salary_min) : null,
+    salary_max: current.salary_max != null ? parseFloat(current.salary_max) : null,
+    location: current.location || '', vacancies: current.vacancies, requirements: current.requirements || '',
+    application_email: current.application_email || '', closing_date: current.closing_date || null,
+    required_skills: skillIdsNow.map((id) => ({ skill_id: id, required_level: 'beginner' })),
+  };
+  check('Maria still has an in-progress IT Support application', mariaIt && ['for_review', 'for_interview'].includes(mariaIt.application_status), JSON.stringify(mariaIt));
+  let before = await updateAlerts();
+  check('identical save is accepted', (await call('PUT', `/employer/jobs/${itJob.id}`, tech, sameForm)).status === 200);
+  check('identical save (same skills) sends no "Job Post Updated"', (await updateAlerts()) === before);
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, required_skills: [...sameForm.required_skills].reverse() });
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, {});
+  check('same skills in another order, or an empty save, send no alert', (await updateAlerts()) === before);
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, salary_max: (sameForm.salary_max || 0) + 1000 });
+  check('a salary change notifies the in-progress applicant', (await updateAlerts()) === before + 1);
+  before += 1;
+  const extraSkill = skills.find((s) => !skillIdsNow.includes(s.id));
+  await call('PUT', `/employer/jobs/${itJob.id}`, tech, { ...sameForm, salary_max: (sameForm.salary_max || 0) + 1000,
+    required_skills: [...sameForm.required_skills, { skill_id: extraSkill.id, required_level: 'beginner' }] });
+  check('a required-skills change notifies the in-progress applicant', (await updateAlerts()) === before + 1);
+  before += 1;
+  r = await call('PUT', `/employer/jobs/${itJob.id}`, tech, { status: 'closed' });
+  check('closing by edit: applicant told "Application Closed", no "Job Post Updated"',
+    r.status === 200 && await hasNotif(maria, 'Application Closed', mariaIt.id) && (await updateAlerts()) === before);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

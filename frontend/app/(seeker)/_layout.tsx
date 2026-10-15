@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
+import { confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
 
 function LogoutTabButton({ children, ...props }: any) {
   const router = useRouter();
@@ -18,7 +19,8 @@ function LogoutTabButton({ children, ...props }: any) {
         {...props}
         onPress={(e: any) => {
           e?.preventDefault?.();
-          setShowModal(true);
+          // Unsaved Profile edits: ask before showing the sign-out box.
+          confirmLeave(() => setShowModal(true));
         }}
       >
         {children}
@@ -43,6 +45,15 @@ export default function SeekerLayout() {
 
   return (
     <Tabs
+      // Leaving Profile with unsaved edits through the tab bar asks first (see src/utils/unsavedChanges).
+      screenListeners={({ navigation, route }) => ({
+        tabPress: (e) => {
+          // Pressing the tab that is already open leaves nothing, so there is nothing to warn about.
+          if (navigation.isFocused() || !hasUnsavedChanges()) return;
+          e.preventDefault();
+          confirmLeave(() => navigation.navigate(route.name));
+        },
+      })}
       screenOptions={{
         headerShown: false,
         // Keep every tab screen below the phone's status bar; headers share this green.

@@ -5,16 +5,21 @@ const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted } = require('../services/nsrpProfileValidation');
-const { NSRP_STATUS_LABELS, notifyAdminsOfSubmission } = require('../services/nsrpReview');
-const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
+const {
+  NSRP_STATUS_LABELS, notifyAdminsOfSubmission, lockJobSeeker, fingerprintsBeforeEdit,
+} = require('../services/nsrpReview');
+const { normalizeNsrpProfile, toBlockLetters, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
 
 router.use(authenticate, requireRole('job_seeker'));
 
 // Helper: get job_seeker_id from user_id
-async function getJobSeekerId(userId) {
-  const [rows] = await db.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
+// `queryable`: pass the connection a route already holds, so it never waits for a second pool connection
+// (with every connection held by waiting routes, that could hang). Call it before beginTransaction: a read
+// inside the transaction would fix its snapshot before the job seeker row lock is taken.
+async function getJobSeekerId(userId, queryable = db) {
+  const [rows] = await queryable.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
   return rows[0]?.id || null;
 }
 
@@ -66,15 +71,19 @@ router.post('/profile', async (req, res) => {
     employment_status,
     preferred_occupation,
     nsrp_full_data,
-  } = normalizeNsrpProfile(req.body);
+  } = normalizeNsrpProfile(toBlockLetters(req.body));
   const dobError = dateOfBirthError(date_of_birth);
   if (dobError) return res.status(400).json({ error: dobError });
 
+  const conn = await db.getConnection();
   try {
-    const jsId = await getJobSeekerId(req.user.id);
+    const jsId = await getJobSeekerId(req.user.id, conn);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
-    await db.query(
+    await conn.beginTransaction();
+    await lockJobSeeker(conn, jsId);
+    const before = await fingerprintsBeforeEdit(conn, jsId);
+    await conn.query(
       `UPDATE job_seekers SET
          first_name=?, middle_name=?, last_name=?, date_of_birth=?, gender=?,
          civil_status=?, contact_number=?, address=?, city=?, province=?,
@@ -104,7 +113,8 @@ router.post('/profile', async (req, res) => {
 
     // "Profile complete" means all required NSRP fields are filled - the gate for submitting the NSRP to PESO.
     // A change to a PESO-verified profile sends it back to PESO for re-checking.
-    const referralRequirements = await refreshProfileCompleted(db, jsId);
+    const referralRequirements = await refreshProfileCompleted(conn, jsId, before);
+    await conn.commit();
 
     const [updated] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
     res.json({
@@ -114,8 +124,11 @@ router.post('/profile', async (req, res) => {
       nsrp_status_changed_to: referralRequirements.nsrp_status_changed_to,
     });
   } catch (err) {
+    await conn.rollback();
     console.error('[Profile POST]', err);
     res.status(500).json({ error: 'Failed to update profile' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -179,13 +192,11 @@ router.post('/skills', async (req, res) => {
 
   const conn = await db.getConnection();
   try {
+    const jsId = await getJobSeekerId(req.user.id, conn);
+    if (!jsId) return res.status(404).json({ error: 'Profile not found' });
     await conn.beginTransaction();
-    const jsId = await getJobSeekerId(req.user.id);
-    if (!jsId) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Profile not found' });
-    }
 
+    await lockJobSeeker(conn, jsId);
     // Replace existing
     await conn.query('DELETE FROM job_seeker_skills WHERE job_seeker_id = ?', [jsId]);
     for (const s of skills) {
@@ -220,19 +231,26 @@ router.post('/skills', async (req, res) => {
 
 // DELETE /api/job-seeker/skills/:skillId
 router.delete('/skills/:skillId', async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const jsId = await getJobSeekerId(req.user.id);
+    const jsId = await getJobSeekerId(req.user.id, conn);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
-    await db.query(
+    await conn.beginTransaction();
+    await lockJobSeeker(conn, jsId);
+    await conn.query(
       'DELETE FROM job_seeker_skills WHERE job_seeker_id = ? AND skill_id = ?',
       [jsId, req.params.skillId]
     );
-    const requirements = await refreshProfileCompleted(db, jsId);
+    const requirements = await refreshProfileCompleted(conn, jsId);
+    await conn.commit();
     res.json({ message: 'Skill removed', nsrp_status_changed_to: requirements.nsrp_status_changed_to });
   } catch (err) {
+    await conn.rollback();
     console.error('[Skills DELETE]', err);
     res.status(500).json({ error: 'Failed to remove skill' });
+  } finally {
+    conn.release();
   }
 });
 

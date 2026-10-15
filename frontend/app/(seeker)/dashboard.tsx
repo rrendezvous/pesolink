@@ -55,7 +55,8 @@ export default function SeekerDashboard() {
   const profileComplete = !!profile?.profile_completed;
   const nsrpStatus: string = profile?.nsrp_status || 'not_submitted';
   const verified = nsrpStatus === 'verified';
-  const needsAction = ['not_submitted', 'needs_revision'].includes(nsrpStatus);
+  // Until the profile loads (or if it fails to load) the status is unknown: show it as neutral, not "not submitted".
+  const needsAction = !!profile && ['not_submitted', 'needs_revision'].includes(nsrpStatus);
   const referredCount = applications.filter((a) => a.referral_status === 'peso_referred').length;
   const itemsText = requirements
     ? `${requirements.filled_count}/${requirements.required_count}`
@@ -63,7 +64,9 @@ export default function SeekerDashboard() {
 
   // Green when verified, amber when the seeker must act, neutral while PESO is checking.
   const tone = verified ? 'green' : needsAction ? 'amber' : 'neutral';
-  const statusTitle = verified
+  const statusTitle = !profile
+    ? 'Loading your NSRP profile status...'
+    : verified
     ? 'NSRP profile verified by PESO'
     : nsrpStatus === 'needs_revision'
       ? 'PESO returned your NSRP profile'
@@ -97,7 +100,7 @@ export default function SeekerDashboard() {
             />
             <Text style={[styles.statusTitle, tone === 'amber' && { color: amber.text }]}>{statusTitle}</Text>
           </View>
-          <Text style={[styles.statusText, tone === 'amber' && { color: amber.text }]}>{nsrpStatusMessage(nsrpStatus)}</Text>
+          <Text style={[styles.statusText, tone === 'amber' && { color: amber.text }]}>{profile ? nsrpStatusMessage(nsrpStatus) : 'Pull down to refresh if this does not update.'}</Text>
           {needsAction && (
             <TouchableOpacity testID="complete-profile" onPress={() => router.push('/(seeker)/profile')} style={styles.statusAction} accessibilityRole="button">
               <Text style={styles.statusActionText}>

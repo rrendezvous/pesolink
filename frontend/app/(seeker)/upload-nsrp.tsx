@@ -2,7 +2,7 @@
 // Upload NSRP Form + OCR-assisted NSRP review (combined)
 // OCR is OPTIONAL & ASSISTIVE - User must review/confirm before saving.
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
@@ -12,6 +12,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button, Card, BackLink } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
+import { sentBackMessage } from '../../src/utils/referral';
+import { birthDateError } from '../../src/utils/dates';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 const OCR_UPLOAD_TIMEOUT_MS = 90000;
@@ -108,6 +110,47 @@ export default function UploadNSRP() {
   const [extracted, setExtracted] = useState<any | null>(null);
   // The saved profile: OCR results are merged on top of it, so scanning one page never blanks the other page's fields.
   const [savedProfile, setSavedProfile] = useState<any | null>(null);
+  // The saved profile a review started from. If the profile is saved elsewhere (Profile tab) during a review,
+  // confirming would put the older values back, so the review starts over instead.
+  // Recorded only once the saved profile has loaded; without it (still loading or failed) there is nothing
+  // to compare, so no "Profile Changed" notice is shown.
+  const reviewBase = useRef<string | null>(null);
+  const extractedRef = useRef<any | null>(null);
+  useEffect(() => { extractedRef.current = extracted; }, [extracted]);
+
+  const [ocrSuccess, setOcrSuccess] = useState<boolean | null>(null);
+  const [ocrStatus, setOcrStatus] = useState('');
+  const [fieldCount, setFieldCount] = useState(0);
+  const [ocrMessage, setOcrMessage] = useState('');
+  const [pageType, setPageType] = useState('');
+  const [rawText, setRawText] = useState('');
+  const [ocrRegions, setOcrRegions] = useState<any | null>(null);
+  const [showRawText, setShowRawText] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  // Only state setters and refs inside, so these keep one identity across renders.
+  const resetReview = useCallback(() => {
+    setUploadId(null);
+    setReviewUploadIds([]);
+    setExtracted(null);
+    setOcrSuccess(null);
+    setOcrStatus('');
+    setFieldCount(0);
+    setOcrMessage('');
+    setPageType('');
+    setRawText('');
+    setOcrRegions(null);
+    setShowRawText(false);
+  }, []);
+
+  const clearAll = useCallback(() => {
+    reviewBase.current = null;
+    setImageBase64(null);
+    setImageUri(null);
+    resetReview();
+  }, [resetReview]);
 
   // Reloaded on every focus: this hidden tab stays mounted, and the profile may have been edited since.
   useFocusEffect(useCallback(() => {
@@ -122,41 +165,18 @@ export default function UploadNSRP() {
         Object.keys(emptyExtracted).forEach((k) => {
           if (k !== 'nsrp_full_data' && prof[k] != null) base[k] = prof[k];
         });
-        setSavedProfile({ ...emptyExtracted, ...base, nsrp_full_data: { ...defaultNsrpFullData, ...full } });
+        const next = { ...emptyExtracted, ...base, nsrp_full_data: { ...defaultNsrpFullData, ...full } };
+        if (extractedRef.current && reviewBase.current !== null && reviewBase.current !== JSON.stringify(next)) {
+          clearAll();
+          Alert.alert(
+            'Profile Changed',
+            'Your NSRP profile was saved after this scan started. Scan the form again so the review starts from your latest profile. Nothing from the old scan was saved.',
+          );
+        }
+        setSavedProfile(next);
       })
       .catch(() => setSavedProfile(null));
-  }, []));
-  const [ocrSuccess, setOcrSuccess] = useState<boolean | null>(null);
-  const [ocrStatus, setOcrStatus] = useState('');
-  const [fieldCount, setFieldCount] = useState(0);
-  const [ocrMessage, setOcrMessage] = useState('');
-  const [pageType, setPageType] = useState('');
-  const [rawText, setRawText] = useState('');
-  const [ocrRegions, setOcrRegions] = useState<any | null>(null);
-  const [showRawText, setShowRawText] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-
-  const resetReview = () => {
-    setUploadId(null);
-    setReviewUploadIds([]);
-    setExtracted(null);
-    setOcrSuccess(null);
-    setOcrStatus('');
-    setFieldCount(0);
-    setOcrMessage('');
-    setPageType('');
-    setRawText('');
-    setOcrRegions(null);
-    setShowRawText(false);
-  };
-
-  const clearAll = () => {
-    setImageBase64(null);
-    setImageUri(null);
-    resetReview();
-  };
+  }, [clearAll]));
 
   const imageMimeType = (asset: ImagePicker.ImagePickerAsset) => {
     if (asset.mimeType?.startsWith('image/')) return asset.mimeType;
@@ -292,6 +312,7 @@ export default function UploadNSRP() {
       const nextStatus = exRes.data.ocr_status || (exRes.data.success ? 'fields_extracted' : 'no_text');
       const nextFieldCount = Number(exRes.data.field_count || 0);
       const nextPageType = exRes.data.page_type || '';
+      if (!extractedRef.current && savedProfile) reviewBase.current = JSON.stringify(savedProfile);
       setExtracted((current: any) => mergeExtractedData(current || savedProfile, exRes.data.extracted_data));
       setRawText(exRes.data.raw_text || '');
       setOcrRegions(exRes.data.ocr_regions || null);
@@ -307,6 +328,7 @@ export default function UploadNSRP() {
       }
 
     } catch (err) {
+      if (!extractedRef.current && savedProfile) reviewBase.current = JSON.stringify(savedProfile);
       setExtracted((current: any) => current || savedProfile || emptyExtracted);
       setOcrRegions(null);
       setOcrSuccess(false);
@@ -322,13 +344,20 @@ export default function UploadNSRP() {
 
   const confirmAndSave = async () => {
     if (!extracted) return;
+    const dobProblem = birthDateError(extracted.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
+      return;
+    }
     setConfirming(true);
     try {
-      await api.post('/nsrp/confirm', { upload_id: uploadId, upload_ids: reviewUploadIds, confirmed_data: extracted });
+      const res = await api.post('/nsrp/confirm', { upload_id: uploadId, upload_ids: reviewUploadIds, confirmed_data: extracted });
       clearAll();
       Alert.alert(
         'Saved',
-        'Your reviewed NSRP data has been saved to your profile.',
+        sentBackMessage(res.data?.nsrp_status_changed_to)
+          ? `Your reviewed NSRP data has been saved to your profile. ${sentBackMessage(res.data?.nsrp_status_changed_to)}`
+          : 'Your reviewed NSRP data has been saved to your profile.',
         [{ text: 'OK', onPress: () => router.replace('/(seeker)/profile') }]
       );
     } catch (err) {

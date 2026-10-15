@@ -1,18 +1,25 @@
 // ============================================================
 // NSRP Profile + Skills Management (combined screen)
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
-import { nsrpStatusMessage } from '../../src/utils/referral';
+import { nsrpStatusMessage, sentBackMessage } from '../../src/utils/referral';
+import { birthDateError } from '../../src/utils/dates';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
+import { orderSkillCategories } from '../../src/utils/skills';
+import { setUnsavedChangesGuard, confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
 
+
+// Everything Save Profile stores (profile fields, NSRP form data, selected skills), as one comparable value.
+const profileSnapshot = (form: any, fullData: any, skills: Set<number>) =>
+  JSON.stringify([form, fullData, Array.from(skills).sort((a, b) => a - b)]);
 
 const defaultNsrpFullData = {
   suffix: '',
@@ -96,7 +103,7 @@ export default function ProfileScreen() {
   const [form, setForm] = useState<any>({
     first_name: '', middle_name: '', last_name: '',
     date_of_birth: '', gender: '', civil_status: '',
-    contact_number: '', address: '', city: '', province: 'Misamis Oriental',
+    contact_number: '', address: '', city: '', province: 'MISAMIS ORIENTAL',
     education_level: '', course: '',
     years_of_experience: '0',
     employment_status: '', preferred_occupation: '',
@@ -109,6 +116,9 @@ export default function ProfileScreen() {
   const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
   const [submitting, setSubmitting] = useState(false);
   const [certified, setCertified] = useState(false);
+  // Set when the profile could not be loaded: the form is hidden so a blank or outdated form is never saved
+  // over the saved profile (saving replaces every field and the skills list).
+  const [loadError, setLoadError] = useState('');
 
   const goToDashboard = () => {
     router.replace('/(seeker)/dashboard');
@@ -116,17 +126,28 @@ export default function ProfileScreen() {
 
   // Reload on every focus: this tab stays mounted, so returning from the OCR Assistant (which saves
   // straight to the profile) would otherwise show the old form, and saving it would overwrite the OCR data.
-  useFocusEffect(useCallback(() => {
+  // Every load shows "Loading..." in place of the form, so the previous values cannot be saved while fresh data
+  // is on its way. Replies from an older load, or arriving after leaving the screen, are ignored.
+  const loadToken = useRef(0);
+  // What was last loaded or saved; null while loading or after the user chose to discard their edits.
+  const savedSnapshot = useRef<string | null>(null);
+  const loadProfile = useCallback(() => {
+    savedSnapshot.current = null;
+    const token = ++loadToken.current;
+    const active = () => token === loadToken.current;
+    setLoadError('');
+    setLoading(true);
     (async () => {
       try {
         const [p, s] = await Promise.all([
           api.get('/job-seeker/profile'),
           api.get('/skills'),
         ]);
+        if (!active()) return;
         const prof = p.data.profile;
         setSavedFilled(p.data.referral_requirements?.filled_count ?? null);
         const parsedFullData = parseFullData(prof.nsrp_full_data);
-        setForm({
+        const loadedForm = {
           first_name: prof.first_name || '',
           middle_name: prof.middle_name || '',
           last_name: prof.last_name || '',
@@ -136,24 +157,62 @@ export default function ProfileScreen() {
           contact_number: prof.contact_number || '',
           address: prof.address || '',
           city: prof.city || '',
-          province: prof.province || 'Misamis Oriental',
+          province: prof.province || 'MISAMIS ORIENTAL',
           education_level: prof.education_level || '',
           course: prof.course || '',
           years_of_experience: String(prof.years_of_experience ?? 0),
           employment_status: prof.employment_status || '',
           preferred_occupation: prof.preferred_occupation || '',
-        });
-        setNsrpFullData(normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData }));
+        };
+        const loadedFullData = normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData });
+        const loadedSkills = new Set<number>((p.data.skills || []).map((sk: any) => sk.id));
+        setForm(loadedForm);
+        setNsrpFullData(loadedFullData);
         setAllSkills(s.data.skills);
-        setSelectedSkills(new Set((p.data.skills || []).map((sk: any) => sk.id)));
+        setSelectedSkills(loadedSkills);
+        savedSnapshot.current = profileSnapshot(loadedForm, loadedFullData, loadedSkills);
         setNsrp({ status: prof.nsrp_status || 'not_submitted', notes: prof.nsrp_review_notes });
       } catch (err) {
-        Alert.alert('Error', getApiError(err));
+        if (active()) setLoadError(getApiError(err));
       } finally {
-        setLoading(false);
+        if (active()) setLoading(false);
       }
     })();
-  }, []));
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    loadProfile();
+    return () => { loadToken.current += 1; };
+  }, [loadProfile]));
+
+  // Warning before leaving with unsaved edits (tab bar, Back, OCR Assistant link). Nothing is saved
+  // automatically; choosing to leave drops the edits, and the profile reloads from the server on return.
+  const latest = useRef({ form, nsrpFullData, selectedSkills });
+  useEffect(() => { latest.current = { form, nsrpFullData, selectedSkills }; });
+  const navigation = useNavigation();
+  useFocusEffect(useCallback(() => {
+    setUnsavedChangesGuard({
+      hasUnsavedChanges: () => savedSnapshot.current !== null
+        && profileSnapshot(latest.current.form, latest.current.nsrpFullData, latest.current.selectedSkills) !== savedSnapshot.current,
+      // Discarding also reloads the saved profile, so the edits are gone even if the user stays
+      // (e.g. cancels the sign-out box). When leaving, this reply is ignored and the profile reloads on return.
+      discard: () => { savedSnapshot.current = null; loadProfile(); },
+    });
+    // Nothing unsaved: Back works as usual. Unsaved: show the warning instead.
+    const onBack = () => {
+      if (!hasUnsavedChanges()) return false;
+      confirmLeave(() => {
+        if (navigation.canGoBack()) navigation.goBack();
+        else router.navigate('/(seeker)/dashboard');
+      });
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => {
+      sub.remove();
+      setUnsavedChangesGuard(null);
+    };
+  }, [navigation, router, loadProfile]));
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -168,6 +227,7 @@ export default function ProfileScreen() {
   // Saves the profile and skills. Returns the new NSRP status if saving changed it
   // (a changed PESO-verified profile goes back to PESO for re-checking).
   const saveProfileDraft = async (): Promise<string | null> => {
+    const sent = profileSnapshot(form, nsrpFullData, selectedSkills);
     const res = await api.post('/job-seeker/profile', {
         ...form,
         years_of_experience: parseInt(form.years_of_experience, 10) || 0,
@@ -176,6 +236,8 @@ export default function ProfileScreen() {
     const skillsRes = await api.post('/job-seeker/skills', {
       skills: Array.from(selectedSkills).map((id) => ({ skill_id: id, proficiency_level: 'intermediate' })),
     });
+    // Saved: these values no longer count as unsaved (edits made while saving still do).
+    savedSnapshot.current = sent;
     const changedTo = res.data.nsrp_status_changed_to || skillsRes.data.nsrp_status_changed_to || null;
     if (changedTo) setNsrp({ status: changedTo, notes: null });
     const fresh = await api.get('/job-seeker/profile');
@@ -183,19 +245,17 @@ export default function ProfileScreen() {
     return changedTo;
   };
 
-  const sentBackMessage = (changedTo: string | null) => {
-    if (changedTo === 'submitted') {
-      return 'Your NSRP profile changed, so it was sent back to PESO for re-checking. You can apply with PESO referral again once PESO verifies it.';
-    }
-    if (changedTo === 'not_submitted') {
-      return 'Some required NSRP items are now missing. Complete them and submit your profile to PESO again.';
-    }
-    return null;
-  };
 
   const handleSubmitToPeso = async () => {
+    // Only after a successful load, and one save at a time: Save and Submit both replace the saved profile and skills.
+    if (loading || loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
+      return;
+    }
+    const dobProblem = birthDateError(form.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
       return;
     }
     setSubmitting(true);
@@ -219,8 +279,15 @@ export default function ProfileScreen() {
   };
 
   const handleSave = async () => {
+    // Only after a successful load, and one save at a time: Save and Submit both replace the saved profile and skills.
+    if (loading || loadError || saving || submitting) return;
     if (!form.first_name || !form.last_name) {
       Alert.alert('Required', 'First and last name are required.');
+      return;
+    }
+    const dobProblem = birthDateError(form.date_of_birth);
+    if (dobProblem) {
+      Alert.alert('Check Date of Birth', dobProblem);
       return;
     }
     setSaving(true);
@@ -248,6 +315,20 @@ export default function ProfileScreen() {
 
   if (loading) {
     return <View style={styles.center}><Text style={styles.loadingText}>Loading...</Text></View>;
+  }
+
+  if (loadError) {
+    return (
+      <View style={[styles.container, styles.errorWrap]}>
+        <Card>
+          <Text style={styles.errorTitle}>Could not load your profile</Text>
+          <Text testID="prof-load-error" style={styles.errorText}>
+            Nothing was changed. Check the connection and try again. ({loadError})
+          </Text>
+          <Button testID="prof-retry" title="Try Again" onPress={loadProfile} />
+        </Card>
+      </View>
+    );
   }
 
   return (
@@ -346,7 +427,7 @@ export default function ProfileScreen() {
 
             <TouchableOpacity
               testID="profile-upload-shortcut"
-              onPress={() => router.push('/(seeker)/upload-nsrp')}
+              onPress={() => confirmLeave(() => router.push('/(seeker)/upload-nsrp'))}
               style={styles.ocrLink}
               accessibilityRole="button"
             >
@@ -372,7 +453,7 @@ export default function ProfileScreen() {
 
           <ProfileSection title="Skills">
             <Text style={styles.help}>Tap to select skills you have. These are used for rule-based job matching only.</Text>
-            {Object.keys(skillsByCategory).sort().map((cat) => (
+            {orderSkillCategories(Object.keys(skillsByCategory)).map((cat) => (
               <View key={cat} style={{ marginTop: Spacing.sm }}>
                 <Text style={styles.catLabel}>{cat}</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -434,6 +515,9 @@ const styles = StyleSheet.create({
   content: { paddingBottom: Spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.lightBg },
   loadingText: { color: Colors.textDark, fontSize: FontSize.md },
+  errorWrap: { padding: Spacing.md, justifyContent: 'center' },
+  errorTitle: { fontSize: FontSize.md, fontWeight: '900', color: Colors.textDark, marginBottom: Spacing.sm },
+  errorText: { fontSize: FontSize.sm, color: Colors.gray, lineHeight: 20, marginBottom: Spacing.md },
   header: {
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.lg,

@@ -9,7 +9,7 @@
 // ============================================================
 const crypto = require('crypto');
 const { notify } = require('./referral');
-const { DERIVED_COLUMNS } = require('./nsrpForm');
+const { DERIVED_COLUMNS, normalizeNsrpProfile, toBlockLetters } = require('./nsrpForm');
 
 const NSRP_STATUS_LABELS = {
   not_submitted: 'Not Submitted',
@@ -76,12 +76,18 @@ function withoutBlanks(value) {
 }
 
 // Fingerprint of everything PESO verifies: NSRP fields, extended NSRP data, and skills.
-// Version 2 (current) leaves out columns the app derives from other fields. Version 1 is the
-// original formula, still accepted so profiles verified before the change are not sent back.
-async function nsrpFingerprint(queryable, jobSeekerId, version = 2) {
+// Version 3 (current) is version 2 computed on the block-letter form of the data (only the fields that are
+// saved in capitals, see toBlockLetters; summaries rebuilt from the form rows), so a profile that differs
+// only by letter case in those fields has the same fingerprint. Version 2 leaves out columns the app
+// derives from other fields. Version 1 is the original formula. Older versions are still accepted so
+// profiles verified before a change are not sent back (see syncNsrpStatusAfterEdit).
+async function nsrpFingerprint(queryable, jobSeekerId, version = 3) {
   const [rows] = await queryable.query('SELECT * FROM job_seekers WHERE id = ?', [jobSeekerId]);
   if (rows.length === 0) return null;
-  const profile = rows[0];
+  let profile = rows[0];
+  if (version === 3) {
+    profile = normalizeNsrpProfile(toBlockLetters({ ...profile, nsrp_full_data: parseJson(profile.nsrp_full_data) || {} }));
+  }
   const [skills] = await queryable.query(
     'SELECT skill_id, proficiency_level FROM job_seeker_skills WHERE job_seeker_id = ? ORDER BY skill_id',
     [jobSeekerId]
@@ -90,17 +96,46 @@ async function nsrpFingerprint(queryable, jobSeekerId, version = 2) {
     fields: Object.fromEntries(NSRP_COLUMNS
       .filter((column) => version === 1 || !DERIVED_COLUMNS.includes(column))
       .map((column) => [column, profile[column]])),
-    full: parseJson(profile.nsrp_full_data),
+    full: version === 3 ? profile.nsrp_full_data : parseJson(profile.nsrp_full_data),
     skills: skills.map((skill) => `${skill.skill_id}:${skill.proficiency_level}`),
   }) || {};
   return crypto.createHash('sha256').update(stableStringify(data)).digest('hex');
+}
+
+// Fingerprints of the saved profile in every version, taken just before a save changes it (under the row lock).
+async function fingerprintsBeforeEdit(queryable, jobSeekerId) {
+  return {
+    v1: await nsrpFingerprint(queryable, jobSeekerId, 1),
+    v2: await nsrpFingerprint(queryable, jobSeekerId, 2),
+    v3: await nsrpFingerprint(queryable, jobSeekerId, 3),
+  };
+}
+
+// Review token: what PESO Admin had on screen when deciding. Covers everything nsrpFingerprint covers
+// (NSRP fields, extended data, skills) plus every uploaded form's id and OCR-confirmed flag, so a new upload
+// or a newly confirmed scan also counts as a change. Computed on request; nothing is stored.
+async function reviewToken(queryable, jobSeekerId) {
+  const fingerprint = await nsrpFingerprint(queryable, jobSeekerId);
+  if (fingerprint === null) return null;
+  const [uploads] = await queryable.query(
+    'SELECT id, ocr_confirmed FROM uploaded_nsrp_forms WHERE job_seeker_id = ? ORDER BY id',
+    [jobSeekerId]
+  );
+  const data = { fingerprint, uploads: uploads.map((u) => `${u.id}:${u.ocr_confirmed ? 1 : 0}`) };
+  return crypto.createHash('sha256').update(stableStringify(data)).digest('hex');
+}
+
+// Every job seeker NSRP write (profile, skills, uploads, OCR confirm) takes this row lock first, and so does
+// PESO's Verify/Return, so a decision never mixes data from before and after a seeker's save.
+async function lockJobSeeker(conn, jobSeekerId) {
+  await conn.query('SELECT id FROM job_seekers WHERE id = ? FOR UPDATE', [jobSeekerId]);
 }
 
 // Called after every NSRP save (profile form, OCR confirm, skills).
 // - Verified profile changed -> back to PESO for re-checking (or not submitted if now incomplete).
 // - Waiting profile became incomplete -> not submitted.
 // Returns the new status when it changed, otherwise null.
-async function syncNsrpStatusAfterEdit(queryable, jobSeekerId, requirements) {
+async function syncNsrpStatusAfterEdit(queryable, jobSeekerId, requirements, before = null) {
   const [rows] = await queryable.query(
     'SELECT id, user_id, first_name, last_name, nsrp_status, nsrp_reviewed_hash FROM job_seekers WHERE id = ?',
     [jobSeekerId]
@@ -110,10 +145,16 @@ async function syncNsrpStatusAfterEdit(queryable, jobSeekerId, requirements) {
   const isComplete = Boolean(requirements?.isComplete);
 
   if (seeker.nsrp_status === 'verified') {
+    const stored = seeker.nsrp_reviewed_hash;
     const current = await nsrpFingerprint(queryable, jobSeekerId);
-    if (current === seeker.nsrp_reviewed_hash) return null;
-    if (await nsrpFingerprint(queryable, jobSeekerId, 1) === seeker.nsrp_reviewed_hash) {
-      // Verified under the original fingerprint and unchanged: upgrade the stored fingerprint.
+    if (current === stored) return null;
+    // Verified under an older fingerprint and unchanged: upgrade the stored fingerprint.
+    //  - Nothing changed at all: an older formula still matches the saved data.
+    //  - First save in block letters: the data before this save matched the stored (older) fingerprint,
+    //    and the only difference now is letter case in the capitalized fields (same version-3 fingerprint).
+    const unchanged = [await nsrpFingerprint(queryable, jobSeekerId, 2), await nsrpFingerprint(queryable, jobSeekerId, 1)].includes(stored);
+    const caseOnly = Boolean(before) && [before.v1, before.v2].includes(stored) && before.v3 === current;
+    if (unchanged || caseOnly) {
       await queryable.query('UPDATE job_seekers SET nsrp_reviewed_hash = ? WHERE id = ?', [current, jobSeekerId]);
       return null;
     }
@@ -166,6 +207,9 @@ module.exports = {
   minSkillMatches,
   requiredMatchesFor,
   nsrpFingerprint,
+  fingerprintsBeforeEdit,
+  reviewToken,
+  lockJobSeeker,
   syncNsrpStatusAfterEdit,
   notifyAdminsOfSubmission,
 };

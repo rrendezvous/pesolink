@@ -39,6 +39,8 @@ function jobInputError(body, saved = null) {
   const titleBlank = saved ? job_title !== undefined && isBlank(job_title) : isBlank(job_title);
   const descBlank = saved ? job_description !== undefined && isBlank(job_description) : isBlank(job_description);
   if (titleBlank || descBlank) return 'Job title and description are required';
+  // The column holds 255 characters; a longer title would otherwise fail with a generic database error.
+  if (job_title !== undefined && String(job_title).trim().length > 255) return 'Job title must be 255 characters or fewer';
   if (!isBlank(job_type) && !JOB_TYPES.includes(job_type)) return `Job type must be one of: ${JOB_TYPES.join(', ')}`;
   if (!isBlank(vacancies) && !(Number.isInteger(Number(vacancies)) && Number(vacancies) >= 1)) {
     return 'Vacancies must be a whole number of at least 1';
@@ -265,6 +267,18 @@ router.put('/jobs/:id', async (req, res) => {
     }
     // Optional fields: omitted keeps the saved value, blank clears it.
     const optional = (value, saved) => (value === undefined ? saved : (value === '' ? null : value));
+    const next = {
+      job_title: job_title ? String(job_title).trim() : job.job_title,
+      job_description: job_description ? String(job_description).trim() : job.job_description,
+      job_type: job_type || job.job_type,
+      salary_min: optional(salary_min, job.salary_min),
+      salary_max: optional(salary_max, job.salary_max),
+      location: optional(location, job.location),
+      vacancies: vacancies || job.vacancies,
+      requirements: optional(requirements, job.requirements),
+      application_email: optional(appEmail, job.application_email),
+      closing_date: optional(typeof closing_date === 'string' ? closing_date.trim() : closing_date, job.closing_date),
+    };
 
     await conn.query(
       `UPDATE job_posts SET
@@ -272,25 +286,34 @@ router.put('/jobs/:id', async (req, res) => {
          location=?, vacancies=?, requirements=?, application_email=?, closing_date=?, status=?
        WHERE id=?`,
       [
-        job_title ? String(job_title).trim() : job.job_title,
-        job_description ? String(job_description).trim() : job.job_description,
-        job_type || job.job_type,
-        optional(salary_min, job.salary_min),
-        optional(salary_max, job.salary_max),
-        optional(location, job.location),
-        vacancies || job.vacancies,
-        optional(requirements, job.requirements),
-        optional(appEmail, job.application_email),
-        optional(typeof closing_date === 'string' ? closing_date.trim() : closing_date, job.closing_date),
+        next.job_title, next.job_description, next.job_type, next.salary_min, next.salary_max,
+        next.location, next.vacancies, next.requirements, next.application_email, next.closing_date,
         status || job.status,
         req.params.id,
       ]
     );
 
+    // "Job Post Updated" goes out only when something job seekers see on the post changed: the fields
+    // above or the required skills. Saving the same values again (e.g. tapping Update Job with no edits)
+    // sends nothing. Values are compared the way they are shown (numbers as numbers, blank text as empty).
+    const asText = (v) => String(v ?? '').trim();
+    const asNumber = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+    const textFields = ['job_title', 'job_description', 'job_type', 'location', 'requirements', 'application_email'];
+    const numberFields = ['salary_min', 'salary_max', 'vacancies'];
+    let postingChanged = textFields.some((f) => asText(next[f]) !== asText(job[f]))
+      || numberFields.some((f) => asNumber(next[f]) !== asNumber(job[f]))
+      || asText(next.closing_date).slice(0, 10) !== asText(job.closing_date).slice(0, 10);
+    if (!postingChanged && Array.isArray(required_skills)) {
+      const [savedSkills] = await conn.query('SELECT skill_id FROM job_required_skills WHERE job_post_id = ?', [job.id]);
+      const idList = (ids) => [...new Set(ids.map(Number))].sort((a, b) => a - b).join(',');
+      postingChanged = idList(required_skills.filter((s) => s.skill_id).map((s) => s.skill_id))
+        !== idList(savedSkills.map((s) => s.skill_id));
+    }
+
     const nextStatus = status || job.status;
     if (nextStatus === 'closed' && job.status !== 'closed') {
-      await closeJobRecords(conn, job.id, req.user.id, job_title || job.job_title, 'the employer');
-    } else if (nextStatus === 'active') {
+      await closeJobRecords(conn, job.id, req.user.id, next.job_title, 'the employer');
+    } else if (nextStatus === 'active' && postingChanged) {
       // Job posting update alert (§3.5.4) for job seekers whose application is still in progress.
       const [active] = await conn.query(
         `SELECT DISTINCT js.user_id FROM job_applications ja JOIN job_seekers js ON js.id = ja.job_seeker_id
@@ -302,7 +325,7 @@ router.put('/jobs/:id', async (req, res) => {
           conn,
           applicant.user_id,
           'Job Post Updated',
-          `${emp.company_name} updated the job post "${job_title || job.job_title}". Open it to review the latest details.`,
+          `${emp.company_name} updated the job post "${next.job_title}". Open it to review the latest details.`,
           'job_post_update',
           job.id,
           'job_post'
@@ -389,7 +412,7 @@ router.get('/jobs/:id/applicants', async (req, res) => {
               js.id AS job_seeker_id, js.first_name, js.middle_name, js.last_name,
               js.contact_number, js.city, js.province, js.education_level, js.course,
               js.years_of_experience, js.employment_status, js.preferred_occupation,
-              js.profile_completed,
+              js.profile_completed, js.nsrp_status,
               u.email
        FROM job_applications ja
        JOIN job_seekers js ON js.id = ja.job_seeker_id

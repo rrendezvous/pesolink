@@ -4,13 +4,14 @@
 // any job as PESO-Referred; a changed verified profile comes back here for re-checking.
 // Also: deactivate / reactivate job seeker accounts.
 // ============================================================
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Alert, RefreshControl, Modal, ScrollView, ActivityIndicator, TouchableOpacity, Image,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Card, Button, EmptyState, Row, Chip, StatusBadge, Input } from '../../src/components/ui';
 import { NsrpProfileView, NsrpRequirements, Section } from '../../src/components/NsrpProfileView';
+import { nsrpCountChanged } from '../../src/utils/adminBadge';
 import { api, getApiError } from '../../src/api/client';
 import { confirmAction } from '../../src/utils/confirm';
 import { currentStatus, NSRP_STATUS_LABELS, NSRP_OPEN_STATUSES } from '../../src/utils/referral';
@@ -36,6 +37,10 @@ export default function NsrpVerification() {
   const [filter, setFilter] = useState('open');
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<any | null>(null);
+  // The item whose details are open. A reply for another item (opened earlier, or after closing) is ignored,
+  // so the window never switches to a different record or reopens by itself.
+  const openId = useRef<number | null>(null);
+  const closeDetail = () => { openId.current = null; setDetail(null); };
   const [detailLoading, setDetailLoading] = useState(false);
   const [note, setNote] = useState('');
   const [deciding, setDeciding] = useState(false);
@@ -48,6 +53,7 @@ export default function NsrpVerification() {
     try {
       const res = await api.get('/admin/job-seekers');
       setSeekers(res.data.job_seekers || []);
+      nsrpCountChanged();
     } catch (err) {
       console.warn(getApiError(err));
     }
@@ -57,6 +63,7 @@ export default function NsrpVerification() {
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const openProfile = async (seeker: any) => {
+    openId.current = seeker.id;
     setDetail({ profile: seeker });
     setNote('');
     setForms(null);
@@ -69,6 +76,7 @@ export default function NsrpVerification() {
         await api.put(`/admin/job-seekers/${seeker.id}/nsrp-status`, { nsrp_status: 'for_review' });
       }
       const res = await api.get(`/admin/job-seekers/${seeker.id}/profile`);
+      if (openId.current !== seeker.id) return;
       setDetail(res.data);
       // Start from PESO's last eligibility assessment, so re-verifying a changed profile keeps it
       // unless PESO changes it (Verify saves exactly what is ticked here).
@@ -79,20 +87,24 @@ export default function NsrpVerification() {
       }
       load();
     } catch (err) {
+      if (openId.current !== seeker.id) return;
       Alert.alert('Error', getApiError(err));
-      setDetail(null);
+      closeDetail();
     } finally {
-      setDetailLoading(false);
+      if (openId.current === seeker.id) setDetailLoading(false);
     }
   };
 
   // Uploaded NSRP form images are large, so they load only when PESO asks to compare, 4 at a time (newest first).
   const loadForms = async (more = false) => {
     if (!detail?.profile) return;
+    const seekerId = detail.profile.id;
     setFormsLoading(true);
     try {
       const offset = more && forms ? forms.length : 0;
-      const res = await api.get(`/admin/job-seekers/${detail.profile.id}/nsrp-forms`, { params: { offset } });
+      const res = await api.get(`/admin/job-seekers/${seekerId}/nsrp-forms`, { params: { offset } });
+      // Forms of a seeker whose profile is no longer open must never appear under another seeker.
+      if (openId.current !== seekerId) return;
       const page = res.data.forms || [];
       setForms((prev) => (more && prev ? [...prev, ...page] : page));
     } catch (err) {
@@ -120,11 +132,18 @@ export default function NsrpVerification() {
           nsrp_status: next,
           notes: reason || null,
           peso_assessment: next === 'verified' ? { programs, other: programOther } : undefined,
+          // Identifies the data on screen; the server refuses if the profile changed since it was opened.
+          review_token: detail?.review_token,
         });
-        setDetail(null);
+        closeDetail();
         await load();
         Alert.alert('Saved', `NSRP profile marked ${NSRP_STATUS_LABELS[next]}. The job seeker has been notified.`);
       } catch (err: any) {
+        if (err?.response?.data?.code === 'REVIEW_STALE') {
+          // The job seeker changed the profile, skills or uploaded forms after PESO opened it.
+          Alert.alert('Profile Changed', getApiError(err), [{ text: 'Reload', onPress: () => openProfile(profile) }]);
+          return;
+        }
         const missing = err?.response?.data?.missing_fields;
         Alert.alert('Error', Array.isArray(missing) && missing.length
           ? `${getApiError(err)}:\n\n${missing.join('\n')}`
@@ -147,7 +166,7 @@ export default function NsrpVerification() {
         setBusyId(seeker.id);
         try {
           await api.put(`/admin/job-seekers/${seeker.id}/${action}`);
-          setDetail(null);
+          closeDetail();
           await load();
         } catch (err) {
           Alert.alert('Error', getApiError(err));
@@ -242,7 +261,7 @@ export default function NsrpVerification() {
         }}
       />
 
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => closeDetail()}>
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             {profile && (
@@ -372,7 +391,7 @@ export default function NsrpVerification() {
                 )}
 
                 <View style={{ marginTop: Spacing.md }}>
-                  <Button testID="close-profile" title="Done" variant="secondary" onPress={() => setDetail(null)} />
+                  <Button testID="close-profile" title="Done" variant="secondary" onPress={() => closeDetail()} />
                 </View>
               </ScrollView>
             )}

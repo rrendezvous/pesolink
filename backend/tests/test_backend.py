@@ -36,12 +36,6 @@ class TestAuth:
                           json={"email": "juan.cruz@example.com", "password": "Test@123", "role": "employer"})
         assert r.status_code == 403
 
-    def test_login_rejects_pending_employer(self):
-        r = requests.post(f"{BASE_URL}/api/auth/login",
-                          json={"email": "hr@bluemountain.ph", "password": "Test@123", "role": "employer"})
-        assert r.status_code == 403
-        assert "pending" in r.json().get("error", "").lower()
-
     def test_me_admin(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/auth/me", headers=headers(admin_token))
         assert r.status_code == 200

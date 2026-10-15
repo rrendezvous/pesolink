@@ -16,6 +16,12 @@ async function call(method, path, token, body) {
   try { data = await r.json(); } catch {}
   return { status: r.status, data };
 }
+
+// PESO decides on the profile it opened: read the review token the admin screen gets, then send it back.
+async function decide(adminToken, seekerId, body) {
+  const opened = await call('GET', `/admin/job-seekers/${seekerId}/profile`, adminToken);
+  return call('PUT', `/admin/job-seekers/${seekerId}/nsrp-status`, adminToken, { ...body, review_token: opened.data?.review_token });
+}
 async function login(email, password, role) {
   const r = await call('POST', '/auth/login', null, { email, password, role });
   if (r.status !== 200) throw new Error(`login ${email} ${r.status} ${JSON.stringify(r.data)}`);
@@ -107,7 +113,7 @@ check('seeker notified For Review', (await notifs(juan)).some((n) => n.title ===
 r = await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'for_review' });
 check('second open is a no-op', r.status === 200 && r.data.nsrp_status === 'for_review');
 check('return without note 400', (await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'needs_revision' })).status === 400);
-r = await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'verified', notes: 'Checked against the paper form.' });
+r = await decide(admin, juanId, { nsrp_status: 'verified', notes: 'Checked against the paper form.' });
 check('verify 200', r.status === 200, JSON.stringify(r.data));
 check('seeker notified verified', (await notifs(juan)).some((n) => n.title === 'NSRP Profile PESO-Verified'));
 check('cannot decide again once verified', (await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 400);
@@ -127,8 +133,11 @@ check('admins told to re-check', (await notifs(admin)).some((n) => n.title === '
 check('cannot apply while re-checking', (await call('POST', '/applications', juan, { job_post_id: rider.id })).data?.code === 'NSRP_NOT_VERIFIED');
 r = await call('GET', `/employer/jobs/${juniorDev.id}/applicants`, tech);
 check('existing application stays with employer', r.data.applicants.some((a) => a.application_id === juanApp));
-r = await call('PUT', `/admin/job-seekers/${juanId}/nsrp-status`, admin, { nsrp_status: 'verified' });
+check('employer sees the profile is being re-checked', r.data.applicants.find((a) => a.application_id === juanApp)?.nsrp_status === 'submitted');
+r = await decide(admin, juanId, { nsrp_status: 'verified' });
 check('PESO re-verifies', r.status === 200);
+r = await call('GET', `/employer/jobs/${juniorDev.id}/applicants`, tech);
+check('employer sees it verified again', r.data.applicants.find((a) => a.application_id === juanApp)?.nsrp_status === 'verified');
 
 const anaSkills = (await profileOf(ana)).skills;
 r = await call('POST', '/job-seeker/skills', ana, { skills: anaSkills.slice(1).map((s) => ({ skill_id: s.id, proficiency_level: 'intermediate' })) });
@@ -151,6 +160,49 @@ r = await call('GET', '/admin/stats', admin);
 check('stats updated', r.data.pending_nsrp_reviews === 1 && r.data.verified_nsrp_profiles === 2, JSON.stringify(r.data));
 r = await call('GET', '/applications/my-applications', juan);
 check('Juan sees his applications', r.data.applications.length >= 1);
+
+console.log('PESO decides only on the data it opened (review token)');
+{
+  // Ana is waiting for PESO here (her skill change sent her back). PESO opens her profile.
+  const anaId = idOf('ana.bautista@example.com');
+  await call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'for_review' });
+  const open = async () => (await call('GET', `/admin/job-seekers/${anaId}/profile`, admin)).data.review_token;
+  const verifyWith = (token) => call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'verified', review_token: token });
+  const returnWith = (token) => call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'needs_revision', notes: 'Fix the TIN.', review_token: token });
+  const stale = (res) => res.status === 409 && res.data?.code === 'REVIEW_STALE'
+    && res.data.error === 'This profile changed since you opened it. Reload and review again.';
+  const t0 = await open();
+  check('admin view returns a review token', typeof t0 === 'string' && t0.length === 64);
+  check('token is the same when nothing changed', (await open()) === t0);
+  check('decision without a token refused', stale(await call('PUT', `/admin/job-seekers/${anaId}/nsrp-status`, admin, { nsrp_status: 'verified' })));
+
+  r = await saveProfile(ana, {}, { religion: 'Changed During Review' });
+  check('seeker edit during review keeps For Review', r.status === 200 && r.data.profile.nsrp_status === 'for_review', JSON.stringify(r.data.profile?.nsrp_status));
+  check('profile changed after opening: Verify refused', stale(await verifyWith(t0)));
+  check('profile changed after opening: Return refused', stale(await returnWith(t0)));
+
+  const t1 = await open();
+  check('reloaded view has a new token', t1 !== t0);
+  const anaSkills = (await profileOf(ana)).skills;
+  const allSkills = (await call('GET', '/skills', ana)).data;
+  const newSkill = (allSkills.skills || allSkills).find((s) => !anaSkills.some((own) => own.id === s.id));
+  await call('POST', '/job-seeker/skills', ana, { skills: [...anaSkills.map((s) => ({ skill_id: s.id, proficiency_level: s.proficiency_level })), { skill_id: newSkill.id, proficiency_level: 'beginner' }] });
+  check('skill selection changed after opening: Verify refused', stale(await verifyWith(t1)));
+
+  const t2 = await open();
+  r = await call('POST', '/nsrp/upload', ana, { image_base64: 'aGVsbG8=' });
+  const uploadId = r.data.upload_id;
+  check('new upload after opening: Verify refused', r.status === 201 && stale(await verifyWith(t2)));
+
+  const t3 = await open();
+  r = await call('POST', '/nsrp/confirm', ana, { upload_id: uploadId, confirmed_data: { nsrp_full_data: {} } });
+  check('OCR confirm with no field changes keeps For Review', r.status === 200 && !r.data.nsrp_status_changed_to, JSON.stringify(r.data));
+  check('OCR-confirmed flag changed after opening: Return refused', stale(await returnWith(t3)));
+
+  const t4 = await open();
+  r = await verifyWith(t4);
+  check('reloaded and reviewed again: Verify allowed', r.status === 200 && r.data.nsrp_status === 'verified', JSON.stringify(r.data));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1,6 +1,7 @@
 // ============================================================
 // Read-only NSRP profile view (PESO Admin referral review + seeker monitoring)
 // ============================================================
+import { formatBirthDate } from '../utils/dates';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Row } from './ui';
@@ -38,7 +39,7 @@ export function NsrpProfileView({ profile, skills }: { profile: any; skills: any
     <>
       <Section title="I. Personal Information">
         <Field label="Suffix" value={full.suffix} />
-        <Field label="Date of Birth" value={formatDate(p.date_of_birth)} />
+        <Field label="Date of Birth" value={formatBirthDate(p.date_of_birth)} />
         <Field label="Place of Birth" value={full.place_of_birth} />
         <Field label="Sex" value={optionLabel(p.gender)} />
         <Field label="Civil Status" value={optionLabel(p.civil_status)} />
