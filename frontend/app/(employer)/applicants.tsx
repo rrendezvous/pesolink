@@ -43,6 +43,10 @@ export default function Applicants() {
   // Until the first reply for a list arrives, the screen says Loading (or shows the error), never "no applicants".
   const [jobsLoaded, setJobsLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState<{ key: string; message: string } | null>(null);
+  // What is on screen right now, for load() (the focus callback keeps the load() of an earlier render,
+  // whose state values would be out of date).
+  const loadedJobRef = useRef<string | undefined>(undefined);
+  const jobsLoadedRef = useRef(false);
   const listKey = jobId || 'jobs';
   const load = async () => {
     const request = ++latestRequest.current;
@@ -53,6 +57,7 @@ export default function Applicants() {
         if (request !== latestRequest.current) return;
         setJobs(res.data.jobs || []);
         setJobsLoaded(true);
+        jobsLoadedRef.current = true;
         setLoadFailed(null);
         return;
       }
@@ -60,12 +65,13 @@ export default function Applicants() {
       if (request !== latestRequest.current) return;
       const fresh: any[] = res.data.applicants || [];
       setJobData({ jobId, applicants: fresh, job: res.data.job || null });
+      loadedJobRef.current = jobId;
       // An open details window shows the fresh record (e.g. the applicant changed the profile after verification).
       setSelected((prev: any) => (prev ? fresh.find((a) => a.application_id === prev.application_id) || prev : prev));
       setLoadFailed(null);
     } catch (err) {
       if (request !== latestRequest.current) return;
-      const hasData = jobId ? isCurrent : jobsLoaded;
+      const hasData = jobId ? loadedJobRef.current === jobId : jobsLoadedRef.current;
       // With a list already on screen a failed refresh keeps it and says so; without one, the error replaces "Loading".
       if (hasData) Alert.alert('Error', getApiError(err));
       else setLoadFailed({ key, message: getApiError(err) });
