@@ -15,8 +15,11 @@ const router = express.Router();
 router.use(authenticate, requireRole('job_seeker'));
 
 // Helper: get job_seeker_id from user_id
-async function getJobSeekerId(userId) {
-  const [rows] = await db.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
+// `queryable`: pass the connection a route already holds, so it never waits for a second pool connection
+// (with every connection held by waiting routes, that could hang). Call it before beginTransaction: a read
+// inside the transaction would fix its snapshot before the job seeker row lock is taken.
+async function getJobSeekerId(userId, queryable = db) {
+  const [rows] = await queryable.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
   return rows[0]?.id || null;
 }
 
@@ -74,7 +77,7 @@ router.post('/profile', async (req, res) => {
 
   const conn = await db.getConnection();
   try {
-    const jsId = await getJobSeekerId(req.user.id);
+    const jsId = await getJobSeekerId(req.user.id, conn);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
     await conn.beginTransaction();
@@ -189,12 +192,9 @@ router.post('/skills', async (req, res) => {
 
   const conn = await db.getConnection();
   try {
+    const jsId = await getJobSeekerId(req.user.id, conn);
+    if (!jsId) return res.status(404).json({ error: 'Profile not found' });
     await conn.beginTransaction();
-    const jsId = await getJobSeekerId(req.user.id);
-    if (!jsId) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Profile not found' });
-    }
 
     await lockJobSeeker(conn, jsId);
     // Replace existing
@@ -233,7 +233,7 @@ router.post('/skills', async (req, res) => {
 router.delete('/skills/:skillId', async (req, res) => {
   const conn = await db.getConnection();
   try {
-    const jsId = await getJobSeekerId(req.user.id);
+    const jsId = await getJobSeekerId(req.user.id, conn);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
     await conn.beginTransaction();

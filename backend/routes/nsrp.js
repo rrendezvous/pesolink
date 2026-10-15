@@ -33,8 +33,11 @@ function stripImageDataUrl(imageBase64) {
   return String(imageBase64 || '').replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
 }
 
-async function getJobSeekerId(userId) {
-  const [rows] = await db.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
+// `queryable`: pass the connection a route already holds, so it never waits for a second pool connection
+// (with every connection held by waiting routes, that could hang). Call it before beginTransaction: a read
+// inside the transaction would fix its snapshot before the job seeker row lock is taken.
+async function getJobSeekerId(userId, queryable = db) {
+  const [rows] = await queryable.query('SELECT id FROM job_seekers WHERE user_id = ?', [userId]);
   return rows[0]?.id || null;
 }
 
@@ -66,7 +69,7 @@ router.post('/upload', async (req, res) => {
 
   const conn = await db.getConnection();
   try {
-    const jsId = await getJobSeekerId(req.user.id);
+    const jsId = await getJobSeekerId(req.user.id, conn);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
     // A new upload is part of what PESO reviews, so it takes the same lock as PESO's decision.
@@ -204,12 +207,9 @@ router.post('/confirm', async (req, res) => {
 
   const conn = await db.getConnection();
   try {
+    const jsId = await getJobSeekerId(req.user.id, conn);
+    if (!jsId) return res.status(404).json({ error: 'Profile not found' });
     await conn.beginTransaction();
-    const jsId = await getJobSeekerId(req.user.id);
-    if (!jsId) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Profile not found' });
-    }
 
     // OCR confirm only adds or replaces what was reviewed; blank values never erase saved profile data
     // (scanning page 2 must not clear the page-1 fields, and vice versa).
