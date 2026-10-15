@@ -67,7 +67,8 @@ function validateReferralReadiness(profile = {}, options = {}) {
 // Recompute job_seekers.profile_completed from the full NSRP readiness check, and send a
 // changed PESO-verified profile back to PESO for re-checking.
 // `queryable` is the db pool or an open transaction connection.
-async function refreshProfileCompleted(queryable, jobSeekerId) {
+// `before` (optional): fingerprints of the profile taken just before the save (see fingerprintsBeforeEdit).
+async function refreshProfileCompleted(queryable, jobSeekerId, before = null) {
   const [rows] = await queryable.query('SELECT * FROM job_seekers WHERE id = ?', [jobSeekerId]);
   if (rows.length === 0) return null;
   const [[skillCountRow]] = await queryable.query(
@@ -76,7 +77,7 @@ async function refreshProfileCompleted(queryable, jobSeekerId) {
   );
   const result = validateReferralReadiness(rows[0], { selectedSkillCount: skillCountRow?.count || 0 });
   await queryable.query('UPDATE job_seekers SET profile_completed = ? WHERE id = ?', [result.isComplete, jobSeekerId]);
-  result.nsrp_status_changed_to = await syncNsrpStatusAfterEdit(queryable, jobSeekerId, result);
+  result.nsrp_status_changed_to = await syncNsrpStatusAfterEdit(queryable, jobSeekerId, result, before);
   return result;
 }
 

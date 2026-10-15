@@ -35,9 +35,9 @@ const pedro = await login('pedro.reyes@example.com', 'Test@123', 'job_seeker');
 
 console.log('Seeded profiles carry the form structure and derived summaries');
 let p = (await call('GET', '/job-seeker/profile', ana)).data;
-check('Ana education table present', full(p.profile).education?.secondary?.school === 'Tagoloan National High School');
-check('summary filled from table', /Tagoloan National High School/.test(full(p.profile).secondary_background || ''));
-check('address built from House No./Street + Barangay', p.profile.address === 'Purok 1, Poblacion', p.profile.address);
+check('Ana education table present', full(p.profile).education?.secondary?.school === 'TAGOLOAN NATIONAL HIGH SCHOOL');
+check('summary filled from table', /TAGOLOAN NATIONAL HIGH SCHOOL/.test(full(p.profile).secondary_background || ''));
+check('address built from House No./Street + Barangay', p.profile.address === 'PUROK 1, POBLACION', p.profile.address);
 check('education level derived (highest level)', /Secondary/.test(p.profile.education_level || ''), p.profile.education_level);
 check('19/19 required items', p.referral_requirements.isComplete === true, JSON.stringify(p.referral_requirements.missing_fields));
 
@@ -57,8 +57,8 @@ const body = {
 };
 let r = await call('POST', '/job-seeker/profile', ana, body);
 check('save 200', r.status === 200, JSON.stringify(r.data));
-check('tertiary summary derived', /USTP, BS Hospitality Management/.test(full(r.data.profile).tertiary_background || ''), full(r.data.profile).tertiary_background);
-check('undergraduate highest level', r.data.profile.education_level === 'Tertiary (undergraduate)' && r.data.profile.course === 'BS Hospitality Management', `${r.data.profile.education_level} / ${r.data.profile.course}`);
+check('tertiary summary derived', /USTP, BS HOSPITALITY MANAGEMENT/.test(full(r.data.profile).tertiary_background || ''), full(r.data.profile).tertiary_background);
+check('undergraduate highest level', r.data.profile.education_level === 'Tertiary (undergraduate)' && r.data.profile.course === 'BS HOSPITALITY MANAGEMENT', `${r.data.profile.education_level} / ${r.data.profile.course}`);
 check('changing education sends verified profile back to PESO', r.data.nsrp_status_changed_to === 'submitted');
 const trainings = full(r.data.profile).trainings || '';
 check('training summary does not repeat "Certificate"', !/Certificate: Certificate/.test(trainings) && /TESDA, Certificate/.test(trainings), trainings);
@@ -93,8 +93,8 @@ r = await call('POST', '/nsrp/confirm', ana, {
 check('confirm 200', r.status === 200, JSON.stringify(r.data));
 const anaAfter = (await call('GET', '/job-seeker/profile', ana)).data.profile;
 check('page-1 fields kept (name, birth date, city)', anaAfter.first_name === anaBefore.first_name && anaAfter.date_of_birth === anaBefore.date_of_birth && anaAfter.city === anaBefore.city);
-check('existing education levels kept, new level added', full(anaAfter).education?.secondary?.school === 'Tagoloan National High School' && full(anaAfter).education?.graduate?.school === 'Xavier University' && full(anaAfter).education?.elementary?.school === 'Tagoloan Central School');
-check('other NSRP data kept', full(anaAfter).house_street === 'Purok 1' && (full(anaAfter).work_rows || []).length > 0);
+check('existing education levels kept, new level added', full(anaAfter).education?.secondary?.school === 'TAGOLOAN NATIONAL HIGH SCHOOL' && full(anaAfter).education?.graduate?.school === 'XAVIER UNIVERSITY' && full(anaAfter).education?.elementary?.school === 'TAGOLOAN CENTRAL SCHOOL');
+check('other NSRP data kept', full(anaAfter).house_street === 'PUROK 1' && (full(anaAfter).work_rows || []).length > 0);
 
 console.log('Date of birth: real date, not in the future (no minimum age)');
 {

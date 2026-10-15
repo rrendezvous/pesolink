@@ -39,6 +39,68 @@ function educationLine(level, row) {
   ]);
 }
 
+// NSRP Form 1 asks for answers in block letters. These free-text answers are saved in capitals (Ñ and
+// other letters keep their marks: JavaScript's toUpperCase turns ñ into Ñ). Everything else is kept as
+// typed: email, phone and ID numbers, height/weight, dates, salary and other numbers, fixed choices and
+// checkboxes, skills picked from the catalog, and anything outside the NSRP form (job posts, employer
+// company profiles, cover letters, admin notes). Existing records change only on the job seeker's next save.
+const BLOCK_LETTER_BASE = ['first_name', 'middle_name', 'last_name', 'city', 'province'];
+const BLOCK_LETTER_FULL = [
+  'suffix', 'place_of_birth', 'religion', 'house_street', 'village', 'barangay',
+  'disability_other', 'employment_type_other', 'terminated_abroad_country', 'available_when',
+  'preferred_occupations', 'preferred_local_locations', 'preferred_overseas_locations', 'other_skills_other',
+];
+const BLOCK_LETTER_LISTS = ['preferred_occupation_list', 'local_location_list', 'overseas_location_list'];
+const BLOCK_LETTER_ROWS = {
+  training_rows: ['course', 'institution', 'certificate'],
+  eligibility_rows: ['eligibility'],
+  license_rows: ['license'],
+  work_rows: ['company', 'address', 'position'],
+};
+const BLOCK_LETTER_EDUCATION = ['school', 'course', 'level_reached', 'awards'];
+
+const caps = (v) => (typeof v === 'string' ? v.toUpperCase() : v);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// The app writes "Others, specify" answers into a checklist summary too; capitalize them there as well.
+function capsInSummary(summary, original) {
+  if (typeof summary !== 'string' || typeof original !== 'string' || !original.trim()) return summary;
+  return summary.replace(new RegExp(escapeRegExp(original.trim()), 'gi'), original.trim().toUpperCase());
+}
+
+function toBlockLetters(profile) {
+  const base = { ...profile };
+  for (const k of BLOCK_LETTER_BASE) base[k] = caps(base[k]);
+  if (!base.nsrp_full_data || typeof base.nsrp_full_data !== 'object') return base;
+  const full = { ...base.nsrp_full_data };
+  full.disability = capsInSummary(full.disability, full.disability_other);
+  full.other_skills_acquired = capsInSummary(full.other_skills_acquired, full.other_skills_other);
+  for (const k of BLOCK_LETTER_FULL) full[k] = caps(full[k]);
+  for (const k of BLOCK_LETTER_LISTS) if (Array.isArray(full[k])) full[k] = full[k].map(caps);
+  for (const [k, fields] of Object.entries(BLOCK_LETTER_ROWS)) {
+    if (Array.isArray(full[k])) {
+      full[k] = full[k].map((row) => {
+        if (!row || typeof row !== 'object') return row;
+        const next = { ...row };
+        for (const f of fields) next[f] = caps(next[f]);
+        return next;
+      });
+    }
+  }
+  if (full.education && typeof full.education === 'object') {
+    full.education = Object.fromEntries(Object.entries(full.education).map(([level, row]) => {
+      if (!row || typeof row !== 'object') return [level, row];
+      const next = { ...row };
+      for (const f of BLOCK_LETTER_EDUCATION) next[f] = caps(next[f]);
+      return [level, next];
+    }));
+  }
+  if (full.languages && typeof full.languages === 'object' && full.languages.other && typeof full.languages.other === 'object') {
+    full.languages = { ...full.languages, other: { ...full.languages.other, name: caps(full.languages.other.name) } };
+  }
+  base.nsrp_full_data = full;
+  return base;
+}
+
 // Fills summary fields from the structured form rows. `profile` has the base columns plus nsrp_full_data.
 function normalizeNsrpProfile(profile) {
   const full = { ...(profile.nsrp_full_data || {}) };
@@ -141,5 +203,5 @@ function dateOfBirthError(value) {
 const DERIVED_COLUMNS = ['address', 'contact_number', 'education_level', 'course', 'preferred_occupation'];
 
 module.exports = {
-  normalizeNsrpProfile, EDUCATION_LEVELS, LANGUAGES, LANGUAGE_SKILLS, DERIVED_COLUMNS, dateOfBirthError,
+  normalizeNsrpProfile, toBlockLetters, EDUCATION_LEVELS, LANGUAGES, LANGUAGE_SKILLS, DERIVED_COLUMNS, dateOfBirthError,
 };

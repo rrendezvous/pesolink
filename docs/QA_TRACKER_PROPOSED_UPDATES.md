@@ -56,7 +56,7 @@ Made from the Oct 4 copy. Only the PESO-Link sheet changed; the other groups' sh
 | 1 | Registration | Under Development | Email format not checked by the app or the backend (`abc` is accepted). |
 | 2 | Login and Logout | Ready to Deploy | Final; tested (API, pytest, emulator). |
 | 3 | Dashboard | Ready to Deploy | NSRP status, counts and recent applications; checked on the emulator. The manuscript will be updated to match the app, so the code is not expected to change. |
-| 4 | NSRP-Based Digital Profile Encoding | Under Development | Form 1 layout matched item by item, but PESO must confirm the form version, the 19 required items and which fields to keep. Date-of-birth format differs. |
+| 4 | NSRP-Based Digital Profile Encoding | Under Development | Form 1 layout matched item by item. NSRP Form 1 (January 2017) is the version PESO uses (2026-10-15); the 19 required items and which fields to keep can be adjusted after the PESO visit. Date of birth is typed and shown as mm/dd/yyyy like the form (stored as YYYY-MM-DD). NSRP free-text answers are saved in block letters: this follows the form's instruction and will be confirmed with PESO. Remaining before Ready: evidence/recordings of the updated form. |
 | 5 | OCR-Assisted Data Extraction (Optional) | Under Development | 95/95 on the Jan 2017 sample only; real handwritten forms and phone photos untested; some corrections tuned to the sample. |
 | 6 | Skills Encoding | Under Development | Skills list (67) not confirmed by PESO. |
 | 7 | Submit NSRP Profile to PESO | Under Development | Deviation from the paper (approve-once), in manuscript V13.5 but not yet discussed with the adviser; 19 items need PESO confirmation. |

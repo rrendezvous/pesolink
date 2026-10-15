@@ -103,7 +103,7 @@ export default function ProfileScreen() {
   const [form, setForm] = useState<any>({
     first_name: '', middle_name: '', last_name: '',
     date_of_birth: '', gender: '', civil_status: '',
-    contact_number: '', address: '', city: '', province: 'Misamis Oriental',
+    contact_number: '', address: '', city: '', province: 'MISAMIS ORIENTAL',
     education_level: '', course: '',
     years_of_experience: '0',
     employment_status: '', preferred_occupation: '',
@@ -157,7 +157,7 @@ export default function ProfileScreen() {
           contact_number: prof.contact_number || '',
           address: prof.address || '',
           city: prof.city || '',
-          province: prof.province || 'Misamis Oriental',
+          province: prof.province || 'MISAMIS ORIENTAL',
           education_level: prof.education_level || '',
           course: prof.course || '',
           years_of_experience: String(prof.years_of_experience ?? 0),

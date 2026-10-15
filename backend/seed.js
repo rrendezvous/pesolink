@@ -7,7 +7,7 @@ const path = require('path');
 const db = require('./db');
 const { syncSkills } = require('./seed-skills');
 const { nsrpFingerprint } = require('./services/nsrpReview');
-const { normalizeNsrpProfile } = require('./services/nsrpForm');
+const { normalizeNsrpProfile, toBlockLetters } = require('./services/nsrpForm');
 
 // Fill in the NSRP extended fields that are not stored as job_seekers columns.
 function nsrpData(overrides) {
@@ -181,7 +181,7 @@ async function run() {
   ];
 
   for (const seeker of seekerData) {
-    const s = { ...seeker, ...normalizeNsrpProfile(seeker) };
+    const s = { ...seeker, ...normalizeNsrpProfile(toBlockLetters(seeker)) };
     const pwHash = await hash(s.password);
     const [userRes] = await db.query(
       "INSERT INTO users (email, password_hash, role, account_status) VALUES (?, ?, 'job_seeker', 'active')",

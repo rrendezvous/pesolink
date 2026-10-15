@@ -10,8 +10,8 @@ const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const nsrpOcr = require('../services/nsrpOcr');
 const { refreshProfileCompleted } = require('../services/nsrpProfileValidation');
-const { lockJobSeeker } = require('../services/nsrpReview');
-const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
+const { lockJobSeeker, fingerprintsBeforeEdit } = require('../services/nsrpReview');
+const { normalizeNsrpProfile, toBlockLetters, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
 router.use(authenticate, requireRole('job_seeker'));
@@ -214,6 +214,7 @@ router.post('/confirm', async (req, res) => {
     // OCR confirm only adds or replaces what was reviewed; blank values never erase saved profile data
     // (scanning page 2 must not clear the page-1 fields, and vice versa).
     await lockJobSeeker(conn, jsId);
+    const before = await fingerprintsBeforeEdit(conn, jsId);
     const [currentRows] = await conn.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
     const current = currentRows[0];
     let currentFull = current.nsrp_full_data || {};
@@ -241,7 +242,7 @@ router.post('/confirm', async (req, res) => {
       'preferred_occupation',
     ];
     const mergedBase = Object.fromEntries(BASE.map((k) => [k, filled(confirmed_data[k]) && confirmed_data[k] !== 0 ? confirmed_data[k] : current[k]]));
-    const d = normalizeNsrpProfile({ ...mergedBase, nsrp_full_data: mergedFull });
+    const d = normalizeNsrpProfile(toBlockLetters({ ...mergedBase, nsrp_full_data: mergedFull }));
 
     await conn.query(
       `UPDATE job_seekers SET
@@ -255,7 +256,7 @@ router.post('/confirm', async (req, res) => {
         JSON.stringify(d.nsrp_full_data), jsId,
       ],
     );
-    const requirements = await refreshProfileCompleted(conn, jsId);
+    const requirements = await refreshProfileCompleted(conn, jsId, before);
 
     // Mark every page scanned into this review as confirmed (only the job seeker's own uploads).
     const confirmedIds = [...new Set([upload_id, ...(Array.isArray(upload_ids) ? upload_ids : [])]

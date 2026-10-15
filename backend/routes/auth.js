@@ -60,8 +60,9 @@ router.post('/register', async (req, res) => {
        VALUES (?, ?, ?, ?)`,
       [
         userId,
-        profile?.first_name || '',
-        profile?.last_name || '',
+        // NSRP Form 1 asks for names in block letters (same rule as the NSRP profile).
+        String(profile?.first_name || '').toUpperCase(),
+        String(profile?.last_name || '').toUpperCase(),
         profile?.contact_number || '',
       ]
     );

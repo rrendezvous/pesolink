@@ -5,8 +5,10 @@ const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validateReferralReadiness, refreshProfileCompleted } = require('../services/nsrpProfileValidation');
-const { NSRP_STATUS_LABELS, notifyAdminsOfSubmission, lockJobSeeker } = require('../services/nsrpReview');
-const { normalizeNsrpProfile, dateOfBirthError } = require('../services/nsrpForm');
+const {
+  NSRP_STATUS_LABELS, notifyAdminsOfSubmission, lockJobSeeker, fingerprintsBeforeEdit,
+} = require('../services/nsrpReview');
+const { normalizeNsrpProfile, toBlockLetters, dateOfBirthError } = require('../services/nsrpForm');
 
 const router = express.Router();
 
@@ -66,7 +68,7 @@ router.post('/profile', async (req, res) => {
     employment_status,
     preferred_occupation,
     nsrp_full_data,
-  } = normalizeNsrpProfile(req.body);
+  } = normalizeNsrpProfile(toBlockLetters(req.body));
   const dobError = dateOfBirthError(date_of_birth);
   if (dobError) return res.status(400).json({ error: dobError });
 
@@ -77,6 +79,7 @@ router.post('/profile', async (req, res) => {
 
     await conn.beginTransaction();
     await lockJobSeeker(conn, jsId);
+    const before = await fingerprintsBeforeEdit(conn, jsId);
     await conn.query(
       `UPDATE job_seekers SET
          first_name=?, middle_name=?, last_name=?, date_of_birth=?, gender=?,
@@ -107,7 +110,7 @@ router.post('/profile', async (req, res) => {
 
     // "Profile complete" means all required NSRP fields are filled - the gate for submitting the NSRP to PESO.
     // A change to a PESO-verified profile sends it back to PESO for re-checking.
-    const referralRequirements = await refreshProfileCompleted(conn, jsId);
+    const referralRequirements = await refreshProfileCompleted(conn, jsId, before);
     await conn.commit();
 
     const [updated] = await db.query('SELECT * FROM job_seekers WHERE id = ?', [jsId]);
