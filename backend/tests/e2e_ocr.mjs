@@ -92,6 +92,13 @@ check('16 MB upload refused with 413 and a message', huge.status === 413 && /too
 r = await call('GET', '/job-seeker/profile', token);
 check('server still answers after a too-large upload', r.status === 200, String(r.status));
 
+console.log('Several scans at the same time wait their turn (no failures)');
+{
+  const four = await Promise.all([0, 1, 2, 3].map(() => scan(token, 'nsrp-page-2-sample.jpg')));
+  check('4 simultaneous scans all read page 2', four.every((x) => x.status === 200 && x.data?.page_type === 'page2'),
+    JSON.stringify(four.map((x) => [x.status, x.data?.page_type])));
+}
+
 console.log('Reading rules (no image needed)');
 const { parseNsrpText } = createRequire(import.meta.url)('../services/nsrpOcr.js');
 const rules = (regions) => parseNsrpText('', { __page_type: 'page1', ...regions }).nsrp_full_data;
@@ -100,6 +107,10 @@ check('date of birth in the future is not accepted', parseNsrpText('', { __page_
 check('date of birth with slashes read as 1/7 is recovered', parseNsrpText('', { __page_type: 'page1', date_of_birth: '127282006' }).date_of_birth === '2006-12-28');
 check('"NA" with a stray mark counts as blank', rules({ household_id: '3 NA' }).household_id === '');
 check('a real ID number is never taken for NA', rules({ household_id: '1234-5678-9012' }).household_id === '1234-5678-9012');
+check('a month read above 12 (leading 0 misread) is repaired', parseNsrpText('', { __page_type: 'page1', date_of_birth: '26/23/2003' }).date_of_birth === '2003-06-23');
+check('Gmail address: underscore read for a dot is fixed', rules({ email_address: 'juan_cruz@gmail.com' }).email_address === 'juan.cruz@gmail.com');
+check('other providers keep underscores and their own names', rules({ email_address: 'juan_cruz@yahoo.com' }).email_address === 'juan_cruz@yahoo.com'
+  && rules({ email_address: 'maria@email.com' }).email_address === 'maria@email.com');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

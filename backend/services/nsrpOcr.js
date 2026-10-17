@@ -163,7 +163,7 @@ const DIGITS = '0123456789';
 const FIELD_CHARS = {
   date_of_birth: `${DIGITS}/-`,
   passport_expiry: `${DIGITS}/-NA`,
-  cell_phone_number: `${DIGITS}-+NA`,
+  cell_phone_number: `${DIGITS}-+`,
   landline_number: `${DIGITS}-()NA`,
   email_address: `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ${DIGITS}@._-+`,
   tin: `${DIGITS}-NA`,
@@ -1467,7 +1467,10 @@ function validateDate(value, maxYear = new Date().getFullYear()) {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const slashMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
   if (slashMatch) {
-    const [, mm, dd, yyyy] = slashMatch;
+    let [, mm] = slashMatch;
+    const [, , dd, yyyy] = slashMatch;
+    // A month cannot be above 12: a leading 0 that touched the cell's line is often read as 2, 3, 6, 8 or 9.
+    if (mm.length === 2 && +mm > 12 && /[23689]/.test(mm[0]) && +mm[1] >= 1) mm = `0${mm[1]}`;
     const y = parseInt(yyyy, 10);
     const m = parseInt(mm, 10);
     const d = parseInt(dd, 10);
@@ -1498,7 +1501,8 @@ function validateEmail(value) {
   if (!value) return '';
   const joined = String(value).replace(/\s*([.,@])\s*/g, (_, ch) => (ch === ',' ? '.' : ch)).replace(/\s+/g, '');
   const fixed = joined.replace(/@([a-z0-9-]+?)\.?(com|net|org|ph|edu|gov)(\.ph)?$/i, (_, host, end, ph) => `@${commonMailHost(host)}.${end}${ph || ''}`);
-  const m = fixed.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  const m = fixed.replace(/^([^@]*)(@gmail\.com)$/i, (_, local, host) => `${local.replace(/_/g, '.')}${host}`)
+    .match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   return m ? m[0].toLowerCase() : '';
 }
 
@@ -2010,6 +2014,11 @@ function reviewFlags(parsed, regions = {}) {
     } else if (confidence[name] !== undefined && confidence[name] < LOW_CONFIDENCE) {
       flags.push({ key, label, reason: 'Hard to read. Compare with your paper form.' });
     }
+  }
+  // The month was read as more than 12 and repaired: always ask the person to check the date.
+  const dobMonth = String(regions.date_of_birth || '').match(/^\D*(\d{2})\D/);
+  if (dobMonth && +dobMonth[1] > 12 && !flags.some((f) => f.key === 'date_of_birth')) {
+    flags.push({ key: 'date_of_birth', label: 'Date of Birth', reason: 'The month was unclear. Check the date.' });
   }
   const cell = String(valueAt(parsed, 'cell_phone_number') || '');
   if (cell && !/^(09\d{9}|\+?639\d{9})$/.test(cell) && !flags.some((f) => f.key === 'cell_phone_number')) {

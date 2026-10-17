@@ -18,6 +18,23 @@ router.use(authenticate, requireRole('job_seeker'));
 
 const OCR_MAX_IMAGE_BYTES = 18 * 1024 * 1024;
 
+// Each scan uses a few hundred MB of memory while it runs, so only a few run at the same time (OCR_CONCURRENCY,
+// default 2); others wait their turn instead of running the server out of memory.
+const OCR_CONCURRENCY = Math.max(1, parseInt(process.env.OCR_CONCURRENCY || '2', 10) || 2);
+let ocrRunning = 0;
+const ocrWaiting = [];
+async function withOcrSlot(job) {
+  if (ocrRunning >= OCR_CONCURRENCY) await new Promise((resolve) => ocrWaiting.push(resolve));
+  ocrRunning += 1;
+  try {
+    return await job();
+  } finally {
+    ocrRunning -= 1;
+    const next = ocrWaiting.shift();
+    if (next) next();
+  }
+}
+
 function detectImageType(buffer) {
   if (!buffer || buffer.length < 12) return '';
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg';
@@ -161,7 +178,7 @@ router.post('/extract', async (req, res) => {
   let ocrError = null;
   let pageType = '';
   try {
-    const ocrResult = await nsrpOcr.recognizeNsrpImage(Tesseract, imageBuffer);
+    const ocrResult = await withOcrSlot(() => nsrpOcr.recognizeNsrpImage(Tesseract, imageBuffer));
     rawText = ocrResult.rawText || '';
     ocrRegions = ocrResult.regions || {};
     pageType = ocrResult.pageType || ocrRegions.__page_type || '';
