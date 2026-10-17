@@ -38,18 +38,27 @@ npx expo start --lan
 Scan the QR code with **Expo Go**. Tap **Sign Up** and create a test job seeker (any made-up email).
 If the phone can't connect, allow Node.js through Windows Firewall (Private networks).
 
-## 5. Fill in a printed form, then scan
-Print a blank NSRP Form 1 (both pages) and copy **one person** from `docs/OCR_HANDWRITING_FILL_IN_SHEET.md` onto it
-**by hand** (ball pen, block letters). The people are fictional and have IDs **r01, r02, r03**; use a different person per writer.
+## 5. Fill in a printed form (anything you like, but made up)
+Print a blank NSRP Form 1 and fill it in **by hand** (ball pen, block letters) with **made-up details only**:
+never your own or anyone's real name, ID numbers, address or phone. Write NA where nothing applies.
+(If you'd rather copy ready-made fictional people, use `docs/OCR_HANDWRITING_FILL_IN_SHEET.md`.)
 
-Then scan:
-Profile → **Fill from a scanned NSRP form** → Camera (or Gallery) → **Scan and Pre-fill**.
-One page per photo, form flat, good light, whole page in view. Check the amber "Please check" hints,
-fix any field, then **Confirm and Save** if you like (test data only).
+## 6. Scan, then correct and save
+1. Profile → **Fill from a scanned NSRP form** → Camera → **Scan and Pre-fill** (one page per photo: page 1, then page 2;
+   form flat, good light, whole page in view).
+2. **Don't fix anything yet - first take a screenshot of the review screen** if you want to keep what the OCR read.
+3. Now go through **every field** and correct it so it matches your paper exactly (the amber hints show the likely mistakes,
+   but check all fields). Then press **Confirm and Save**.
 
-## 6. Send the photos to Joeremy
-Send the **original photos as files** (Messenger "send as file", Google Drive, or USB), not screenshots,
-and say which person and page it is (for example "r01 page 1"). Joeremy scores them against the answer keys.
+## 7. Export the result and send it
+Command Prompt 3, in `backend` (use the email of your test account):
+```
+set DB_HOST=127.0.0.1
+set DB_NAME=peso_link_test
+node scripts/ocr-export-review.js yourtest@example.com
+```
+This writes `ocr-review-<email>.json` (what the OCR read next to what you saved). Send Joeremy **that file and the original
+photos as files** (Messenger "send as file", Google Drive, or USB - not screenshots of the photos).
 
 ## Back to normal
 ```
