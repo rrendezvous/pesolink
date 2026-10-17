@@ -70,6 +70,16 @@ r = await scan(token, '../../frontend/assets/images/icon.png');
 check('non-form image: nothing filled in', r.data?.success === false && (r.data?.review_flags || []).length === 0,
   JSON.stringify({ success: r.data?.success, status: r.data?.ocr_status }));
 
+console.log('A damaged image gets a clear answer');
+{
+  const damaged = `data:image/jpeg;base64,${fs.readFileSync(path.join(SAMPLES, 'nsrp-page-1-sample.jpg')).subarray(0, 40000).toString('base64')}`;
+  const up = await call('POST', '/nsrp/upload', token, { image_base64: damaged });
+  const ex = await call('POST', '/nsrp/extract', token, { upload_id: up.data?.upload_id });
+  check('damaged image: "could not be opened", nothing filled in',
+    ex.data?.ocr_status === 'unreadable_image' && ex.data?.success === false && /could not be opened/.test(ex.data?.notice || ''),
+    JSON.stringify({ status: ex.data?.ocr_status, notice: ex.data?.notice }));
+}
+
 console.log('Uploads that are too large get a clear answer (no endless loading)');
 const huge = await fetch(`${BASE}/nsrp/upload`, {
   method: 'POST',

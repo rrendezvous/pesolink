@@ -182,7 +182,7 @@ export function NsrpForm({
         {Text1({ k: "first_name", label: "First Name *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "middle_name", label: "Middle Name", base: true, autoCapitalize: "words" })}
         {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
-        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} />
+        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} warning={flags?.date_of_birth} />
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
         <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
         {Text1({ k: "religion", label: "Religion", autoCapitalize: "words" })}
@@ -447,7 +447,7 @@ function SubTitle({ text }: { text: string }) {
 // NSRP Form 1: "DATE OF BIRTH (mm/dd/yyyy)". Shown and typed as mm/dd/yyyy; the form value becomes
 // YYYY-MM-DD once the typed date is complete and real, otherwise it keeps the typed text (a save is then
 // refused with the message shown here).
-function BirthDateInput({ value, onChange, testID }: { value?: string; onChange: (v: string) => void; testID?: string }) {
+function BirthDateInput({ value, onChange, testID, warning }: { value?: string; onChange: (v: string) => void; testID?: string; warning?: string }) {
   const [text, setText] = useState(isoToMdy(value));
   // Follow changes made elsewhere (profile reload, OCR results); our own typed (incomplete) text is kept.
   const [seen, setSeen] = useState(value);
@@ -466,6 +466,7 @@ function BirthDateInput({ value, onChange, testID }: { value?: string; onChange:
         label="Date of Birth (mm/dd/yyyy)"
         value={text}
         placeholder="05/15/1998"
+        warning={warning}
         keyboardType="number-pad"
         onChangeText={(t) => {
           const masked = maskMdy(t);

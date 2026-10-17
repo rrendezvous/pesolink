@@ -48,7 +48,10 @@ function hasUsableRegionText(ocrRegions) {
 
 function ocrFailureStatus(errorMessage) {
   if (!errorMessage) return 'no_text';
-  return /timed out/i.test(errorMessage) ? 'timeout' : 'backend_error';
+  if (/timed out/i.test(errorMessage)) return 'timeout';
+  // A damaged or unsupported file (for example a half-downloaded photo) cannot be opened at all.
+  if (/cannot be read|pix not read|attempting to read image|unsupported|unknown format/i.test(errorMessage)) return 'unreadable_image';
+  return 'backend_error';
 }
 
 async function storeOcrResult(uploadId, payload) {
@@ -163,7 +166,8 @@ router.post('/extract', async (req, res) => {
     ocrRegions = ocrResult.regions || {};
     pageType = ocrResult.pageType || ocrRegions.__page_type || '';
   } catch (err) {
-    ocrError = err.message || 'OCR failed';
+    // Tesseract sometimes rejects with plain text instead of an Error.
+    ocrError = (err && (err.message || String(err))) || 'OCR failed';
     console.warn('[NSRP OCR]', ocrError);
   }
 
@@ -178,7 +182,9 @@ router.post('/extract', async (req, res) => {
       ocr_status: ocrStatus,
       page_type: pageType,
       field_count: 0,
-      notice: ocrStatus === 'timeout'
+      notice: ocrStatus === 'unreadable_image'
+        ? 'This image could not be opened (the file may be damaged or in an unsupported format). Take the photo again or pick another image.'
+        : ocrStatus === 'timeout'
         ? 'OCR timed out before the backend finished reading the form. Please try a clearer compressed image or encode manually below.'
         : 'OCR could not extract text from this image. Please encode the NSRP-based profile manually below.',
       error_message: ocrError || 'No text detected',

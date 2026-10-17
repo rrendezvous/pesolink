@@ -210,7 +210,9 @@ export default function UploadNSRP() {
     setShowRawText(false);
   };
 
-  const allFlags = [...(reviewFlags.page1 || []), ...(reviewFlags.page2 || [])];
+  // One hint per field (both pages can carry a "whole page" hint).
+  const allFlags = [...(reviewFlags.page1 || []), ...(reviewFlags.page2 || [])]
+    .filter((f, i, list) => list.findIndex((g) => g.key === f.key) === i);
   const flagMap: Record<string, string> = Object.fromEntries(allFlags.map((f) => [f.key, f.reason]));
 
   const getOcrRequestMessage = (err: any, stage: 'upload' | 'extract') => {
@@ -243,6 +245,7 @@ export default function UploadNSRP() {
     if (ocrStatus === 'timeout') return 'OCR timed out';
     if (ocrStatus === 'backend_error') return 'OCR backend error';
     if (ocrStatus === 'too_large') return 'Photo is too large';
+    if (ocrStatus === 'unreadable_image') return 'Image could not be opened';
     if (ocrStatus === 'no_text') return 'OCR ran but found no text';
     if (ocrStatus === 'no_fields') return 'OCR ran but found no reliable NSRP fields';
     if (ocrStatus === 'not_nsrp') return 'This is not an NSRP Form 1 page';

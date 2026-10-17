@@ -1120,7 +1120,10 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
       if (FIELD_CHARS[name]) params.tessedit_char_whitelist = FIELD_CHARS[name];
       const read = async (image) => {
         const result = await worker.recognize(image, params, { text: true, tsv: true });
-        const text = normalizeRegionText(result.data?.text || '');
+        // Email addresses may contain "_", which the general clean-up would turn into a space.
+        const text = name === 'email_address'
+          ? String(result.data?.text || '').replace(/\s+/g, ' ').trim()
+          : normalizeRegionText(result.data?.text || '');
         return { text, conf: text ? meanWordConfidence(result.data?.tsv) : 0 };
       };
       let best = await read(pgm);
@@ -1295,8 +1298,12 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
     if (greyImage && !located?.transform) {
       // Not found yet: try a smoothed copy (photos of a screen), then the photo turned 90, 180 and 270 degrees
       // (a phone photo can arrive sideways or upside down).
-      const tries = [{ image: smoothedCopy(greyImage), turns: 0 }, ...[1, 2, 3].map((turns) => ({ image: rotateGrey(greyImage, turns), turns }))];
-      for (const { image, turns } of tries) {
+      // When the upright photo was already recognised as page 1 or 2, it is not sideways: only the smoothed
+      // copy is tried. Turned copies are made one at a time, only when needed.
+      const tries = [{ make: () => smoothedCopy(greyImage), turns: 0 },
+        ...(pageType === 'unknown' ? [1, 2, 3].map((turns) => ({ make: () => rotateGrey(greyImage, turns), turns })) : [])];
+      for (const { make, turns } of tries) {
+        const image = make();
         const again = await worker.recognize(
           greyToPgm(image),
           { tessedit_pageseg_mode: Tesseract.PSM.AUTO, user_defined_dpi: '300' },
@@ -1354,7 +1361,7 @@ function basicClean(value) {
     .replace(/[|_]{2,}/g, ' ')
     .replace(/[`~^]/g, ' ')
     .replace(/^[Xx?]+\s*/, '')
-    .replace(/^[|:;.,)\]-]+|[|:;,(\[]+$|(?<![A-Za-zÑñ])\.+$/g, '')
+    .replace(/^[|:;.,)\]-]+|[|:;,(\[]+$|(?<![A-Za-zÑñ])\.+$|(?<=\b[A-Za-zÑñ]{5,})\.+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1498,9 +1505,11 @@ function validateEmail(value) {
 // One misread letter in a widely used mail provider's name ("qmail", "amail" for gmail) is corrected; any
 // other host is kept as read.
 const MAIL_HOSTS = ['gmail', 'yahoo', 'outlook', 'hotmail', 'ymail', 'icloud'];
+// Real providers kept exactly as read, so they are never "corrected" into a similar name (email.com -> gmail.com).
+const OTHER_MAIL_HOSTS = ['email', 'mail', 'gmx', 'aol', 'live', 'msn', 'proton', 'protonmail', 'zoho', 'yandex', 'example'];
 function commonMailHost(host) {
   const h = String(host).toLowerCase();
-  if (MAIL_HOSTS.includes(h)) return h;
+  if (MAIL_HOSTS.includes(h) || OTHER_MAIL_HOSTS.includes(h)) return h;
   const near = MAIL_HOSTS.find((name) => name.length === h.length && [...name].filter((ch, i) => ch !== h[i]).length === 1);
   return near || h;
 }
@@ -1755,7 +1764,8 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     suffix = rawSuffix.toUpperCase();
   }
 
-  const dateOfBirth = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
+  const dobRead = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
+  const dateOfBirth = dobRead && dobRead <= new Date().toISOString().slice(0, 10) ? dobRead : '';
   const placeOfBirth = validateLocation(rv('place_of_birth', ['Place of Birth']));
   const religion = validateName(rv('religion', ['Religion']));
   const height = validateHeight(rv('height', ['Height']));
@@ -1765,7 +1775,7 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const pagibigNo = validateIdNumber(rv('pagibig_no', ['PAG-IBIG', 'No.']));
   const philhealthNo = validateIdNumber(rv('philhealth_no', ['PhilHealth', 'No.']));
 
-  const emailAddr = validateEmail(rv('email_address', ['Email Address', 'Email'])) || validateEmail(pickEmailFromText(text));
+  const emailAddr = validateEmail(rv('email_address', ['Email Address'])) || validateEmail(pickEmailFromText(text));
   const landline = validateLandline(rv('landline_number', ['Landline', 'Number']));
   const cellRead = rv('cell_phone_number', ['Cellphone', 'Cell Phone', 'Number']);
   const cellDigits = String(cellRead || '').replace(/[^\d+]/g, '');
@@ -1873,8 +1883,10 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     disability: disabilitySummary,
     ...(disabilities.length ? { disabilities } : {}),
     employment_type: empType,
-    terminated_abroad_country: empType === 'terminated/laidoff(abroad)' ? terminatedCountry : '',
-    employment_type_other: empType === 'others' ? employmentTypeOther : '',
+    // Kept even when the matching tick was missed, so nothing written is lost (the app shows these lines
+    // when the person picks that employment type).
+    terminated_abroad_country: terminatedCountry,
+    employment_type_other: employmentTypeOther,
     looking_for_work: lookingWork,
     willing_to_work_immediately: willingNow,
     four_ps_beneficiary: fourPs,
@@ -1894,7 +1906,7 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     preferred_occupation_list: occList,
     local_location_list: localLocations,
     overseas_location_list: overseasLocations,
-    ...(languageRows.length ? { languages: languageGrid } : {}),
+    ...(languageRows.length || languageOtherName ? { languages: languageGrid } : {}),
   };
 
   return {
