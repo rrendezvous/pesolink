@@ -38,10 +38,16 @@ npx expo start --lan
 Scan the QR code with **Expo Go**. Tap **Sign Up** and create a test job seeker (any made-up email).
 If the phone can't connect, allow Node.js through Windows Firewall (Private networks).
 
-## 5. Fill in a printed form (anything you like, but made up)
-Print a blank NSRP Form 1 and fill it in **by hand** (ball pen, block letters) with **made-up details only**:
-never your own or anyone's real name, ID numbers, address or phone. Write NA where nothing applies.
+## 5. Make your forms (at least 1 handwritten and 1 digital), with made-up details only
+Never use your own or anyone's real name, ID numbers, address or phone. Write NA where nothing applies.
+- **Handwritten:** print a blank NSRP Form 1 and fill it in by hand (ball pen, block letters). Photograph it with the
+  app's **Camera**.
+- **Digital:** fill the form on the computer, then save **each page as an image** (PNG or JPG; the app does not read PDFs),
+  copy the images to your phone and pick them with the app's **Gallery**. Keep the original digital file (PDF) too.
 (If you'd rather copy ready-made fictional people, use `docs/OCR_HANDWRITING_FILL_IN_SHEET.md`.)
+
+**Use a new test account for each form** (Sign Up again with another made-up email): the export below reads the
+account's saved profile, so a second form on the same account would overwrite the first one's answers.
 
 ## 6. Scan, then correct and save
 1. Profile → **Fill from a scanned NSRP form** → Camera → **Scan and Pre-fill** (one page per photo: page 1, then page 2;
@@ -57,8 +63,10 @@ set DB_HOST=127.0.0.1
 set DB_NAME=peso_link_test
 node scripts/ocr-export-review.js yourtest@example.com
 ```
-This writes `ocr-review-<email>.json` (what the OCR read next to what you saved). Send Joeremy **that file and the original
-photos as files** (Messenger "send as file", Google Drive, or USB - not screenshots of the photos).
+This writes `ocr-review-<email>.json` (what the OCR read next to what you saved). Do this **once per form/account**.
+Send Joeremy, for each form: **that file, the original photos or page images as files** (Messenger "send as file",
+Google Drive, or USB - not screenshots), and for digital forms **the original digital file (PDF)**. Say which is which
+(for example "handwritten, account a@example.com" / "digital, account b@example.com").
 
 ## Back to normal
 ```
