@@ -174,8 +174,8 @@ const FIELD_CHARS = {
   height: `${DIGITS}.'"CMFTcmftNA `,
 };
 for (const lv of ['elementary', 'secondary', 'tertiary', 'graduate']) {
-  FIELD_CHARS[`${lv}_year`] = `${DIGITS}NA`;
-  FIELD_CHARS[`${lv}_last_attended`] = `${DIGITS}NA`;
+  FIELD_CHARS[`${lv}_year`] = `${DIGITS}NA/`;
+  FIELD_CHARS[`${lv}_last_attended`] = `${DIGITS}NA/`;
 }
 const ALIGNED_REGION_SPECS = {
   page1: cellSpecs({
@@ -1360,7 +1360,7 @@ function basicClean(value) {
     .replace(/\r/g, ' ')
     .replace(/[|_]{2,}/g, ' ')
     .replace(/[`~^]/g, ' ')
-    .replace(/^[Xx?]+\s*/, '')
+    .replace(/^(?:[Xx?]+\s+|\?+)/, '')
     .replace(/^[|:;.,)\]-]+|[|:;,(\[]+$|(?<![A-Za-zÑñ])\.+$|(?<=\b[A-Za-zÑñ]{5,})\.+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1414,21 +1414,13 @@ function validateLocation(value) {
   if (!value) return '';
   const normalized = normalizeKnownRunTogether(stripOcrNoise(value));
   const v = normalized
-    .replace(/[^A-ZÑ0-9\s.'-]/g, ' ')
+    .toUpperCase()
+    .replace(/[^A-ZÑ0-9\s.,'-]/g, ' ')
+    .replace(/\s+,/g, ',')
     .replace(/\s+/g, ' ')
-    .trim()
-    .toUpperCase();
+    .trim();
   if (!v || v.length > 80) return '';
-  const known = [
-    'CAGAYAN DE ORO CITY',
-    'MISAMIS ORIENTAL',
-    'ILIGAN CITY',
-    'GREEN VILLAGE',
-    'BARANGAY 1',
-  ].find((item) => v.includes(item));
-  if (known) return known;
   if (v.replace(/[^A-ZÑ]/g, '').length < 3) return '';
-  if (LABEL_JUNK.test(v) && !/^BARANGAY\s+\d+$/i.test(v)) return '';
   return v;
 }
 
@@ -1534,7 +1526,7 @@ function fixDateRange(value) {
 
 // TESDA levels are NC I to NC IV; a II is often read as H, l or 1.
 function fixNcLevel(value) {
-  return String(value || '').replace(/\bNC\s*([IlL1|H]{1,3}|[IlL1|]?V)\b/g, (_, lvl) => {
+  return String(value || '').replace(/\bNC\s*([IlL1|HT]{1,3}|[IlL1|]?V)\b/g, (_, lvl) => {
     if (/V$/.test(lvl)) return lvl.length === 2 ? 'NC IV' : 'NC V';
     const count = [...lvl].reduce((n, ch) => n + (ch === 'H' ? 2 : 1), 0);
     return count >= 1 && count <= 3 ? `NC ${'I'.repeat(count)}` : `NC ${lvl}`;
@@ -1562,8 +1554,10 @@ function validateSalary(value) {
   let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim();
   const m = v.match(/(?:PHP|P)?\s*\d{1,3}(?:,\d{3})?(?:\s*-\s*\d{1,3}(?:,\d{3})?)/i);
   if (m) {
+    // Keep what follows the range too ("/ MONTH", "PER MONTH").
+    const rest = v.slice(m.index + m[0].length).replace(/^[^A-Z/]+/, '').trim();
     v = m[0].replace(/^P\s+/i, 'PHP ').replace(/^PHP\s*/i, 'PHP ');
-    return v.replace(/\s*-\s*/g, ' - ');
+    return `${v.replace(/\s*-\s*/g, ' - ')}${rest ? ` ${rest}` : ''}`;
   }
   return basicClean(v);
 }
@@ -1762,10 +1756,11 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const firstName = validateName(rv('first_name', ['First Name', 'Given Name']));
   const middleName = validateName(rv('middle_name', ['Middle Name']));
 
-  const rawSuffix = rv('suffix', ['Suffix', 'Ex.', 'Sr.', 'Jr.', 'III', 'etc.']);
+  const rawSuffix = rv('suffix', ['Suffix']);
   let suffix = '';
-  if (rawSuffix && /^(jr\.?|sr\.?|i{1,3}v?|vi{0,3}|[IV]+)$/i.test(rawSuffix.replace(/\s+/g, ''))) {
-    suffix = rawSuffix.toUpperCase();
+  const suffixText = rawSuffix.replace(/\s+/g, '').replace(/^[Il1|]{1,3}$/, (m) => 'I'.repeat(m.length));
+  if (suffixText && /^(jr\.?|sr\.?|i{1,3}v?|vi{0,3}|[IV]+)$/i.test(suffixText)) {
+    suffix = suffixText.toUpperCase();
   }
 
   const dobRead = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
