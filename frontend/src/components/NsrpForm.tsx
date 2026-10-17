@@ -74,8 +74,14 @@ function checkedFrom(list: string[] | undefined, legacy: string | undefined, opt
 export type NsrpFormValue = Record<string, any> & { nsrp_full_data?: Record<string, any> };
 
 export function NsrpForm({
-  value, onChange, idPrefix = 'nsrp',
-}: { value: NsrpFormValue; onChange: (next: NsrpFormValue) => void; idPrefix?: string }) {
+  value, onChange, idPrefix = 'nsrp', flags,
+}: {
+  value: NsrpFormValue;
+  onChange: (next: NsrpFormValue) => void;
+  idPrefix?: string;
+  /** OCR review hints: field key -> reason. Shown in amber; unflagged fields can still be wrong. */
+  flags?: Record<string, string>;
+}) {
   const full = value.nsrp_full_data || {};
   const setBase = (k: string, v: any) => onChange({ ...value, [k]: v });
   const setFull = (patch: Record<string, any>) => onChange({ ...value, nsrp_full_data: { ...full, ...patch } });
@@ -96,6 +102,7 @@ export function NsrpForm({
         }}
         {...rest}
         {...(block ? { autoCapitalize: 'characters' } : {})}
+        warning={flags?.[k]}
       />
     );
   };

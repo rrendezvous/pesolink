@@ -14,7 +14,7 @@ import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
 import { sentBackMessage } from '../../src/utils/referral';
 import { birthDateError } from '../../src/utils/dates';
-import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
+import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
 
 const OCR_UPLOAD_TIMEOUT_MS = 90000;
 const OCR_EXTRACT_TIMEOUT_MS = 210000;
@@ -126,6 +126,8 @@ export default function UploadNSRP() {
   const [rawText, setRawText] = useState('');
   const [ocrRegions, setOcrRegions] = useState<any | null>(null);
   const [showRawText, setShowRawText] = useState(false);
+  // OCR review hints per scanned page (page 1 and page 2 can both be in one review).
+  const [reviewFlags, setReviewFlags] = useState<Record<string, { key: string; label: string; reason: string }[]>>({});
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -143,6 +145,7 @@ export default function UploadNSRP() {
     setRawText('');
     setOcrRegions(null);
     setShowRawText(false);
+    setReviewFlags({});
   }, []);
 
   const clearAll = useCallback(() => {
@@ -207,11 +210,17 @@ export default function UploadNSRP() {
     setShowRawText(false);
   };
 
+  const allFlags = [...(reviewFlags.page1 || []), ...(reviewFlags.page2 || [])];
+  const flagMap: Record<string, string> = Object.fromEntries(allFlags.map((f) => [f.key, f.reason]));
+
   const getOcrRequestMessage = (err: any, stage: 'upload' | 'extract') => {
     if (err?.code === 'ECONNABORTED' || String(err?.message || '').toLowerCase().includes('timeout')) {
       return stage === 'extract'
         ? 'OCR timed out before the backend finished reading the form. Try a clearer compressed image, or encode the NSRP-based profile manually below.'
         : 'The NSRP image upload timed out. Try a smaller clear JPEG or PNG, then scan again.';
+    }
+    if (err?.response?.status === 413) {
+      return 'This photo is too large to send. Take it again (or pick a smaller copy of the image), then scan again.';
     }
     if (err?.response) return getApiError(err);
     if (err?.request) {
@@ -225,6 +234,7 @@ export default function UploadNSRP() {
       return 'timeout';
     }
     if (err?.request && !err?.response) return 'backend_unreachable';
+    if (err?.response?.status === 413) return 'too_large';
     return 'backend_error';
   };
 
@@ -232,6 +242,7 @@ export default function UploadNSRP() {
     if (ocrStatus === 'backend_unreachable') return 'Backend could not be reached';
     if (ocrStatus === 'timeout') return 'OCR timed out';
     if (ocrStatus === 'backend_error') return 'OCR backend error';
+    if (ocrStatus === 'too_large') return 'Photo is too large';
     if (ocrStatus === 'no_text') return 'OCR ran but found no text';
     if (ocrStatus === 'no_fields') return 'OCR ran but found no reliable NSRP fields';
     if (ocrStatus === 'not_nsrp') return 'This is not an NSRP Form 1 page';
@@ -257,7 +268,9 @@ export default function UploadNSRP() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       base64: true,
-      quality: 1,
+      // Full resolution (what the OCR needs) with normal JPEG compression: quality 1 made phone photos
+      // about 25 MB once encoded, over the server's 15 MB upload limit.
+      quality: 0.8,
       allowsEditing: false,
     });
     if (!result.canceled && result.assets?.[0]) {
@@ -273,7 +286,9 @@ export default function UploadNSRP() {
     }
     const result = await ImagePicker.launchCameraAsync({
       base64: true,
-      quality: 1,
+      // Full resolution (what the OCR needs) with normal JPEG compression: quality 1 made phone photos
+      // about 25 MB once encoded, over the server's 15 MB upload limit.
+      quality: 0.8,
       allowsEditing: false,
     });
     if (!result.canceled && result.assets?.[0]) {
@@ -316,6 +331,9 @@ export default function UploadNSRP() {
       setExtracted((current: any) => mergeExtractedData(current || savedProfile, exRes.data.extracted_data));
       setRawText(exRes.data.raw_text || '');
       setOcrRegions(exRes.data.ocr_regions || null);
+      if (nextPageType === 'page1' || nextPageType === 'page2') {
+        setReviewFlags((current) => ({ ...current, [nextPageType]: Array.isArray(exRes.data.review_flags) ? exRes.data.review_flags : [] }));
+      }
       setOcrSuccess(!!exRes.data.success);
       setOcrStatus(nextStatus);
       setFieldCount(nextFieldCount);
@@ -395,6 +413,13 @@ export default function UploadNSRP() {
                   <Text style={styles.cameraIcon}>[]</Text>
                   <Text style={styles.placeholderTitle}>Place NSRP form within frame</Text>
                   <Text style={styles.placeholderSub}>Select an image or use the camera to begin.</Text>
+                  <View style={styles.tipBox} testID="photo-tips">
+                    <Text style={styles.tipTitle}>For a clearer scan</Text>
+                    <Text style={styles.tipItem}>{'• One page per photo: page 1 and page 2 separately'}</Text>
+                    <Text style={styles.tipItem}>{'• Lay the form flat in good, even light (no shadow)'}</Text>
+                    <Text style={styles.tipItem}>{'• Hold the phone straight above it; the whole page in view'}</Text>
+                    <Text style={styles.tipItem}>{'• Paper forms read best; photos of a screen are harder'}</Text>
+                  </View>
                 </View>
               )}
               <View style={styles.pickRow}>
@@ -470,12 +495,24 @@ export default function UploadNSRP() {
                   </View>
                 )}
 
+                {allFlags.length > 0 && (
+                  <View style={styles.flagBox} testID="ocr-flags">
+                    <Text style={styles.flagTitle}>{`Please check these ${allFlags.length} field${allFlags.length === 1 ? '' : 's'} closely`}</Text>
+                    {allFlags.map((f) => (
+                      <Text key={f.key} style={styles.flagItem}>{`\u2022 ${f.label}: ${f.reason}`}</Text>
+                    ))}
+                    <Text style={styles.flagNote}>
+                      These are only hints from the scan. A field without a hint can still be wrong.
+                    </Text>
+                  </View>
+                )}
+
                 <Text style={styles.reviewHint}>
                   Review every field below against your paper form. Fix anything the OCR read wrong, then confirm.
                 </Text>
               </Card>
             )}
-            {extracted && <NsrpForm value={extracted} onChange={setExtracted} idPrefix="rev" />}
+            {extracted && <NsrpForm value={extracted} onChange={setExtracted} idPrefix="rev" flags={flagMap} />}
             {extracted && (
               <Card style={styles.reviewCard}>
                 <View style={{ marginTop: Spacing.sm }}>
@@ -527,6 +564,9 @@ const styles = StyleSheet.create({
   placeholderTitle: { color: Colors.textDark, textAlign: 'center', fontSize: FontSize.md, fontWeight: '900', textTransform: 'uppercase' },
   placeholderSub: { color: Colors.gray, textAlign: 'center', fontSize: FontSize.xs, marginTop: 8, lineHeight: 18 },
   pickRow: { flexDirection: 'row', marginTop: Spacing.md },
+  tipBox: { marginTop: Spacing.md, alignSelf: 'stretch', paddingHorizontal: Spacing.md },
+  tipTitle: { color: Colors.gray, fontSize: FontSize.xs, fontWeight: '700', marginBottom: 2 },
+  tipItem: { color: Colors.gray, fontSize: FontSize.xs, lineHeight: 18 },
   warningBox: {
     backgroundColor: '#FEF3C7',
     borderColor: Colors.warning,
@@ -536,6 +576,17 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   warningTitle: { fontWeight: '900', color: '#92400E', fontSize: FontSize.sm },
+  flagBox: {
+    backgroundColor: StatusColors.needs_revision.bg,
+    borderColor: StatusColors.needs_revision.border,
+    borderWidth: 1,
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.sm,
+  },
+  flagTitle: { fontWeight: '900', color: StatusColors.needs_revision.text, fontSize: FontSize.sm, marginBottom: 4 },
+  flagItem: { color: StatusColors.needs_revision.text, fontSize: FontSize.xs, lineHeight: 17 },
+  flagNote: { color: StatusColors.needs_revision.text, fontSize: FontSize.xs, marginTop: 6, fontStyle: 'italic' },
   warningText: { color: '#92400E', fontSize: FontSize.xs, marginTop: 4, lineHeight: 16 },
   rawToggle: { marginBottom: Spacing.sm },
   rawToggleText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '900' },

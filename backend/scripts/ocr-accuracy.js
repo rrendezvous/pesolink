@@ -107,7 +107,9 @@ async function run(file, expected) {
   return [ok, Object.keys(expected).length];
 }
 
-(async () => {
+module.exports = { pick, norm };
+
+if (require.main === module) (async () => {
   const [a, n1] = await run('nsrp-page-1-sample.jpg', EXPECTED_PAGE1);
   const [b, n2] = await run('nsrp-page-2-sample.jpg', EXPECTED_PAGE2);
   console.log(`\nTOTAL ${a + b}/${n1 + n2} fields correct on the two sample pages`);

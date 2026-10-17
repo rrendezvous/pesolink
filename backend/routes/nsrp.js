@@ -62,6 +62,12 @@ async function storeOcrResult(uploadId, payload) {
   }
 }
 
+// Undoing a transaction must never throw inside an error handler: if the connection is already gone
+// (for example MySQL dropped it), the request still has to be answered.
+async function safeRollback(conn) {
+  try { await conn.rollback(); } catch (_) { /* connection already closed */ }
+}
+
 // POST /api/nsrp/upload
 router.post('/upload', async (req, res) => {
   const { image_base64 } = req.body;
@@ -82,8 +88,12 @@ router.post('/upload', async (req, res) => {
     await conn.commit();
     res.status(201).json({ message: 'NSRP form uploaded', upload_id: result.insertId });
   } catch (err) {
-    await conn.rollback();
-    console.error('[NSRP Upload]', err);
+    await safeRollback(conn);
+    console.error('[NSRP Upload]', err.code || err.message);
+    // MySQL refuses a query bigger than its max_allowed_packet setting.
+    if (err.code === 'ER_NET_PACKET_TOO_LARGE' || /max_allowed_packet|packet bigger/i.test(err.message || '')) {
+      return res.status(413).json({ error: 'This photo is too large to save. Take it again or pick a smaller copy of the image.' });
+    }
     res.status(500).json({ error: 'Failed to upload NSRP form' });
   } finally {
     conn.release();
@@ -179,8 +189,10 @@ router.post('/extract', async (req, res) => {
   const fieldCount = nsrpOcr.countExtractedFields(parsed);
   const notNsrp = pageType === 'unknown';
   const ocrStatus = notNsrp ? 'not_nsrp' : (fieldCount > 0 ? 'fields_extracted' : 'no_fields');
+  // Review aids only: fields that look unreadable, uncertain or badly formatted. Unflagged fields can still be wrong.
+  const reviewFlags = notNsrp ? [] : nsrpOcr.reviewFlags(parsed, ocrRegions);
 
-  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType });
+  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType, review_flags: reviewFlags });
 
   return res.json({
     success: !notNsrp && fieldCount > 0,
@@ -190,6 +202,7 @@ router.post('/extract', async (req, res) => {
     ocr_status: ocrStatus,
     page_type: pageType,
     field_count: fieldCount,
+    review_flags: reviewFlags,
     notice: notNsrp
       ? 'This image does not look like page 1 or page 2 of NSRP Form 1, so nothing was filled in. Scan the form page itself, or encode the NSRP-based profile manually below.'
       : fieldCount > 0
@@ -274,7 +287,7 @@ router.post('/confirm', async (req, res) => {
       nsrp_status_changed_to: requirements.nsrp_status_changed_to,
     });
   } catch (err) {
-    await conn.rollback();
+    await safeRollback(conn);
     console.error('[NSRP Confirm]', err);
     res.status(500).json({ error: 'Failed to save confirmed data' });
   } finally {

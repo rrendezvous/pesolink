@@ -55,6 +55,11 @@ app.use('/api/*', (req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
+  // A request body over the size limit (for example a very large photo) is the sender's problem: say so.
+  if (err.type === 'entity.too.large') {
+    console.error('[Server Error] request too large', err.length);
+    return res.status(413).json({ error: 'This file is too large to send. Take the photo again or pick a smaller copy of the image.' });
+  }
   console.error('[Server Error]', err);
   res.status(500).json({ error: 'Internal server error' });
 });

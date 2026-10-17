@@ -76,7 +76,7 @@ const btn = StyleSheet.create({
 
 export function Input({
   label, value, onChangeText, placeholder, secureTextEntry, keyboardType,
-  multiline, numberOfLines, testID, error, autoCapitalize, editable = true,
+  multiline, numberOfLines, testID, error, warning, autoCapitalize, editable = true,
 }: {
   label?: string;
   value: string;
@@ -88,6 +88,8 @@ export function Input({
   numberOfLines?: number;
   testID?: string;
   error?: string;
+  /** Amber "please check" note (needs action, not an error). */
+  warning?: string;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   editable?: boolean;
 }) {
@@ -110,15 +112,20 @@ export function Input({
           inp.input,
           multiline && { height: (numberOfLines || 3) * 24 + 16, textAlignVertical: 'top' },
           error ? { borderColor: Colors.error } : null,
+          !error && warning ? { borderColor: StatusColors.needs_revision.border, borderWidth: 2 } : null,
           !editable && { backgroundColor: Colors.surface, color: Colors.gray },
         ]}
       />
       {error && <Text style={inp.error}>{error}</Text>}
+      {!error && !!warning && (
+        <Text testID={testID ? `${testID}-check` : undefined} style={inp.warning}>{`Check: ${warning}`}</Text>
+      )}
     </View>
   );
 }
 
 const inp = StyleSheet.create({
+  warning: { color: StatusColors.needs_revision.text, fontSize: FontSize.xs, marginTop: 4, fontWeight: '700' },
   label: {
     fontSize: FontSize.sm,
     fontWeight: '700',
