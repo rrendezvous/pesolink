@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 const { fitPageTransform, sampleRegion, mapFraction } = require('./nsrpAlign');
+const { toBlockLetters } = require('./nsrpForm');
 
 const OCR_TIMEOUT_MS = 180000;
 const OCR_LANG_PATH = path.resolve(__dirname, '..');
@@ -1078,6 +1079,36 @@ function thickerPgm(crop) {
   return Buffer.concat([Buffer.from(`P5\n${W} ${H}\n255\n`, 'ascii'), out]);
 }
 
+const YEAR_CELL = /^(elementary|secondary|tertiary|graduate)_(year|last_attended)$/;
+
+// The writing split at empty columns into separate pieces (usually one digit each), as tight PGM images, with
+// each piece's width and height. Two close strokes such as the "11" in "2011" are otherwise read as one.
+function writingPieces(crop) {
+  const { width, height, black } = crop;
+  const used = (x) => { for (let y = 0; y < height; y += 1) if (black[y * width + x]) return true; return false; };
+  const pieces = [];
+  let start = -1;
+  for (let x = 0; x <= width; x += 1) {
+    const on = x < width && used(x);
+    if (on && start < 0) start = x;
+    if (!on && start >= 0) {
+      let top = height; let bottom = -1;
+      for (let y = 0; y < height; y += 1) {
+        for (let px = start; px < x; px += 1) if (black[y * width + px]) { if (y < top) top = y; bottom = y; }
+      }
+      const w = x - start; const h = bottom - top + 1; const pad = 25;
+      const W = w + pad * 2; const H = h + pad * 2;
+      const out = Buffer.alloc(W * H, 255);
+      for (let y = top; y <= bottom; y += 1) {
+        for (let px = start; px < x; px += 1) if (black[y * width + px]) out[(y - top + pad) * W + px - start + pad] = 0;
+      }
+      pieces.push({ w, h, image: Buffer.concat([Buffer.from(`P5\n${W} ${H}\n255\n`, 'ascii'), out]) });
+      start = -1;
+    }
+  }
+  return pieces;
+}
+
 // Average of Tesseract's own word confidences (0-100) in one box; used only to flag fields for review.
 function meanWordConfidence(tsv) {
   const confs = String(tsv || '').split(/\r?\n/).map((row) => row.split('\t'))
@@ -1152,6 +1183,20 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
         }
         const same = (a, b) => a.replace(/\s+/g, '').toUpperCase() === b.replace(/\s+/g, '').toUpperCase();
         if (!readings.every((x) => same(x.text, best.text))) best = { ...best, conf: Math.min(...readings.map((x) => x.conf)) };
+      }
+      // A year box holds four digits (or NA). A reading of another length is read again piece by piece: a tall,
+      // narrow stroke is a 1, and every other piece is read on its own. The new reading is used only when it
+      // gives four digits, and it stays flagged as unsure.
+      if (YEAR_CELL.test(name) && best.text && !/^(\d{4}|N\/?A)$/i.test(best.text.replace(/\s+/g, ''))) {
+        const pieces = writingPieces(crop);
+        const tallest = Math.max(...pieces.map((p) => p.h));
+        let digits = '';
+        for (const piece of pieces.filter((p) => p.h >= tallest * 0.4)) {
+          if (piece.w <= piece.h * 0.3) { digits += '1'; continue; }
+          const result = await worker.recognize(piece.image, { ...params, tessedit_pageseg_mode: getPsm(Tesseract, 'SINGLE_WORD') }, { text: true });
+          digits += String(result.data?.text || '').replace(/\D/g, '');
+        }
+        if (/^\d{4}$/.test(digits)) best = { text: digits, conf: Math.min(best.conf, LOW_CONFIDENCE - 1) };
       }
       regions[name] = best.text;
       if (best.text) confidence[name] = best.conf;
@@ -1437,6 +1482,61 @@ function validateLocation(value) {
   return v;
 }
 
+// Official place names (PSA PSGC; see nsrpPlaceNames.json for the exact version) and widely spoken languages.
+// A reading Tesseract was unsure of (confidence below LOW_CONFIDENCE) that is one or two letters away from
+// exactly one listed name is changed to that name and flagged for the person to check. A confident reading is
+// kept as written (people use other spellings, e.g. BOBUNTUGAN for BOBONTUGAN), and names not on the list
+// (villages, other barangays, schools, people) are never changed.
+const PLACE_NAMES = require('./nsrpPlaceNames.json');
+const LANGUAGE_NAMES = ['CEBUANO', 'BISAYA', 'BINISAYA', 'TAGALOG', 'ILOCANO', 'HILIGAYNON', 'ILONGGO', 'WARAY',
+  'KAPAMPANGAN', 'BIKOL', 'BICOLANO', 'PANGASINAN', 'MARANAO', 'MAGUINDANAO', 'TAUSUG', 'CHAVACANO', 'KINARAY-A',
+  'SURIGAONON', 'BOHOLANO', 'HIGAONON', 'SUBANEN', 'MANDARIN', 'JAPANESE', 'KOREAN', 'SPANISH', 'ARABIC'];
+const bareCity = (name) => name.replace(/ CITY$/, '');
+const NAME_LISTS = {
+  city: [...PLACE_NAMES.cities, ...PLACE_NAMES.cities.map(bareCity), ...PLACE_NAMES.municipalities],
+  province: PLACE_NAMES.provinces,
+  barangay: PLACE_NAMES.barangays,
+  place: [...PLACE_NAMES.cities, ...PLACE_NAMES.cities.map(bareCity), ...PLACE_NAMES.municipalities, ...PLACE_NAMES.provinces],
+  language: LANGUAGE_NAMES,
+};
+
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// The listed name nearest to one reading, or the reading unchanged. Short names allow fewer wrong letters.
+function nearestListedName(part, list) {
+  const v = part.trim().replace(/\s+(CY|CTY|CIY|CIT|CITV|C1TY|CITX|LITY)$/, ' CITY');
+  const key = v.replace(/\s+/g, '');
+  if (!key || list.includes(v)) return v;
+  const allowed = key.length <= 4 ? 0 : key.length <= 6 ? 1 : key.length <= 10 ? 2 : 3;
+  if (!allowed) return part.trim();
+  let best = null; let bestD = Infinity; let tie = false;
+  for (const name of list) {
+    const d = editDistance(key, name.replace(/\s+/g, ''));
+    if (d < bestD) { best = name; bestD = d; tie = false; } else if (d === bestD && name !== best) tie = true;
+  }
+  return best && bestD <= allowed && !tie ? best : part.trim();
+}
+
+// Each comma-separated part ("GINGOOG CITY, MISAMIS ORIENTAL") is matched on its own. Changes are recorded in
+// fixes (region name -> what was read) for the review hints.
+function matchListedName(value, kind, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const list = NAME_LISTS[kind];
+  const out = String(value).split(',').map((p) => nearestListedName(p, list)).filter(Boolean).join(', ');
+  if (out.replace(/[\s,]+/g, '') !== String(value).replace(/[\s,]+/g, '')) fixes[regionName] = value;
+  return out;
+}
+
 function mmddyyyyCandidates(digits, maxYear = new Date().getFullYear()) {
   if (digits.length < 8 || digits.length > 10) return [];
   const found = new Set();
@@ -1576,6 +1676,8 @@ function validateSalary(value) {
   let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim()
     // "₱18,000-₱22,000": a peso sign (often read as #) means PHP; the second one is dropped.
     .replace(/[₱#]\s*(?=\d)/g, (m, i) => (i === 0 ? 'PHP ' : ''))
+    // "12, 000": a space read after the thousands comma.
+    .replace(/(\d),\s+(\d{3})\b/g, '$1,$2')
     // "18,00022,000": two amounts stuck together are a range.
     .replace(/(\d{1,3},\d{3})(?=\d{1,3},\d{3}\b)/, '$1 - ');
   const m = v.match(/(?:PHP|P)?\s*\d{1,3}(?:,\d{3})?(?:\s*-\s*\d{1,3}(?:,\d{3})?)/i);
@@ -1767,7 +1869,13 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   };
 }
 
+// Text answers come back in block letters, the same capitals the profile is saved in (see toBlockLetters), so
+// the review screen shows exactly what will be saved.
 function parseNsrpText(rawText, ocrRegions = {}) {
+  return toBlockLetters(parseNsrpTextAsRead(rawText, ocrRegions));
+}
+
+function parseNsrpTextAsRead(rawText, ocrRegions = {}) {
   const pageType = ocrRegions.__page_type || detectNsrpPageType(rawText);
   if (pageType === 'page2') {
     return parsePage2Text(rawText, ocrRegions);
@@ -1777,6 +1885,8 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const text = String(rawText || '').replace(/\r/g, '');
   const checkboxes = ocrRegions.__checkboxes || {};
   const rv = (key, stripLabels = []) => cleanRegionText(ocrRegions[key] || '', stripLabels);
+  const nameFixes = {};
+  const listed = (value, kind, regionName) => matchListedName(value, kind, regionName, nameFixes, ocrRegions.__confidence);
 
   const lastName = validateName(rv('surname', ['Surname', 'Last Name']));
   const firstName = validateName(rv('first_name', ['First Name', 'Given Name']));
@@ -1791,7 +1901,7 @@ function parseNsrpText(rawText, ocrRegions = {}) {
 
   const dobRead = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
   const dateOfBirth = dobRead && dobRead <= new Date().toISOString().slice(0, 10) ? dobRead : '';
-  const placeOfBirth = validateLocation(rv('place_of_birth', ['Place of Birth']));
+  const placeOfBirth = listed(validateLocation(rv('place_of_birth', ['Place of Birth'])), 'place', 'place_of_birth');
   const religion = validateName(rv('religion', ['Religion']));
   const height = validateHeight(rv('height', ['Height']));
 
@@ -1812,9 +1922,9 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     .toUpperCase());
 
   const village = validateLocation(rv('village'));
-  const barangay = validateLocation(rv('barangay'));
-  const city = validateLocation(rv('city', ['Municipality']));
-  const province = validateLocation(rv('province'));
+  const barangay = listed(validateLocation(rv('barangay')), 'barangay', 'barangay');
+  const city = listed(validateLocation(rv('city', ['Municipality'])), 'city', 'city');
+  const province = listed(validateLocation(rv('province')), 'province', 'province');
   const address = [houseStreet, village, barangay, city, province].filter(Boolean).join(', ');
 
   const disabilityOther = notNaText(validateLocation(rv('disability_other', ['Others', 'specify'])));
@@ -1830,7 +1940,7 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   ].join(', ');
   const terminatedCountry = notNaText(validateLocation(rv('terminated_abroad_country', ['specify', 'country'])));
   const employmentTypeOther = notNaText(cleanFreeText(rv('employment_type_other', ['Others', 'specify'])));
-  const languageOtherName = notNaText(validateName(rv('language_other_name', ['Others'])));
+  const languageOtherName = listed(notNaText(validateName(rv('language_other_name', ['Others']))), 'language', 'language_other_name');
 
   const gender = checkboxes.gender || '';
   const civilStatus = checkboxes.civil_status || '';
@@ -1853,9 +1963,9 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   ].filter(Boolean);
 
   const localLocations = [
-    validateLocation(rv('preferred_local_location_1')),
-    validateLocation(rv('preferred_local_location_2')),
-    validateLocation(rv('preferred_local_location_3')),
+    listed(validateLocation(rv('preferred_local_location_1')), 'place', 'preferred_local_location_1'),
+    listed(validateLocation(rv('preferred_local_location_2')), 'place', 'preferred_local_location_2'),
+    listed(validateLocation(rv('preferred_local_location_3')), 'place', 'preferred_local_location_3'),
   ].filter(Boolean);
 
   const overseasLocations = [
@@ -1933,6 +2043,9 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     overseas_location_list: overseasLocations,
     ...(languageRows.length || languageOtherName ? { languages: languageGrid } : {}),
   };
+
+  // Readings changed to a listed name, for the review hints (see reviewFlags).
+  ocrRegions.__name_fixes = nameFixes;
 
   return {
     first_name: firstName,
@@ -2022,6 +2135,10 @@ function reviewFlags(parsed, regions = {}) {
   if (pageType === 'unknown') return flags;
   if (!regions.__alignment) {
     flags.push({ key: '__page', label: 'Whole page', reason: 'The form could not be lined up exactly on this photo. Check every field.' });
+  }
+  for (const [name, read] of Object.entries(regions.__name_fixes || {})) {
+    const [key, label] = REGION_FIELDS[name] || [];
+    if (key) flags.push({ key, label, reason: `Read as "${read}" and changed to the nearest official name. Check it.` });
   }
   const confidence = regions.__confidence || {};
   for (const [name, [key, label]] of Object.entries(REGION_FIELDS)) {

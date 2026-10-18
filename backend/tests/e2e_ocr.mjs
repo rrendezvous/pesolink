@@ -60,7 +60,7 @@ console.log('Page 2 (typed sample)');
 r = await scan(token, 'nsrp-page-2-sample.jpg');
 const full = r.data?.extracted_data?.nsrp_full_data || {};
 check('page 2 recognised', r.data?.page_type === 'page2', r.data?.page_type);
-check('work rows read from the rows used on paper', full.work_rows?.length === 2 && full.work_rows[0]?.company === 'USTP ICT Office',
+check('work rows read from the rows used on paper', full.work_rows?.length === 2 && full.work_rows[0]?.company === 'USTP ICT OFFICE',
   JSON.stringify(full.work_rows));
 check('ticked skills read', JSON.stringify(full.other_skills_checked) === JSON.stringify(['Computer Literate', 'Photography']),
   JSON.stringify(full.other_skills_checked));
@@ -111,6 +111,18 @@ check('a month read above 12 (leading 0 misread) is repaired', parseNsrpText('',
 check('Gmail address: underscore read for a dot is fixed', rules({ email_address: 'juan_cruz@gmail.com' }).email_address === 'juan.cruz@gmail.com');
 check('other providers keep underscores and their own names', rules({ email_address: 'juan_cruz@yahoo.com' }).email_address === 'juan_cruz@yahoo.com'
   && rules({ email_address: 'maria@email.com' }).email_address === 'maria@email.com');
+check('salary with a space after the comma is joined', rules({ expected_salary: '12, 000 -15,000' }).expected_salary === '12,000 - 15,000');
+check('text answers come back in block letters', rules({ house_street: 'Purok 5' }).house_street === 'PUROK 5');
+const unsure = { __confidence: { city: 40, language_other_name: 40, barangay: 40 } };
+const listedRegions = { __page_type: 'page1', ...unsure, city: 'GINAOOG CY', language_other_name: 'CERVANO', barangay: 'MARKET VILAGE X' };
+const listedParsed = parseNsrpText('', listedRegions);
+check('an unsure place reading near one official name is corrected', listedParsed.city === 'GINGOOG CITY', listedParsed.city);
+check('an unsure language reading near a listed language is corrected', listedParsed.nsrp_full_data.languages?.other?.name === 'CEBUANO');
+check('a name not near any listed name is kept as read', listedParsed.nsrp_full_data.barangay === 'MARKET VILAGE X');
+const { reviewFlags } = createRequire(import.meta.url)('../services/nsrpOcr.js');
+check('every corrected name is flagged for checking', reviewFlags(listedParsed, listedRegions).some((f) => f.key === 'city' && /GINAOOG CY/.test(f.reason)));
+const sure = parseNsrpText('', { __page_type: 'page1', __confidence: { barangay: 90 }, barangay: 'BOBUNTUGAN' });
+check('a confident reading keeps the spelling written (BOBUNTUGAN)', sure.nsrp_full_data.barangay === 'BOBUNTUGAN');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
