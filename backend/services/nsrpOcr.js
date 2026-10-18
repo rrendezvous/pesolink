@@ -179,10 +179,11 @@ for (const lv of ['elementary', 'secondary', 'tertiary', 'graduate']) {
 }
 const ALIGNED_REGION_SPECS = {
   page1: cellSpecs({
-    surname: [62, 290, 330, 346, BLOCK], first_name: [330, 290, 620, 346, BLOCK],
-    middle_name: [620, 290, 900, 346, BLOCK], suffix: [900, 290, 1180, 346, BLOCK],
+    // Name boxes split halfway between the printed labels (SURNAME / FIRST NAME / MIDDLE NAME / SUFFIX).
+    surname: [62, 290, 285, 346, BLOCK], first_name: [285, 290, 565, 346, BLOCK],
+    middle_name: [565, 290, 870, 346, BLOCK], suffix: [870, 290, 1180, 346, BLOCK],
     date_of_birth: [340, 374, 656, 400, LINE], place_of_birth: [858, 374, 1181, 400, LINE],
-    religion: [160, 432, 349, 476, BLOCK],
+    religion: [160, 432, 656, 476, BLOCK],
     house_street: [859, 432, 1181, 455, LINE], village: [859, 455, 1181, 477, LINE],
     barangay: [859, 478, 1181, 506, LINE], city: [859, 507, 1181, 535, LINE], province: [859, 536, 1181, 564, LINE],
     tin: [252, 565, 656, 593, LINE], gsis_sss_no: [252, 594, 656, 622, LINE],
@@ -976,7 +977,8 @@ function printedFormCover(width, height, region, pad, mask, scale = ALIGNED_SCAL
 // Removes ink that does not belong to this cell: specks (photo noise), and pieces of writing whose centre lies
 // above or below the cell (writing from the row above or below that spilled over the line). Writing from this
 // cell that spills over its own lines is kept whole. cellTop/cellBottom are the cell's lines in crop pixels.
-function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 12) {
+// keepEdgePieces: keep pieces touching the top/bottom edge (for tick cells, where a tick may sit on the line).
+function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 12, cellLeft = 0, cellRight = crop.width, keepEdgePieces = false) {
   const { width, height } = crop;
   const black = new Uint8Array(crop.black);
   const seen = new Uint8Array(width * height);
@@ -984,13 +986,14 @@ function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 1
   for (let start = 0; start < black.length; start += 1) {
     if (!black[start] || seen[start]) continue;
     const pixels = [];
-    let minY = height; let maxY = -1; let sumY = 0; let minX = width; let maxX = -1;
+    let minY = height; let maxY = -1; let sumY = 0; let sumX = 0; let minX = width; let maxX = -1;
     stack.push(start); seen[start] = 1;
     while (stack.length) {
       const i = stack.pop();
       pixels.push(i);
       const x = i % width; const y = (i - x) / width;
       sumY += y;
+      sumX += x;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
@@ -1005,14 +1008,19 @@ function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 1
       }
     }
     const centre = sumY / pixels.length;
-    const outside = centre < cellTop || centre > cellBottom;
-    const cutOff = (minY === 0 || maxY === height - 1) && maxY - minY + 1 < (cellBottom - cellTop) * 0.35;
+    const centreX = sumX / pixels.length;
+    const outside = centre < cellTop || centre > cellBottom || centreX < cellLeft || centreX > cellRight;
+    const cutOff = !keepEdgePieces && (minY === 0 || maxY === height - 1) && maxY - minY + 1 < (cellBottom - cellTop) * 0.35;
     // Leftover printed line: thin and straight, taller than the cell (vertical) or much wider than tall (horizontal).
     const thin = 3 * ALIGNED_SCALE;
     const cellHeight = cellBottom - cellTop;
     const lineLeft = (maxX - minX + 1 <= thin && maxY - minY + 1 > cellHeight * 1.2)
       || (maxY - minY + 1 <= thin && maxX - minX + 1 > cellHeight * 3);
-    if (pixels.length < minPixels || outside || cutOff || lineLeft) for (const i of pixels) black[i] = 0;
+    // A dash left over from a dotted line: short and flat, lying on the cell's top or bottom edge. (Hyphens in
+    // IDs and dates sit in the middle of the writing, so they are kept.)
+    const flat = maxY - minY + 1 <= thin && maxX - minX + 1 >= (maxY - minY + 1) * 2;
+    const onEdge = Math.abs(centre - cellBottom) <= 4 * ALIGNED_SCALE || Math.abs(centre - cellTop) <= 4 * ALIGNED_SCALE;
+    if (pixels.length < minPixels || outside || cutOff || lineLeft || (flat && onEdge)) for (const i of pixels) black[i] = 0;
   }
   return { ...crop, black };
 }
@@ -1089,7 +1097,10 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
       const [dx, dy] = localShift(greyImage, transform, spec.region, formInk);
       // Writing often spills over the cell's lines, so read with room above and below (45% of the cell).
       const extra = spec.region[3] * 0.45;
-      const area = [spec.region[0], spec.region[1] - extra, spec.region[2], spec.region[3] + extra * 2];
+      // Room left and right too (about a third of the cell's height): the first or last character often spills past
+      // a narrow box. Only ink whose centre lies inside the box is kept.
+      const extraX = (spec.region[3] * 1754 * 0.35) / 1240;
+      const area = [spec.region[0] - extraX, spec.region[1] - extra, spec.region[2] + extraX * 2, spec.region[3] + extra * 2];
       const shifted = [area[0] + dx / 1240, area[1] + dy / 1754, area[2], area[3]];
       const sample = sampleRegion(greyImage, transform, shifted, pad, ALIGNED_SCALE);
       const { black: ink, paper } = inkMask(sample.grey, true);
@@ -1097,7 +1108,9 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
       const written = restoreCrossings(ink.map((v, i) => (v && !formCovered[i] ? 1 : 0)), ink, formCovered, sample.width, sample.height);
       const cellTop = (pad + extra) * 1754 * ALIGNED_SCALE;
       const cellBottom = cellTop + spec.region[3] * 1754 * ALIGNED_SCALE;
-      const crop = dropStrayInk({ width: sample.width, height: sample.height, black: written }, cellTop, cellBottom);
+      const cellLeft = (pad + extraX) * 1240 * ALIGNED_SCALE;
+      const cellRight = cellLeft + spec.region[2] * 1240 * ALIGNED_SCALE;
+      const crop = dropStrayInk({ width: sample.width, height: sample.height, black: written }, cellTop, cellBottom, 12, cellLeft, cellRight);
       if (isBlankOcrCrop(crop, (spec.minBlackPixels ?? 10) * ALIGNED_SCALE * ALIGNED_SCALE)) {
         regions[name] = '';
         continue;
@@ -1189,7 +1202,7 @@ function detectAlignedCheckboxes(greyImage, transform, groups, pageType) {
     const ink = inkMask(sample.grey);
     const covered = printedFormCover(sample.width, sample.height, region, 0, formInk);
     // Photo grain makes many small specks; a pen tick is one connected stroke, so only strokes of 150+ pixels count.
-    const written = dropStrayInk({ width: sample.width, height: sample.height, black: ink.map((v, i) => (v && !covered[i] ? 1 : 0)) }, 0, sample.height, 150);
+    const written = dropStrayInk({ width: sample.width, height: sample.height, black: ink.map((v, i) => (v && !covered[i] ? 1 : 0)) }, 0, sample.height, 150, 0, sample.width, true);
     let count = 0;
     for (let i = 0; i < written.black.length; i += 1) count += written.black[i];
     return (count / CELL_TICK_PIXELS) * ALIGNED_TICK_MIN;
@@ -1515,10 +1528,19 @@ function spaceNumberUnit(value) {
   return String(value || '').replace(/(\d)([A-Za-z]{2,})/g, '$1 $2');
 }
 
+// "AFTER Z WEEKS": a lone Z (or z) before a time unit is a handwritten 2.
+function fixDurationDigits(value) {
+  return String(value || '').replace(/\b[Zz](?=\s*(?:DAYS?|WEEKS?|MONTHS?|YEARS?)\b)/gi, '2');
+}
+
 // Training durations and work dates are written mm/yyyy (or mm/dd/yyyy) "to" mm/yyyy. A slash read as 1 or 7,
 // or lost ("0572009", "122005"), is put back when the month is a real month.
 function fixDateRange(value) {
-  return String(value || '').replace(/\b(\d{6,7})\b/g, (whole) => {
+  return String(value || '')
+    // A junk 1-2 character word between two dates ("+o", "Yo", "hv" for the handwritten "to") is "to".
+    // (A dash between the dates is a real separator and is left as written.)
+    .replace(/(\d)\s+(?!to\b)[^\s\d\-–]{1,2}\s+(?=\d|PRESENT\b)/gi, '$1 to ')
+    .replace(/\b(\d{6,7})\b/g, (whole) => {
     const m = whole.length === 7 ? whole.match(/^(\d{2})[17](\d{4})$/) : whole.match(/^(\d{2})(\d{4})$/);
     return m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1900 ? `${m[1]}/${m[2]}` : whole;
   });
@@ -1551,7 +1573,11 @@ function validateIdNumber(value) {
 
 function validateSalary(value) {
   if (!value || !/\d/.test(value)) return '';
-  let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim();
+  let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim()
+    // "₱18,000-₱22,000": a peso sign (often read as #) means PHP; the second one is dropped.
+    .replace(/[₱#]\s*(?=\d)/g, (m, i) => (i === 0 ? 'PHP ' : ''))
+    // "18,00022,000": two amounts stuck together are a range.
+    .replace(/(\d{1,3},\d{3})(?=\d{1,3},\d{3}\b)/, '$1 - ');
   const m = v.match(/(?:PHP|P)?\s*\d{1,3}(?:,\d{3})?(?:\s*-\s*\d{1,3}(?:,\d{3})?)/i);
   if (m) {
     // Keep what follows the range too ("/ MONTH", "PER MONTH").
@@ -1814,8 +1840,8 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const willingNow = checkboxes.willing_to_work_immediately || '';
   const fourPs = checkboxes.four_ps_beneficiary || '';
   const notNa = notNaText;
-  const lookingDuration = notNa(spaceNumberUnit(cleanFreeText(rv('looking_duration', ['How long']))));
-  const availableWhen = notNa(cleanFreeText(rv('available_when', ['If no', 'when'])));
+  const lookingDuration = notNa(fixDurationDigits(spaceNumberUnit(cleanFreeText(rv('looking_duration', ['How long'])))));
+  const availableWhen = notNa(fixDurationDigits(cleanFreeText(rv('available_when', ['If no', 'when']))));
   const householdId = notNa(validateIdNumber(rv('household_id', ['Household', 'ID', 'No.'])) || '');
   const workLocation = checkboxes.work_location || '';
 
