@@ -1080,6 +1080,15 @@ function thickerPgm(crop) {
 }
 
 const YEAR_CELL = /^(elementary|secondary|tertiary|graduate)_(year|last_attended)$/;
+// Digit groups of each ID number as usually written (TIN 000-000-000 or with a 3-digit branch code;
+// SSS 00-0000000-0; GSIS BP number 11 digits; PhilHealth 00-000000000-0; Pag-IBIG 0000-0000-0000). A reading with
+// another number of digits is flagged for review (see reviewFlags).
+const ID_SHAPES = {
+  tin: [[3, 3, 3], [3, 3, 3, 3]],
+  gsis_sss_no: [[2, 7, 1], [11]],
+  philhealth_no: [[2, 9, 1]],
+  pagibig_no: [[4, 4, 4]],
+};
 
 // The writing split at empty columns into separate pieces (usually one digit each), as tight PGM images, with
 // each piece's width and height. Two close strokes such as the "11" in "2011" are otherwise read as one.
@@ -1184,10 +1193,9 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
         const same = (a, b) => a.replace(/\s+/g, '').toUpperCase() === b.replace(/\s+/g, '').toUpperCase();
         if (!readings.every((x) => same(x.text, best.text))) best = { ...best, conf: Math.min(...readings.map((x) => x.conf)) };
       }
-      // A year box holds four digits (or NA). A reading of another length is read again piece by piece: a tall,
-      // narrow stroke is a 1, and every other piece is read on its own. The new reading is used only when it
-      // gives four digits, and it stays flagged as unsure.
-      if (YEAR_CELL.test(name) && best.text && !/^(\d{4}|N\/?A)$/i.test(best.text.replace(/\s+/g, ''))) {
+      // Read piece by piece: a tall, narrow stroke is a 1, short pieces (dashes, specks) are skipped, and every
+      // other piece is read on its own. Returns the digits found.
+      const digitsByPiece = async () => {
         const pieces = writingPieces(crop);
         const tallest = Math.max(...pieces.map((p) => p.h));
         let digits = '';
@@ -1196,6 +1204,12 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
           const result = await worker.recognize(piece.image, { ...params, tessedit_pageseg_mode: getPsm(Tesseract, 'SINGLE_WORD') }, { text: true });
           digits += String(result.data?.text || '').replace(/\D/g, '');
         }
+        return digits;
+      };
+      // A year box holds four digits (or NA). A reading of another length is read again piece by piece; the new
+      // reading is used only when it gives four digits, and it stays flagged as unsure.
+      if (YEAR_CELL.test(name) && best.text && !/^(\d{4}|N\/?A)$/i.test(best.text.replace(/\s+/g, ''))) {
+        const digits = await digitsByPiece();
         if (/^\d{4}$/.test(digits)) best = { text: digits, conf: Math.min(best.conf, LOW_CONFIDENCE - 1) };
       }
       regions[name] = best.text;
@@ -1448,6 +1462,8 @@ function normalizeKnownRunTogether(value) {
 
 function stripOcrNoise(value) {
   return String(value || '')
+    // A zero inside a word of letters is the letter O ("CAGAYAN DE 0RRO", "G0NZAGA").
+    .replace(/\b[A-Za-z0]*[A-Za-z][A-Za-z0]*\b/g, (word) => (/[A-Za-z].*[A-Za-z]|[A-Za-z]{2}/.test(word) ? word.replace(/0/g, 'O') : word))
     .replace(/[^\w@.+,\-/\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1533,8 +1549,76 @@ function matchListedName(value, kind, regionName, fixes, confidence = {}) {
   if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
   const list = NAME_LISTS[kind];
   const out = String(value).split(',').map((p) => nearestListedName(p, list)).filter(Boolean).join(', ');
-  if (out.replace(/[\s,]+/g, '') !== String(value).replace(/[\s,]+/g, '')) fixes[regionName] = value;
+  if (out.replace(/[\s,]+/g, '') !== String(value).replace(/[\s,]+/g, '')) fixes[regionName] = { read: value, kind: 'place' };
   return out;
+}
+
+// Common words on NSRP forms (schools, courses, trainings, companies, positions, work status, religion) plus every
+// word of the official place names. An unsure reading's word one or two letters away from exactly one of these is
+// corrected and flagged, the same way as place names. Words not near any listed word (names, brands) are kept.
+const FORM_WORDS = new Set([
+  'SCHOOL', 'HIGH', 'NATIONAL', 'CENTRAL', 'ELEMENTARY', 'SECONDARY', 'INTEGRATED', 'COMPREHENSIVE', 'CITY', 'COLLEGE',
+  'COLLEGES', 'UNIVERSITY', 'INSTITUTE', 'ACADEMY', 'STATE', 'TECHNOLOGY', 'TECHNOLOGICAL', 'SCIENCE', 'SCIENCES',
+  'POLYTECHNIC', 'JUNIOR', 'SENIOR', 'BACHELOR', 'MASTER', 'BUSINESS', 'ADMINISTRATION', 'INFORMATION', 'EDUCATION',
+  'ENGINEERING', 'ELECTRICAL', 'ELECTRONICS', 'MECHANICAL', 'CIVIL', 'COMPUTER', 'MANAGEMENT', 'ACCOUNTANCY',
+  'ACCOUNTING', 'HOSPITALITY', 'HOTEL', 'RESTAURANT', 'TOURISM', 'CRIMINOLOGY', 'NURSING', 'MIDWIFERY', 'PSYCHOLOGY',
+  'AGRICULTURE', 'MARINE', 'TRANSPORTATION', 'SECRETARIAL', 'OFFICE', 'EXTENSION', 'REGION', 'TRAINING', 'CENTER',
+  'CENTRE', 'PROVINCIAL', 'MUNICIPAL', 'COOKERY', 'BAKING', 'BREAD', 'PASTRY', 'PRODUCTION', 'HOUSEKEEPING',
+  'CAREGIVING', 'MASSAGE', 'THERAPY', 'WELDING', 'SHIELDED', 'METAL', 'INSTALLATION', 'MAINTENANCE', 'SYSTEMS',
+  'SERVICING', 'AUTOMOTIVE', 'CARPENTRY', 'MASONRY', 'PLUMBING', 'DRIVING', 'TAILORING', 'DRESSMAKING', 'BOOKKEEPING',
+  'BARTENDING', 'BEAUTY', 'CARE', 'SERVICES', 'SERVICE', 'POWER', 'STEEL', 'WORKS', 'CORPORATION', 'ENTERPRISES',
+  'ENTERPRISE', 'COMPANY', 'STORE', 'MARKET', 'GRAND', 'TRADING', 'CONSTRUCTION', 'SUPPLY', 'HARDWARE', 'PHARMACY',
+  'HOSPITAL', 'CLINIC', 'BANK', 'COOPERATIVE', 'FOODS', 'RESORT', 'MALL', 'ELECTRIC', 'WATER', 'DISTRICT', 'FREELANCE',
+  'CLIENT', 'ELECTRICIAN', 'HELPER', 'CASHIER', 'CLERK', 'SALES', 'LADY', 'ENCODER', 'CREW', 'DRIVER', 'WELDER', 'COOK',
+  'TEACHER', 'AIDE', 'ASSISTANT', 'TECHNICIAN', 'SUPERVISOR', 'MANAGER', 'STAFF', 'ATTENDANT', 'GUARD', 'SECURITY',
+  'CARPENTER', 'MASON', 'PLUMBER', 'MECHANIC', 'BAKER', 'WAITER', 'WAITRESS', 'BARISTA', 'JANITOR', 'MESSENGER',
+  'ACCOUNTANT', 'BOOKKEEPER', 'RECEPTIONIST', 'SECRETARY', 'NURSE', 'CAREGIVER', 'DEVELOPER', 'PROGRAMMER',
+  'SPECIALIST', 'SUPPORT', 'INTERN', 'OPERATOR', 'CUSTOMER', 'REPRESENTATIVE', 'DEPARTMENT', 'CONTRACTUAL', 'PERMANENT',
+  'PROBATIONARY', 'SEASONAL', 'CASUAL', 'INTERNSHIP', 'PRESENT', 'YEAR', 'ROMAN', 'CATHOLIC', 'CHRISTIAN', 'IGLESIA',
+  'CRISTO', 'BORN', 'AGAIN', 'BAPTIST', 'ADVENTIST', 'ISLAM', 'MUSLIM', 'AGLIPAY', 'PUROK', 'ZONE', 'STREET', 'VILLAGE',
+  'SUBDIVISION',
+]);
+for (const list of [PLACE_NAMES.cities, PLACE_NAMES.municipalities, PLACE_NAMES.provinces, PLACE_NAMES.barangays]) {
+  for (const name of list) for (const word of name.split(/[\s-]+/)) if (/^[A-ZÑ]{4,}$/.test(word)) FORM_WORDS.add(word);
+}
+const FORM_WORD_LIST = [...FORM_WORDS];
+
+function nearestFormWord(word) {
+  if (word.length < 4 || FORM_WORDS.has(word) || !/^[A-ZÑ]+$/.test(word)) return null;
+  const allowed = word.length <= 5 ? 1 : word.length <= 10 ? 2 : 3;
+  let best = null; let bestD = Infinity; let tie = false;
+  for (const w of FORM_WORD_LIST) {
+    if (Math.abs(w.length - word.length) > allowed) continue;
+    const d = editDistance(word, w);
+    if (d < bestD) { best = w; bestD = d; tie = false; } else if (d === bestD) tie = true;
+  }
+  // More than one letter off only counts when the first letter agrees (fewer surprise changes).
+  if (!best || tie || bestD > allowed || (bestD > 1 && best[0] !== word[0])) return null;
+  return best;
+}
+
+// Corrects the words of one unsure reading (see FORM_WORDS). A word split in two ("ELECTR CIAN") is joined when
+// the joined word is listed or near one. Changes are recorded in fixes for the review hints.
+function matchFormWords(value, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const words = String(value).split(' ');
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const w = words[i].toUpperCase();
+    const next = (words[i + 1] || '').toUpperCase();
+    const joined = next && /^[A-ZÑ]+$/.test(w + next) ? w + next : '';
+    const joinedFix = joined && !FORM_WORDS.has(w) && !FORM_WORDS.has(next)
+      ? (FORM_WORDS.has(joined) ? joined : nearestFormWord(joined)) : null;
+    if (joinedFix) {
+      out.push(joinedFix);
+      i += 1;
+      continue;
+    }
+    out.push(nearestFormWord(w) || words[i]);
+  }
+  const result = out.join(' ');
+  if (result.toUpperCase() !== String(value).toUpperCase()) fixes[regionName] = { read: value, kind: 'words' };
+  return result;
 }
 
 function mmddyyyyCandidates(digits, maxYear = new Date().getFullYear()) {
@@ -1810,9 +1894,14 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   if (otherSkillText) checkedSkills.push(`Others: ${otherSkillText}`);
 
   // Structured rows matching the NSRP Form 1 tables ("NA" cells count as blank).
+  const nameFixes = {};
+  // Readings changed to common form words, for the review hints (see reviewFlags).
+  ocrRegions.__name_fixes = nameFixes;
+  const WORD_CELL = /_(school|course|institution|company|address|position|status|level|name)$/;
   const cell = (key) => {
     const v = cleanFreeText(rv(key));
-    return /^n\.?\/?a\.?$/i.test(v) ? '' : v;
+    if (/^n\.?\/?a\.?$/i.test(v)) return '';
+    return WORD_CELL.test(key) ? matchFormWords(v, key, nameFixes, ocrRegions.__confidence) : v;
   };
   const eduRow = (prefix) => ({
     school: cell(`${prefix}_school`),
@@ -1902,7 +1991,7 @@ function parseNsrpTextAsRead(rawText, ocrRegions = {}) {
   const dobRead = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
   const dateOfBirth = dobRead && dobRead <= new Date().toISOString().slice(0, 10) ? dobRead : '';
   const placeOfBirth = listed(validateLocation(rv('place_of_birth', ['Place of Birth'])), 'place', 'place_of_birth');
-  const religion = validateName(rv('religion', ['Religion']));
+  const religion = matchFormWords(validateName(rv('religion', ['Religion'])), 'religion', nameFixes, ocrRegions.__confidence);
   const height = validateHeight(rv('height', ['Height']));
 
   const tin = validateIdNumber(rv('tin', ['TIN']));
@@ -1956,10 +2045,10 @@ function parseNsrpTextAsRead(rawText, ocrRegions = {}) {
   const workLocation = checkboxes.work_location || '';
 
   const occList = [
-    cleanOccupation(rv('preferred_occupation_1')),
-    cleanOccupation(rv('preferred_occupation_2')),
-    cleanOccupation(rv('preferred_occupation_3')),
-    cleanOccupation(rv('preferred_occupation_4')),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_1')), 'preferred_occupation_1', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_2')), 'preferred_occupation_2', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_3')), 'preferred_occupation_3', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_4')), 'preferred_occupation_4', nameFixes, ocrRegions.__confidence),
   ].filter(Boolean);
 
   const localLocations = [
@@ -2136,9 +2225,10 @@ function reviewFlags(parsed, regions = {}) {
   if (!regions.__alignment) {
     flags.push({ key: '__page', label: 'Whole page', reason: 'The form could not be lined up exactly on this photo. Check every field.' });
   }
-  for (const [name, read] of Object.entries(regions.__name_fixes || {})) {
+  for (const [name, { read, kind }] of Object.entries(regions.__name_fixes || {})) {
     const [key, label] = REGION_FIELDS[name] || [];
-    if (key) flags.push({ key, label, reason: `Read as "${read}" and changed to the nearest official name. Check it.` });
+    const what = kind === 'place' ? 'the nearest official name' : 'common form words';
+    if (key) flags.push({ key, label, reason: `Read as "${read}" and changed to ${what}. Check it.` });
   }
   const confidence = regions.__confidence || {};
   for (const [name, [key, label]] of Object.entries(REGION_FIELDS)) {
@@ -2157,6 +2247,22 @@ function reviewFlags(parsed, regions = {}) {
   const dobMonth = String(regions.date_of_birth || '').match(/^\D*(\d{2})\D/);
   if (dobMonth && +dobMonth[1] > 12 && !flags.some((f) => f.key === 'date_of_birth')) {
     flags.push({ key: 'date_of_birth', label: 'Date of Birth', reason: 'The month was unclear. Check the date.' });
+  }
+  for (const [name, groups] of Object.entries(ID_SHAPES)) {
+    const [key, label] = REGION_FIELDS[name];
+    const digits = String(valueAt(parsed, key) || '').replace(/\D/g, '');
+    if (digits && !groups.some((g) => g.reduce((a, b) => a + b, 0) === digits.length) && !flags.some((f) => f.key === key)) {
+      flags.push({ key, label, reason: 'The number of digits does not look complete. Check it.' });
+    }
+  }
+  // Training and work dates: a year after this year (or before 1950) cannot be right.
+  const thisYear = new Date().getFullYear();
+  for (const [name, [key, label]] of Object.entries(REGION_FIELDS)) {
+    if (!/^(training_\d_duration|work_\d_dates)$/.test(name)) continue;
+    const years = String(regions[name] || '').match(/\d{4}/g) || [];
+    if (years.some((y) => +y > thisYear || +y < 1950) && !flags.some((f) => f.key === key)) {
+      flags.push({ key, label, reason: 'A year here looks impossible. Check the dates.' });
+    }
   }
   const cell = String(valueAt(parsed, 'cell_phone_number') || '');
   if (cell && !/^(09\d{9}|\+?639\d{9})$/.test(cell) && !flags.some((f) => f.key === 'cell_phone_number')) {

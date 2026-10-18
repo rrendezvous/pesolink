@@ -123,6 +123,18 @@ const { reviewFlags } = createRequire(import.meta.url)('../services/nsrpOcr.js')
 check('every corrected name is flagged for checking', reviewFlags(listedParsed, listedRegions).some((f) => f.key === 'city' && /GINAOOG CY/.test(f.reason)));
 const sure = parseNsrpText('', { __page_type: 'page1', __confidence: { barangay: 90 }, barangay: 'BOBUNTUGAN' });
 check('a confident reading keeps the spelling written (BOBUNTUGAN)', sure.nsrp_full_data.barangay === 'BOBUNTUGAN');
+const page2 = { __page_type: 'page2', __confidence: { tertiary_school: 40, work_1_position: 40, work_1_company: 40 },
+  tertiary_school: 'GINGOOG CITY COWEGES', work_1_position: 'ELECTR CIAN', work_1_company: 'JOLLIBEE', work_1_dates: '09/2662 to 06/2026' };
+const page2Parsed = parseNsrpText('', page2);
+check('an unsure common form word is corrected (COWEGES)', page2Parsed.nsrp_full_data.education.tertiary.school === 'GINGOOG CITY COLLEGES');
+check('a word split in two is joined (ELECTR CIAN)', page2Parsed.nsrp_full_data.work_rows[0]?.position === 'ELECTRICIAN');
+check('a brand name not near a form word is kept (JOLLIBEE)', page2Parsed.nsrp_full_data.work_rows[0]?.company === 'JOLLIBEE');
+const page2Flags = reviewFlags(page2Parsed, page2);
+check('corrected words and impossible years are flagged', page2Flags.some((f) => /COWEGES/.test(f.reason))
+  && page2Flags.some((f) => /impossible/.test(f.reason)));
+check('a zero inside a place name is read as O', rules({ house_street: 'L0T 5' }).house_street === 'LOT 5');
+const shortId = parseNsrpText('', { __page_type: 'page1', gsis_sss_no: '08-216453-9' });
+check('an ID number with too few digits is flagged', reviewFlags(shortId, { __page_type: 'page1', gsis_sss_no: '08-216453-9' }).some((f) => f.key === 'gsis_sss_no'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
