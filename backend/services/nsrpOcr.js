@@ -1709,11 +1709,29 @@ function validateLandline(value) {
 
 function validateEmail(value) {
   if (!value) return '';
-  const joined = String(value).replace(/\s*([.,@])\s*/g, (_, ch) => (ch === ',' ? '.' : ch)).replace(/\s+/g, '');
+  const joined = completeMailHost(String(value).replace(/\s*([.,@])\s*/g, (_, ch) => (ch === ',' ? '.' : ch)).replace(/\s+/g, ''));
   const fixed = joined.replace(/@([a-z0-9-]+?)\.?(com|net|org|ph|edu|gov)(\.ph)?$/i, (_, host, end, ph) => `@${commonMailHost(host)}.${end}${ph || ''}`);
   const m = fixed.replace(/^([^@]*)(@gmail\.com)$/i, (_, local, host) => `${local.replace(/_/g, '.')}${host}`)
     .match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   return m ? m[0].toLowerCase() : '';
+}
+
+// The end of an address often runs past the box ("...@GMALC(", "...@yahoo.c"): when what follows "@" is clearly
+// the start of a widely used provider's address (at most one letter off), the rest is completed ("gmail.com").
+// The field still gets a review hint when the two readers disagree.
+const MAIL_ADDRESSES = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'ymail.com', 'icloud.com'];
+function completeMailHost(text) {
+  const at = text.lastIndexOf('@');
+  if (at < 1 || /\.[A-Za-z]{2,}$/.test(text.slice(at + 1)) && /\.(com|net|org|ph|edu|gov)(\.ph)?$/i.test(text)) return text;
+  const read = text.slice(at + 1).toLowerCase().replace(/[^a-z]/g, '');
+  if (read.length < 4) return text;
+  for (const address of MAIL_ADDRESSES) {
+    const letters = address.replace('.', '');
+    for (let n = Math.max(4, read.length - 1); n <= Math.min(letters.length, read.length + 1); n += 1) {
+      if (editDistance(read, letters.slice(0, n)) <= 1) return `${text.slice(0, at + 1)}${address}`;
+    }
+  }
+  return text;
 }
 
 // One misread letter in a widely used mail provider's name ("qmail", "amail" for gmail) is corrected; any
@@ -1932,7 +1950,18 @@ function parsePage2Text(rawText, ocrRegions = {}) {
     year_last_attended: cell(`${prefix}_last_attended`),
     awards: cell(`${prefix}_awards`),
   });
-  const filledRow = (row) => Object.values(row).some(Boolean);
+  // A row counts only with at least 3 letters or digits in it: a lone stray mark ("T") in an empty row is not a row.
+  const filledRow = (row) => Object.values(row).join('').replace(/[^A-Za-z0-9Ññ]/g, '').length >= 3;
+  // Empty paper rows are skipped, so paper row n can be row n-1 (or earlier) in the form. The mapping is kept for
+  // the review hints (reviewFlags), which name the paper row.
+  const rowIndex = {};
+  ocrRegions.__row_index = rowIndex;
+  const keepRows = (table, list) => {
+    rowIndex[table] = {};
+    const out = [];
+    list.forEach((row, i) => { if (filledRow(row)) { rowIndex[table][i + 1] = out.length; out.push(row); } });
+    return out;
+  };
   const dateCell = (key) => fixDateRange(cell(key));
   const workRow = (n) => ({
     company: cell(`work_${n}_company`),
@@ -1950,17 +1979,17 @@ function parsePage2Text(rawText, ocrRegions = {}) {
       tertiary: eduRow('tertiary'),
       graduate: eduRow('graduate'),
     },
-    training_rows: TRAINING_ROWS.map((n) => ({
+    training_rows: keepRows('training_rows', TRAINING_ROWS.map((n) => ({
       course: cell(`training_${n}_course`),
       duration: dateCell(`training_${n}_duration`),
       institution: cell(`training_${n}_institution`),
       certificate: fixNcLevel(cell(`training_${n}_certificate`)),
-    })).filter(filledRow),
-    eligibility_rows: [1, 2].map((n) => ({
+    }))),
+    eligibility_rows: keepRows('eligibility_rows', [1, 2].map((n) => ({
       eligibility: cell(`eligibility_${n}_name`), rating: cell(`eligibility_${n}_rating`), exam_date: cell(`eligibility_${n}_exam_date`),
-    })).filter(filledRow),
-    license_rows: [1, 2].map((n) => ({ license: cell(`license_${n}_name`), valid_until: cell(`license_${n}_valid_until`) })).filter(filledRow),
-    work_rows: WORK_ROWS.map(workRow).filter(filledRow),
+    }))),
+    license_rows: keepRows('license_rows', [1, 2].map((n) => ({ license: cell(`license_${n}_name`), valid_until: cell(`license_${n}_valid_until`) }))),
+    work_rows: keepRows('work_rows', WORK_ROWS.map(workRow)),
     other_skills_checked: checkedSkills.filter((skill) => !skill.startsWith('Others:')),
     other_skills_other: otherSkillText,
     trainings: training,
@@ -2307,8 +2336,19 @@ function reviewFlags(parsed, regions = {}) {
       flags.push({ key, label, reason: 'The tick mark is faint or unclear.' });
     }
   }
+  // Table hints name the paper row; the form shows only filled rows, so name the form's row instead
+  // ("work_rows.0.company"). The eligibility and license name columns are called eligibility / license in the form.
+  const rowIndex = regions.__row_index || {};
+  const COLUMN_NAMES = { eligibility_rows: { name: 'eligibility' }, license_rows: { name: 'license' } };
+  const formKeyed = flags.map((f) => {
+    const m = f.key.match(/^(\w+)\.paper_row_(\d+)\.(\w+)$/);
+    if (!m) return f;
+    const [, table, paperRow, column] = m;
+    const index = (rowIndex[table] || {})[paperRow];
+    return index === undefined ? f : { ...f, key: `${table}.${index}.${(COLUMN_NAMES[table] || {})[column] || column}` };
+  });
   const seen = new Set();
-  return flags.filter((f) => !seen.has(f.key) && seen.add(f.key));
+  return formKeyed.filter((f) => !seen.has(f.key) && seen.add(f.key));
 }
 
 function countExtractedFields(parsed) {

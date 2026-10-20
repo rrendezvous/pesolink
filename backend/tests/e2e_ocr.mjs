@@ -136,6 +136,10 @@ check('a zero inside a place name is read as O', rules({ house_street: 'L0T 5' }
 const shortId = parseNsrpText('', { __page_type: 'page1', gsis_sss_no: '08-216453-9' });
 check('an ID number with too few digits is flagged', reviewFlags(shortId, { __page_type: 'page1', gsis_sss_no: '08-216453-9' }).some((f) => f.key === 'gsis_sss_no'));
 
+const skipped = { __page_type: 'page2', __confidence: { work_2_company: 40 }, work_2_company: 'JOLIBE', work_2_dates: '01/2020 to 02/2021' };
+const skippedFlags = reviewFlags(parseNsrpText('', skipped), skipped).map((f) => f.key);
+check('a hint on paper row 2 points to form row 1 when paper row 1 is empty', skippedFlags.includes('work_rows.0.company'), skippedFlags.join(','));
+
 console.log('Second reader (PaddleOCR helper; optional)');
 const { readBoxes, mergeHelperReadings } = createRequire(import.meta.url)('../services/ocrHelper.js');
 const merged = { __confidence: { first_name: 40, surname: 95, household_id: 60, cell_phone_number: 30 },
