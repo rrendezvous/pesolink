@@ -140,6 +140,20 @@ const skipped = { __page_type: 'page2', __confidence: { work_2_company: 40 }, wo
 const skippedFlags = reviewFlags(parseNsrpText('', skipped), skipped).map((f) => f.key);
 check('a hint on paper row 2 points to form row 1 when paper row 1 is empty', skippedFlags.includes('work_rows.0.company'), skippedFlags.join(','));
 
+const glued = { __page_type: 'page2', __confidence: { secondary_school: 40, training_1_institution: 40 },
+  secondary_school: 'GINGOOG CITYCOMPREHENSIVE', training_1_institution: 'TESDA REGIONX', training_1_certificate: 'NC Li' };
+const gluedRows = parseNsrpText('', glued).nsrp_full_data;
+check('two listed words read without a space are split', gluedRows.education.secondary.school === 'GINGOOG CITY COMPREHENSIVE');
+check('REGION and its roman numeral are split (REGIONX)', gluedRows.training_rows[0]?.institution === 'TESDA REGION X');
+check('an NC level with a lowercase letter is read (NC Li -> NC II)', gluedRows.training_rows[0]?.certificate === 'NC II');
+check('a street word and its number are split (PUROK5)', rules({ house_street: 'PUROK5' }).house_street === 'PUROK 5');
+
+const marksOnly = { __page_type: 'page1', village: '—', passport_expiry: '1 N4', household_id: "'", landline_number: 'ABCDE' };
+const markFlags = reviewFlags(parseNsrpText('', marksOnly), marksOnly).map((f) => f.key);
+check('a dash, stray mark or misread NA in an empty box gets no hint', !markFlags.includes('village') && !markFlags.includes('passport_expiry')
+  && !markFlags.includes('household_id'), markFlags.join(','));
+check('unreadable real writing still gets a hint', markFlags.includes('landline_number'), markFlags.join(','));
+
 console.log('Second reader (PaddleOCR helper; optional)');
 const { readBoxes, mergeHelperReadings } = createRequire(import.meta.url)('../services/ocrHelper.js');
 const merged = { __confidence: { first_name: 40, surname: 95, household_id: 60, cell_phone_number: 30 },

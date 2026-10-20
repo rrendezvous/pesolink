@@ -772,7 +772,8 @@ async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, bin
 }
 
 // Photos whose short side is above this are averaged down before reading, to a short side of about
-// TARGET_SHORT_SIDE (the form's width at roughly 200 dpi).
+// TARGET_SHORT_SIDE (the form's width at roughly 200 dpi). Averaging works in whole steps (half, a third...), so a
+// photo is shrunk only when the result stays at least about that size; a photo just over the limit is read as is.
 const LARGE_PHOTO_SHORT_SIDE = 2000;
 const TARGET_SHORT_SIDE = 1650;
 
@@ -841,6 +842,55 @@ function rotateGrey(image, turns) {
     [width, height] = [height, width];
   }
   return { width, height, grey };
+}
+
+// How many degrees a photo is tilted (-10 to 10), from the form's long printed lines: at the right angle, dark
+// pixels pile up in a few rows (the lines). Measured on a small copy; returns 0 when no clear tilt is found.
+function estimateSkew(image) {
+  const step = Math.max(1, Math.round(image.width / 700));
+  const points = [];
+  // Thin dark marks only (clearly darker than the pixels a little above and below): printed lines and writing,
+  // not a dark table or shadow around the page.
+  const g = image.grey; const w = image.width; const gap = 3 * step;
+  for (let y = gap; y < image.height - gap; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const v = g[y * w + x];
+      if (g[(y - gap) * w + x] - v > 40 && g[(y + gap) * w + x] - v > 40) points.push(x / step, y / step);
+    }
+  }
+  if (points.length < 2000) return 0;
+  const size = Math.ceil((image.width + image.height) / step) + 2;
+  const score = (deg) => {
+    const a = (deg * Math.PI) / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const rows = new Float64Array(size * 2);
+    for (let i = 0; i < points.length; i += 2) rows[Math.round(points[i + 1] * c - points[i] * s) + size] += 1;
+    let total = 0;
+    for (const v of rows) total += v * v;
+    return total;
+  };
+  let best = 0; let bestScore = score(0);
+  for (let deg = -10; deg <= 10; deg += 0.5) { const sc = score(deg); if (sc > bestScore) { best = deg; bestScore = sc; } }
+  for (let deg = best - 0.4; deg <= best + 0.4; deg += 0.1) { const sc = score(deg); if (sc > bestScore) { best = deg; bestScore = sc; } }
+  return Math.round(best * 10) / 10;
+}
+
+// Turns a grey image by `deg` degrees (positive = counter-clockwise on screen); new corners are white.
+function rotateGreyAngle(image, deg) {
+  const a = (deg * Math.PI) / 180; const c = Math.cos(a); const s = Math.sin(a);
+  const { width: w, height: h, grey } = image;
+  const W = Math.ceil(Math.abs(w * c) + Math.abs(h * s)); const H = Math.ceil(Math.abs(w * s) + Math.abs(h * c));
+  const out = new Uint8Array(W * H).fill(255);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const dx = x - W / 2; const dy = y - H / 2;
+      const sx = dx * c - dy * s + w / 2; const sy = dx * s + dy * c + h / 2;
+      const x0 = Math.floor(sx); const y0 = Math.floor(sy);
+      if (x0 < 0 || y0 < 0 || x0 >= w - 1 || y0 >= h - 1) continue;
+      const fx = sx - x0; const fy = sy - y0; const i = y0 * w + x0;
+      out[y * W + x] = Math.round(grey[i] * (1 - fx) * (1 - fy) + grey[i + 1] * fx * (1 - fy) + grey[i + w] * (1 - fx) * fy + grey[i + w + 1] * fx * fy);
+    }
+  }
+  return { width: W, height: H, grey: out };
 }
 
 function greyToPgm(image) {
@@ -1343,10 +1393,9 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       try {
         const decoded = await worker.recognize(imageBuffer, {}, { imageGrey: true, text: false, blocks: false, hocr: false, tsv: false });
         const grey = decodePngToGrey(Buffer.from(String(decoded.data?.imageGrey || '').replace(/^data:image\/png;base64,/, ''), 'base64'));
-        if (Math.min(grey.width, grey.height) > LARGE_PHOTO_SHORT_SIDE) {
-          const short = Math.min(grey.width, grey.height);
-          readBuffer = greyToPgm(averageDown(grey, Math.max(2, Math.round(short / TARGET_SHORT_SIDE))));
-        }
+        const short = Math.min(grey.width, grey.height);
+        const factor = Math.floor(short / TARGET_SHORT_SIDE);
+        if (short > LARGE_PHOTO_SHORT_SIDE && factor >= 2) readBuffer = greyToPgm(averageDown(grey, factor));
       } catch (err) {
         if (options.logWarnings) console.warn('[NSRP OCR shrink]', err.message || err);
       }
@@ -1387,20 +1436,30 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       // (a phone photo can arrive sideways or upside down).
       // When the upright photo was already recognised as page 1 or 2, it is not sideways: only the smoothed
       // copy is tried. Turned copies are made one at a time, only when needed.
-      const tries = [{ make: () => smoothedCopy(greyImage), turns: 0 },
+      // A photo held crooked (a few degrees) is straightened first, from the tilt of the form's printed lines.
+      const skew = estimateSkew(greyImage);
+      // On a crooked or busy photo, Tesseract's automatic layout can find almost no words; reading the page as one
+      // block of text still finds the printed labels, so that is tried too (only when the form was not found).
+      let straight = null;
+      const straightened = () => (straight ||= rotateGreyAngle(greyImage, skew));
+      const tilted = Math.abs(skew) >= 1;
+      const tries = [
+        ...(tilted ? [{ make: straightened, turns: 0, skew }, { make: straightened, turns: 0, skew, block: true }] : []),
+        { make: () => smoothedCopy(greyImage), turns: 0 },
+        { make: () => greyImage, turns: 0, block: true },
         ...(pageType === 'unknown' ? [1, 2, 3].map((turns) => ({ make: () => rotateGrey(greyImage, turns), turns })) : [])];
-      for (const { make, turns } of tries) {
+      for (const { make, turns, skew: straightened, block } of tries) {
         const image = make();
         const again = await worker.recognize(
           greyToPgm(image),
-          { tessedit_pageseg_mode: Tesseract.PSM.AUTO, user_defined_dpi: '300' },
+          { tessedit_pageseg_mode: block ? Tesseract.PSM.SINGLE_BLOCK : Tesseract.PSM.AUTO, user_defined_dpi: '300' },
           { text: true, tsv: true },
         );
         const turnedType = detectNsrpPageType(again.data?.text || '');
         if (turnedType === 'unknown') continue;
         const turnedFit = fitPageTransform(again.data?.tsv || '', turnedType);
         if (turnedFit) {
-          located = { pageType: turnedType, rawText: again.data?.text || '', transform: turnedFit, image, turned: turns * 90 };
+          located = { pageType: turnedType, rawText: again.data?.text || '', transform: turnedFit, image, turned: turns * 90, straightened };
           break;
         }
       }
@@ -1410,7 +1469,7 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       const regions = await recognizeAlignedRegions(worker, Tesseract, image, transform, ALIGNED_REGION_SPECS[located.pageType], located.pageType, options);
       regions.__page_type = located.pageType;
       regions.__checkboxes = detectAlignedCheckboxes(image, transform, CHECKBOX_GROUPS[located.pageType], located.pageType);
-      regions.__alignment = { matches: transform.matches, meanError: transform.meanError, turned: located.turned };
+      regions.__alignment = { matches: transform.matches, meanError: transform.meanError, turned: located.turned, ...(located.straightened ? { straightened: located.straightened } : {}) };
       return { rawText: located.rawText, regions, pageBox, dy: 0, pageType: located.pageType };
     }
 
@@ -1618,6 +1677,18 @@ function nearestFormWord(word) {
   return best;
 }
 
+// Two listed words read without the space between them ("CITYCOMPREHENSIVE"), or REGION and its roman numeral
+// ("REGIONX"); returns null when the word cannot be split that way.
+function splitGluedWords(word) {
+  const region = word.match(/^REGION([IVX]{1,4})$/);
+  if (region) return `REGION ${region[1]}`;
+  if (word.length < 7) return null;
+  for (let i = 3; i <= word.length - 3; i += 1) {
+    if (FORM_WORDS.has(word.slice(0, i)) && FORM_WORDS.has(word.slice(i))) return `${word.slice(0, i)} ${word.slice(i)}`;
+  }
+  return null;
+}
+
 // Corrects the words of one unsure reading (see FORM_WORDS). A word split in two ("ELECTR CIAN") is joined when
 // the joined word is listed or near one. Changes are recorded in fixes for the review hints.
 function matchFormWords(value, regionName, fixes, confidence = {}) {
@@ -1635,7 +1706,7 @@ function matchFormWords(value, regionName, fixes, confidence = {}) {
       i += 1;
       continue;
     }
-    out.push(nearestFormWord(w) || words[i]);
+    out.push(splitGluedWords(w) || nearestFormWord(w) || words[i]);
   }
   const result = out.join(' ');
   if (result.toUpperCase() !== String(value).toUpperCase()) fixes[regionName] = { read: value, kind: 'words' };
@@ -1728,7 +1799,9 @@ function completeMailHost(text) {
   for (const address of MAIL_ADDRESSES) {
     const letters = address.replace('.', '');
     for (let n = Math.max(4, read.length - 1); n <= Math.min(letters.length, read.length + 1); n += 1) {
-      if (editDistance(read, letters.slice(0, n)) <= 1) return `${text.slice(0, at + 1)}${address}`;
+      // One letter off; or two when the first two letters already match ("GMALA" for gmail).
+      const allowed = read.slice(0, 2) === letters.slice(0, 2) && read.length >= 5 ? 2 : 1;
+      if (editDistance(read, letters.slice(0, n)) <= allowed) return `${text.slice(0, at + 1)}${address}`;
     }
   }
   return text;
@@ -1771,8 +1844,8 @@ function fixDateRange(value) {
 
 // TESDA levels are NC I to NC IV; a II is often read as H, l or 1.
 function fixNcLevel(value) {
-  return String(value || '').replace(/\bNC\s*([IlL1|HT]{1,3}|[IlL1|]?V)\b/g, (_, lvl) => {
-    if (/V$/.test(lvl)) return lvl.length === 2 ? 'NC IV' : 'NC V';
+  return String(value || '').replace(/\bNC\s*([IiLl1|HT]{1,3}|[IiLl1|]?[Vv])\b/g, (_, lvl) => {
+    if (/v$/i.test(lvl)) return lvl.length === 2 ? 'NC IV' : 'NC V';
     const count = [...lvl].reduce((n, ch) => n + (ch === 'H' ? 2 : 1), 0);
     return count >= 1 && count <= 3 ? `NC ${'I'.repeat(count)}` : `NC ${lvl}`;
   });
@@ -1786,7 +1859,8 @@ function validateHeight(value) {
 
 function validateIdNumber(value) {
   if (!value) return '';
-  const v = basicClean(value);
+  // A space read inside a number ("0680788184 87") is not part of it.
+  const v = basicClean(value).replace(/(\d)\s+(?=\d)/g, '$1');
   if (!v || isEmptyToken(v)) return '';
   if (LABEL_JUNK.test(v) || v.length > 35) return '';
   if (!/\d/.test(v)) return '';
@@ -2056,6 +2130,7 @@ function parseNsrpTextAsRead(rawText, ocrRegions = {}) {
   const cellphone = validatePhone(cellRead) || (/^\+?\d{7,13}$/.test(cellDigits) ? cellDigits : '') || validatePhone(pickPhoneFromText(text));
 
   const houseStreet = notNaText(normalizeKnownRunTogether(stripOcrNoise(rv('house_street', ['House', 'No.'])))
+    .replace(/\b([A-Za-z]{3,})(\d{1,3})\b/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase());
@@ -2287,6 +2362,11 @@ function reviewFlags(parsed, regions = {}) {
     if (!raw) continue;
     const value = key.includes('paper_row_') || /_list\.\d+$/.test(key) ? null : valueAt(parsed, key);
     const letters = raw.replace(/[^A-Za-z]/g, '').toUpperCase();
+    // An empty field whose box holds only a dash or lines (drawn to mean "none"), a stray mark, or a misread "NA"
+    // ("N4", "1M"): at most 3 letters or digits, which no real answer here is (suffix excepted: "JR", "III"), so no hint.
+    const marks = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const onlyMarks = marks.length < 2 || (marks.length <= 3 && name !== 'suffix');
+    if (value !== null && !String(value ?? '').trim() && onlyMarks) continue;
     if (value !== null && !String(value ?? '').trim() && letters !== 'NA' && letters !== 'NONE') {
       flags.push({ key, label, reason: 'Something is written here but could not be read.' });
     } else if (confidence[name] !== undefined && confidence[name] < LOW_CONFIDENCE) {
