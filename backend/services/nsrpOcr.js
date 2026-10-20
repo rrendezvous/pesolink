@@ -6,6 +6,7 @@ const path = require('path');
 const zlib = require('zlib');
 const { fitPageTransform, sampleRegion, mapFraction } = require('./nsrpAlign');
 const { toBlockLetters } = require('./nsrpForm');
+const { helperEnabled, readBoxes, mergeHelperReadings, isNa: isWrittenNa } = require('./ocrHelper');
 
 const OCR_TIMEOUT_MS = 180000;
 const OCR_LANG_PATH = path.resolve(__dirname, '..');
@@ -1021,7 +1022,12 @@ function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 1
     // IDs and dates sit in the middle of the writing, so they are kept.)
     const flat = maxY - minY + 1 <= thin && maxX - minX + 1 >= (maxY - minY + 1) * 2;
     const onEdge = Math.abs(centre - cellBottom) <= 4 * ALIGNED_SCALE || Math.abs(centre - cellTop) <= 4 * ALIGNED_SCALE;
-    if (pixels.length < minPixels || outside || cutOff || lineLeft || (flat && onEdge)) for (const i of pixels) black[i] = 0;
+    // Leftover joined printed lines (a vertical line with short horizontal stubs, an L or T shape): it reaches both
+    // the top and the bottom of the area read, which writing never does (the area reaches about half a cell beyond
+    // the cell on each side), and only a small share of its box is ink.
+    const lineFrame = !keepEdgePieces && minY === 0 && maxY === height - 1
+      && pixels.length < (maxX - minX + 1) * (maxY - minY + 1) * 0.08;
+    if (pixels.length < minPixels || outside || cutOff || lineLeft || lineFrame || (flat && onEdge)) for (const i of pixels) black[i] = 0;
   }
   return { ...crop, black };
 }
@@ -1129,6 +1135,7 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
   const regions = {};
   const confidence = {};
   regions.__confidence = confidence;
+  const toHelper = [];
   // Clean scans line up to about a pixel; photos less exactly, so erase a wider margin around printed lines.
   const formInk = getBlankFormInk(pageType, transform.meanError > 1.5 ? 2 : 1);
   for (const [name, spec] of Object.entries(specs)) {
@@ -1214,10 +1221,18 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
       }
       regions[name] = best.text;
       if (best.text) confidence[name] = best.conf;
+      // Boxes with writing go to the second reader too, even when Tesseract read nothing; "NA" stays as read.
+      if (helperEnabled() && !isWrittenNa(best.text)) toHelper.push({ name, image: pgm });
     } catch (err) {
       regions[name] = '';
       if (options.logWarnings) console.warn(`[NSRP OCR region ${name}]`, err.message || err);
     }
+  }
+  // Second reader (see ocrHelper.js): one request for all boxes with writing; Tesseract's readings stay if it fails.
+  if (toHelper.length) {
+    const texts = await readBoxes(toHelper.map((b) => b.image));
+    if (texts) mergeHelperReadings(regions, toHelper.map((b) => b.name), texts);
+    else if (options.logWarnings) console.warn('[NSRP OCR] second reader unavailable; using Tesseract readings only');
   }
   return regions;
 }
@@ -1476,7 +1491,13 @@ function validateName(value) {
     .replace(/[^A-ZÑa-zñ\s.'-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    // Stray marks at the ends ("PONGS.-", "-CRUZ"): a name never starts with punctuation or ends with "-" or "'",
+    // and a final "." is kept only after a short abbreviation ("MA.", "STA.").
+    .replace(/^[.'\s-]+/, '')
+    .replace(/[\s'-]+$/, '')
+    .replace(/([A-ZÑ]{4,})\.+[\s.'-]*$/i, '$1')
+    .replace(/[\s'-]+$/, '');
   if (v.length > 60) return '';
   if (LABEL_JUNK.test(v)) return '';
   if (/\d/.test(v)) return '';

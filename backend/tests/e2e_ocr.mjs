@@ -136,5 +136,38 @@ check('a zero inside a place name is read as O', rules({ house_street: 'L0T 5' }
 const shortId = parseNsrpText('', { __page_type: 'page1', gsis_sss_no: '08-216453-9' });
 check('an ID number with too few digits is flagged', reviewFlags(shortId, { __page_type: 'page1', gsis_sss_no: '08-216453-9' }).some((f) => f.key === 'gsis_sss_no'));
 
+console.log('Second reader (PaddleOCR helper; optional)');
+const { readBoxes, mergeHelperReadings } = createRequire(import.meta.url)('../services/ocrHelper.js');
+const merged = { __confidence: { first_name: 40, surname: 95, household_id: 60, cell_phone_number: 30 },
+  first_name: 'KENNEW', surname: 'NA', household_id: '', cell_phone_number: 'Aas 1066 3' };
+mergeHelperReadings(merged, ['first_name', 'surname', 'cell_phone_number'], ['KENNETH', 'PACQUIAO', 'O9912870663']);
+check('the second reading replaces Tesseract\'s and is marked unsure when they differ', merged.first_name === 'KENNETH' && merged.__confidence.first_name === 50);
+check('a box Tesseract read as NA stays NA', merged.surname === 'NA');
+check('letters in a digits-only box are read as digits', merged.cell_phone_number === '09912870663');
+const shaped = { __confidence: { tertiary_year: 69 }, tertiary_year: '2021' };
+mergeHelperReadings(shaped, ['tertiary_year'], ['202']);
+check('a year with four digits is kept over a reading that has three', shaped.tertiary_year === '2021' && shaped.__confidence.tertiary_year === 50);
+const savedUrl = process.env.OCR_HELPER_URL;
+delete process.env.OCR_HELPER_URL;
+check('with no helper set, Tesseract readings are kept (no request)', (await readBoxes([Buffer.from('x')])) === null);
+process.env.OCR_HELPER_URL = 'http://127.0.0.1:9';
+check('with the helper down, Tesseract readings are kept', (await readBoxes([Buffer.from('x')])) === null);
+const http = await import('http');
+const fake = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    const { images } = JSON.parse(body);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ texts: images.map((_, i) => `READ ${i}`) }));
+  });
+});
+await new Promise((ok) => fake.listen(0, '127.0.0.1', ok));
+process.env.OCR_HELPER_URL = `http://127.0.0.1:${fake.address().port}`;
+const fakeTexts = await readBoxes([Buffer.from('a'), Buffer.from('b')]);
+check('the helper is asked for all boxes in one request, in order', JSON.stringify(fakeTexts) === '["READ 0","READ 1"]');
+fake.close();
+if (savedUrl) process.env.OCR_HELPER_URL = savedUrl; else delete process.env.OCR_HELPER_URL;
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
