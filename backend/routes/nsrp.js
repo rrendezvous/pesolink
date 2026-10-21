@@ -18,6 +18,23 @@ router.use(authenticate, requireRole('job_seeker'));
 
 const OCR_MAX_IMAGE_BYTES = 18 * 1024 * 1024;
 
+// Each scan uses a few hundred MB of memory while it runs, so only a few run at the same time (OCR_CONCURRENCY,
+// default 2); others wait their turn instead of running the server out of memory.
+const OCR_CONCURRENCY = Math.max(1, parseInt(process.env.OCR_CONCURRENCY || '2', 10) || 2);
+let ocrRunning = 0;
+const ocrWaiting = [];
+async function withOcrSlot(job) {
+  if (ocrRunning >= OCR_CONCURRENCY) await new Promise((resolve) => ocrWaiting.push(resolve));
+  ocrRunning += 1;
+  try {
+    return await job();
+  } finally {
+    ocrRunning -= 1;
+    const next = ocrWaiting.shift();
+    if (next) next();
+  }
+}
+
 function detectImageType(buffer) {
   if (!buffer || buffer.length < 12) return '';
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg';
@@ -48,7 +65,10 @@ function hasUsableRegionText(ocrRegions) {
 
 function ocrFailureStatus(errorMessage) {
   if (!errorMessage) return 'no_text';
-  return /timed out/i.test(errorMessage) ? 'timeout' : 'backend_error';
+  if (/timed out/i.test(errorMessage)) return 'timeout';
+  // A damaged or unsupported file (for example a half-downloaded photo) cannot be opened at all.
+  if (/cannot be read|pix not read|attempting to read image|unsupported|unknown format/i.test(errorMessage)) return 'unreadable_image';
+  return 'backend_error';
 }
 
 async function storeOcrResult(uploadId, payload) {
@@ -60,6 +80,12 @@ async function storeOcrResult(uploadId, payload) {
   } catch (_) {
     // OCR cache write failure must not block manual encoding/review.
   }
+}
+
+// Undoing a transaction must never throw inside an error handler: if the connection is already gone
+// (for example MySQL dropped it), the request still has to be answered.
+async function safeRollback(conn) {
+  try { await conn.rollback(); } catch (_) { /* connection already closed */ }
 }
 
 // POST /api/nsrp/upload
@@ -82,8 +108,12 @@ router.post('/upload', async (req, res) => {
     await conn.commit();
     res.status(201).json({ message: 'NSRP form uploaded', upload_id: result.insertId });
   } catch (err) {
-    await conn.rollback();
-    console.error('[NSRP Upload]', err);
+    await safeRollback(conn);
+    console.error('[NSRP Upload]', err.code || err.message);
+    // MySQL refuses a query bigger than its max_allowed_packet setting.
+    if (err.code === 'ER_NET_PACKET_TOO_LARGE' || /max_allowed_packet|packet bigger/i.test(err.message || '')) {
+      return res.status(413).json({ error: 'This photo is too large to save. Take it again or pick a smaller copy of the image.' });
+    }
     res.status(500).json({ error: 'Failed to upload NSRP form' });
   } finally {
     conn.release();
@@ -148,12 +178,13 @@ router.post('/extract', async (req, res) => {
   let ocrError = null;
   let pageType = '';
   try {
-    const ocrResult = await nsrpOcr.recognizeNsrpImage(Tesseract, imageBuffer);
+    const ocrResult = await withOcrSlot(() => nsrpOcr.recognizeNsrpImage(Tesseract, imageBuffer));
     rawText = ocrResult.rawText || '';
     ocrRegions = ocrResult.regions || {};
     pageType = ocrResult.pageType || ocrRegions.__page_type || '';
   } catch (err) {
-    ocrError = err.message || 'OCR failed';
+    // Tesseract sometimes rejects with plain text instead of an Error.
+    ocrError = (err && (err.message || String(err))) || 'OCR failed';
     console.warn('[NSRP OCR]', ocrError);
   }
 
@@ -168,7 +199,9 @@ router.post('/extract', async (req, res) => {
       ocr_status: ocrStatus,
       page_type: pageType,
       field_count: 0,
-      notice: ocrStatus === 'timeout'
+      notice: ocrStatus === 'unreadable_image'
+        ? 'This image could not be opened (the file may be damaged or in an unsupported format). Take the photo again or pick another image.'
+        : ocrStatus === 'timeout'
         ? 'OCR timed out before the backend finished reading the form. Please try a clearer compressed image or encode manually below.'
         : 'OCR could not extract text from this image. Please encode the NSRP-based profile manually below.',
       error_message: ocrError || 'No text detected',
@@ -179,8 +212,10 @@ router.post('/extract', async (req, res) => {
   const fieldCount = nsrpOcr.countExtractedFields(parsed);
   const notNsrp = pageType === 'unknown';
   const ocrStatus = notNsrp ? 'not_nsrp' : (fieldCount > 0 ? 'fields_extracted' : 'no_fields');
+  // Review aids only: fields that look unreadable, uncertain or badly formatted. Unflagged fields can still be wrong.
+  const reviewFlags = notNsrp ? [] : nsrpOcr.reviewFlags(parsed, ocrRegions);
 
-  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType });
+  await storeOcrResult(upload_id, { raw_text: rawText, regions: ocrRegions, parsed, ocr_status: ocrStatus, field_count: fieldCount, page_type: pageType, review_flags: reviewFlags });
 
   return res.json({
     success: !notNsrp && fieldCount > 0,
@@ -190,6 +225,7 @@ router.post('/extract', async (req, res) => {
     ocr_status: ocrStatus,
     page_type: pageType,
     field_count: fieldCount,
+    review_flags: reviewFlags,
     notice: notNsrp
       ? 'This image does not look like page 1 or page 2 of NSRP Form 1, so nothing was filled in. Scan the form page itself, or encode the NSRP-based profile manually below.'
       : fieldCount > 0
@@ -274,7 +310,7 @@ router.post('/confirm', async (req, res) => {
       nsrp_status_changed_to: requirements.nsrp_status_changed_to,
     });
   } catch (err) {
-    await conn.rollback();
+    await safeRollback(conn);
     console.error('[NSRP Confirm]', err);
     res.status(500).json({ error: 'Failed to save confirmed data' });
   } finally {

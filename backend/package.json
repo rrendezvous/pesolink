@@ -13,7 +13,9 @@
     "migrate:application-status": "node migrate-application-status.js",
     "migrate:referral-workflow": "node migrate-referral-workflow.js",
     "reset-demo": "node scripts/reset-demo-db.js",
-    "test:e2e": "node scripts/reset-demo-db.js && node tests/e2e_nsrp.mjs && node scripts/reset-demo-db.js && node tests/e2e_objective_a.mjs && node scripts/reset-demo-db.js && node tests/e2e_nsrp_form.mjs && node scripts/reset-demo-db.js && node tests/e2e_block_letters.mjs"
+    "test:e2e": "node scripts/reset-demo-db.js && node tests/e2e_nsrp.mjs && node scripts/reset-demo-db.js && node tests/e2e_objective_a.mjs && node scripts/reset-demo-db.js && node tests/e2e_nsrp_form.mjs && node scripts/reset-demo-db.js && node tests/e2e_block_letters.mjs && node scripts/reset-demo-db.js && node tests/e2e_ocr.mjs",
+    "ocr:setup": "node scripts/ocr-helper.js setup",
+    "ocr:helper": "node scripts/ocr-helper.js start"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

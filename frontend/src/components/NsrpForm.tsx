@@ -74,8 +74,14 @@ function checkedFrom(list: string[] | undefined, legacy: string | undefined, opt
 export type NsrpFormValue = Record<string, any> & { nsrp_full_data?: Record<string, any> };
 
 export function NsrpForm({
-  value, onChange, idPrefix = 'nsrp',
-}: { value: NsrpFormValue; onChange: (next: NsrpFormValue) => void; idPrefix?: string }) {
+  value, onChange, idPrefix = 'nsrp', flags,
+}: {
+  value: NsrpFormValue;
+  onChange: (next: NsrpFormValue) => void;
+  idPrefix?: string;
+  /** OCR review hints: field key -> reason. Shown in amber; unflagged fields can still be wrong. */
+  flags?: Record<string, string>;
+}) {
   const full = value.nsrp_full_data || {};
   const setBase = (k: string, v: any) => onChange({ ...value, [k]: v });
   const setFull = (patch: Record<string, any>) => onChange({ ...value, nsrp_full_data: { ...full, ...patch } });
@@ -96,6 +102,7 @@ export function NsrpForm({
         }}
         {...rest}
         {...(block ? { autoCapitalize: 'characters' } : {})}
+        warning={flags?.[k]}
       />
     );
   };
@@ -175,7 +182,7 @@ export function NsrpForm({
         {Text1({ k: "first_name", label: "First Name *", base: true, autoCapitalize: "words" })}
         {Text1({ k: "middle_name", label: "Middle Name", base: true, autoCapitalize: "words" })}
         {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
-        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} />
+        <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} warning={flags?.date_of_birth} />
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
         <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
         {Text1({ k: "religion", label: "Religion", autoCapitalize: "words" })}
@@ -262,7 +269,7 @@ export function NsrpForm({
       <Section title="II. Job Preference">
         <SubTitle text="Preferred Occupation" />
         {list('preferred_occupation_list', 4).map((v, i) => (
-          <Input key={`occ-${i}`} testID={id(`occupation-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('preferred_occupation_list', 4, i, caps(t))} autoCapitalize="characters" />
+          <Input key={`occ-${i}`} testID={id(`occupation-${i + 1}`)} warning={flags?.[`preferred_occupation_list.${i}`]} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('preferred_occupation_list', 4, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.preferred_occupation_list), 'preferred_occupations')}
 
@@ -278,15 +285,15 @@ export function NsrpForm({
         )}
         <SubTitle text="Local - specify cities/municipalities" />
         {list('local_location_list', 3).map((v, i) => (
-          <Input key={`loc-${i}`} testID={id(`local-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('local_location_list', 3, i, caps(t))} autoCapitalize="characters" />
+          <Input key={`loc-${i}`} testID={id(`local-${i + 1}`)} warning={flags?.[`local_location_list.${i}`]} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('local_location_list', 3, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.local_location_list), 'preferred_local_locations')}
         <SubTitle text="Overseas - specify countries" />
         {list('overseas_location_list', 3).map((v, i) => (
-          <Input key={`ovs-${i}`} testID={id(`overseas-${i + 1}`)} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('overseas_location_list', 3, i, caps(t))} autoCapitalize="characters" />
+          <Input key={`ovs-${i}`} testID={id(`overseas-${i + 1}`)} warning={flags?.[`overseas_location_list.${i}`]} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('overseas_location_list', 3, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.overseas_location_list), 'preferred_overseas_locations')}
-        {Text1({ k: "expected_salary", label: "Expected Salary (Range)", placeholder: "e.g., PHP 15,000 - 20,000" })}
+        {Text1({ k: "expected_salary", label: "Expected Salary (Range)", placeholder: "e.g., ₱15,000 - ₱20,000" })}
         <View style={styles.twoCol}>
           <View style={styles.col}>{Text1({ k: "passport_number", label: "Passport No." })}</View>
           <View style={styles.col}>{Text1({ k: "passport_expiry", label: "Expiry Date" })}</View>
@@ -299,7 +306,7 @@ export function NsrpForm({
           <View key={lang.key} style={styles.langRow}>
             {lang.key === 'other' ? (
               <Input
-                testID={id('language-other-name')}
+                testID={id('language-other-name')} warning={flags?.['languages.other.name']}
                 label="Others (specify)"
                 value={String(languages.other?.name || '')}
                 onChangeText={(t) => setFull({ languages: { ...languages, other: { ...(languages.other || {}), name: caps(t) } } })}
@@ -330,15 +337,15 @@ export function NsrpForm({
           return (
             <View key={level.key} style={styles.rowCard}>
               <Text style={styles.rowTitle}>{level.label}</Text>
-              <Input testID={id(`edu-${level.key}-school`)} label="School" value={row.school || ''} onChangeText={(t) => setEducation(level.key, 'school', caps(t))} autoCapitalize="characters" />
-              <Input testID={id(`edu-${level.key}-course`)} label="Course" value={row.course || ''} onChangeText={(t) => setEducation(level.key, 'course', caps(t))} autoCapitalize="characters" />
-              <Input testID={id(`edu-${level.key}-year`)} label="Year Graduated" value={row.year_graduated || ''} onChangeText={(t) => setEducation(level.key, 'year_graduated', t)} keyboardType="number-pad" />
+              <Input testID={id(`edu-${level.key}-school`)} warning={flags?.[`education.${level.key}.school`]} label="School" value={row.school || ''} onChangeText={(t) => setEducation(level.key, 'school', caps(t))} autoCapitalize="characters" />
+              <Input testID={id(`edu-${level.key}-course`)} warning={flags?.[`education.${level.key}.course`]} label="Course" value={row.course || ''} onChangeText={(t) => setEducation(level.key, 'course', caps(t))} autoCapitalize="characters" />
+              <Input testID={id(`edu-${level.key}-year`)} warning={flags?.[`education.${level.key}.year_graduated`]} label="Year Graduated" value={row.year_graduated || ''} onChangeText={(t) => setEducation(level.key, 'year_graduated', t)} keyboardType="number-pad" />
               <Text style={styles.hint}>If undergraduate:</Text>
               <View style={styles.twoCol}>
-                <View style={styles.col}><Input testID={id(`edu-${level.key}-level`)} label="What level?" value={row.level_reached || ''} onChangeText={(t) => setEducation(level.key, 'level_reached', caps(t))} autoCapitalize="characters" /></View>
-                <View style={styles.col}><Input testID={id(`edu-${level.key}-last`)} label="Year last attended" value={row.year_last_attended || ''} onChangeText={(t) => setEducation(level.key, 'year_last_attended', t)} keyboardType="number-pad" /></View>
+                <View style={styles.col}><Input testID={id(`edu-${level.key}-level`)} warning={flags?.[`education.${level.key}.level_reached`]} label="What level?" value={row.level_reached || ''} onChangeText={(t) => setEducation(level.key, 'level_reached', caps(t))} autoCapitalize="characters" /></View>
+                <View style={styles.col}><Input testID={id(`edu-${level.key}-last`)} warning={flags?.[`education.${level.key}.year_last_attended`]} label="Year last attended" value={row.year_last_attended || ''} onChangeText={(t) => setEducation(level.key, 'year_last_attended', t)} keyboardType="number-pad" /></View>
               </View>
-              <Input testID={id(`edu-${level.key}-awards`)} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', caps(t))} autoCapitalize="characters" />
+              <Input testID={id(`edu-${level.key}-awards`)} warning={flags?.[`education.${level.key}.awards`]} label="Awards Received" value={row.awards || ''} onChangeText={(t) => setEducation(level.key, 'awards', caps(t))} autoCapitalize="characters" />
             </View>
           );
         })}
@@ -351,10 +358,10 @@ export function NsrpForm({
         {rows('training_rows', 3).map((r: any, i: number) => (
           <View key={`tr-${i}`} style={styles.rowCard}>
             <Text style={styles.rowTitle}>{i + 1}.</Text>
-            <Input testID={id(`training-${i + 1}-course`)} label="Training/Vocational Course" value={r.course || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'course', caps(t))} autoCapitalize="characters" />
-            <Input testID={id(`training-${i + 1}-duration`)} label="Duration (mm/dd/yyyy to mm/dd/yyyy)" value={r.duration || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'duration', t)} />
-            <Input testID={id(`training-${i + 1}-institution`)} label="Training Institution" value={r.institution || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'institution', caps(t))} autoCapitalize="characters" />
-            <Input testID={id(`training-${i + 1}-cert`)} label="Certificates Received (NC I, NC II, NC III, NC IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`training-${i + 1}-course`)} warning={flags?.[`training_rows.${i}.course`]} label="Training/Vocational Course" value={r.course || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'course', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`training-${i + 1}-duration`)} warning={flags?.[`training_rows.${i}.duration`]} label="Duration (mm/dd/yyyy to mm/dd/yyyy)" value={r.duration || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'duration', t)} />
+            <Input testID={id(`training-${i + 1}-institution`)} warning={flags?.[`training_rows.${i}.institution`]} label="Training Institution" value={r.institution || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'institution', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`training-${i + 1}-cert`)} warning={flags?.[`training_rows.${i}.certificate`]} label="Certificates Received (NC I, NC II, NC III, NC IV, etc.)" value={r.certificate || ''} onChangeText={(t) => setRow('training_rows', 3, i, 'certificate', caps(t))} autoCapitalize="characters" />
           </View>
         ))}
         {legacyBox(!anyRow(full.training_rows), 'trainings')}
@@ -364,18 +371,18 @@ export function NsrpForm({
         <SubTitle text="Eligibility (Civil Service)" />
         {rows('eligibility_rows', 2).map((r: any, i: number) => (
           <View key={`el-${i}`} style={styles.rowCard}>
-            <Input testID={id(`eligibility-${i + 1}`)} label={`${i + 1}. Eligibility`} value={r.eligibility || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'eligibility', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`eligibility-${i + 1}`)} warning={flags?.[`eligibility_rows.${i}.eligibility`]} label={`${i + 1}. Eligibility`} value={r.eligibility || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'eligibility', caps(t))} autoCapitalize="characters" />
             <View style={styles.twoCol}>
-              <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-rating`)} label="Rating" value={r.rating || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'rating', t)} /></View>
-              <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-date`)} label="Date of Examination" value={r.exam_date || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'exam_date', t)} /></View>
+              <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-rating`)} warning={flags?.[`eligibility_rows.${i}.rating`]} label="Rating" value={r.rating || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'rating', t)} /></View>
+              <View style={styles.col}><Input testID={id(`eligibility-${i + 1}-date`)} warning={flags?.[`eligibility_rows.${i}.exam_date`]} label="Date of Examination" value={r.exam_date || ''} onChangeText={(t) => setRow('eligibility_rows', 2, i, 'exam_date', t)} /></View>
             </View>
           </View>
         ))}
         <SubTitle text="Professional License (PRC)" />
         {rows('license_rows', 2).map((r: any, i: number) => (
           <View key={`lic-${i}`} style={styles.twoCol}>
-            <View style={styles.col}><Input testID={id(`license-${i + 1}`)} label={`${i + 1}. License`} value={r.license || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'license', caps(t))} autoCapitalize="characters" /></View>
-            <View style={styles.col}><Input testID={id(`license-${i + 1}-valid`)} label="Valid Until" value={r.valid_until || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'valid_until', t)} /></View>
+            <View style={styles.col}><Input testID={id(`license-${i + 1}`)} warning={flags?.[`license_rows.${i}.license`]} label={`${i + 1}. License`} value={r.license || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'license', caps(t))} autoCapitalize="characters" /></View>
+            <View style={styles.col}><Input testID={id(`license-${i + 1}-valid`)} warning={flags?.[`license_rows.${i}.valid_until`]} label="Valid Until" value={r.valid_until || ''} onChangeText={(t) => setRow('license_rows', 2, i, 'valid_until', t)} /></View>
           </View>
         ))}
         {legacyBox(!anyRow(full.eligibility_rows) && !anyRow(full.license_rows), 'eligibility_license')}
@@ -386,12 +393,12 @@ export function NsrpForm({
         {rows('work_rows', Math.min(5, Math.max(2, (full.work_rows || []).filter((r: any) => r && Object.values(r).some(has)).length + 1))).map((r: any, i: number, all: any[]) => (
           <View key={`wk-${i}`} style={styles.rowCard}>
             <Text style={styles.rowTitle}>{i + 1}.</Text>
-            <Input testID={id(`work-${i + 1}-company`)} label="Company Name" value={r.company || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'company', caps(t))} autoCapitalize="characters" />
-            <Input testID={id(`work-${i + 1}-address`)} label="Address (City/Municipality)" value={r.address || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'address', caps(t))} autoCapitalize="characters" />
-            <Input testID={id(`work-${i + 1}-position`)} label="Position" value={r.position || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'position', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`work-${i + 1}-company`)} warning={flags?.[`work_rows.${i}.company`]} label="Company Name" value={r.company || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'company', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`work-${i + 1}-address`)} warning={flags?.[`work_rows.${i}.address`]} label="Address (City/Municipality)" value={r.address || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'address', caps(t))} autoCapitalize="characters" />
+            <Input testID={id(`work-${i + 1}-position`)} warning={flags?.[`work_rows.${i}.position`]} label="Position" value={r.position || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'position', caps(t))} autoCapitalize="characters" />
             <View style={styles.twoCol}>
-              <View style={styles.col}><Input testID={id(`work-${i + 1}-dates`)} label="Inclusive Dates (mm/yyyy to mm/yyyy)" value={r.dates || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'dates', t)} /></View>
-              <View style={styles.col}><Input testID={id(`work-${i + 1}-status`)} label="Status (Permanent, Contractual, Part-time, Probationary)" value={r.status || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'status', t)} /></View>
+              <View style={styles.col}><Input testID={id(`work-${i + 1}-dates`)} warning={flags?.[`work_rows.${i}.dates`]} label="Inclusive Dates (mm/yyyy to mm/yyyy)" value={r.dates || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'dates', t)} /></View>
+              <View style={styles.col}><Input testID={id(`work-${i + 1}-status`)} warning={flags?.[`work_rows.${i}.status`]} label="Status (Permanent, Contractual, Part-time, Probationary)" value={r.status || ''} onChangeText={(t) => setRow('work_rows', all.length, i, 'status', t)} /></View>
             </View>
           </View>
         ))}
@@ -410,7 +417,7 @@ export function NsrpForm({
           testID={id('other-skill')}
         />
         <Input
-          testID={id('other-skills-other')}
+          testID={id('other-skills-other')} warning={flags?.['other_skills_other']}
           label="Others"
           value={String(full.other_skills_other || '')}
           onChangeText={(t) => writeOtherSkills(otherSkills, caps(t))}
@@ -440,7 +447,7 @@ function SubTitle({ text }: { text: string }) {
 // NSRP Form 1: "DATE OF BIRTH (mm/dd/yyyy)". Shown and typed as mm/dd/yyyy; the form value becomes
 // YYYY-MM-DD once the typed date is complete and real, otherwise it keeps the typed text (a save is then
 // refused with the message shown here).
-function BirthDateInput({ value, onChange, testID }: { value?: string; onChange: (v: string) => void; testID?: string }) {
+function BirthDateInput({ value, onChange, testID, warning }: { value?: string; onChange: (v: string) => void; testID?: string; warning?: string }) {
   const [text, setText] = useState(isoToMdy(value));
   // Follow changes made elsewhere (profile reload, OCR results); our own typed (incomplete) text is kept.
   const [seen, setSeen] = useState(value);
@@ -459,6 +466,7 @@ function BirthDateInput({ value, onChange, testID }: { value?: string; onChange:
         label="Date of Birth (mm/dd/yyyy)"
         value={text}
         placeholder="05/15/1998"
+        warning={warning}
         keyboardType="number-pad"
         onChangeText={(t) => {
           const masked = maskMdy(t);

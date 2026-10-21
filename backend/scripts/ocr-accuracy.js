@@ -3,6 +3,8 @@
 // OCR accuracy check against the two sample NSRP pages in samples/nsrp-ocr.
 // The expected values are what is printed on the sample forms, letter for letter (case and punctuation count;
 // only surrounding/repeated whitespace is ignored). Prints each field as OK / WRONG / MISSING.
+// Text answers are compared in capitals: the app returns and saves NSRP text answers in block letters
+// (toBlockLetters), so page 2's mixed-case typing is expected back in capitals.
 //   node scripts/ocr-accuracy.js
 const fs = require('fs');
 const path = require('path');
@@ -37,32 +39,32 @@ const EXPECTED_PAGE1 = {
   'full.preferred_work_location': 'local',
   'list.local_location_list': ['CAGAYAN DE ORO CITY', 'MISAMIS ORIENTAL', 'ILIGAN CITY'],
   'list.overseas_location_list': [],
-  'full.expected_salary': 'PHP 18,000 - 25,000', 'full.passport_number': '', 'full.passport_expiry': '',
+  'full.expected_salary': '₱18,000 - ₱25,000', 'full.passport_number': '', 'full.passport_expiry': '',
   // III. Language / dialect proficiency (all four ticked for English and Filipino; Others empty)
   'lang.english': 'read,write,speak,understand', 'lang.filipino': 'read,write,speak,understand', 'lang.other': '', 'langname.other': '',
 };
 const EXPECTED_PAGE2 = {
   // IV. Educational background
-  'edu.elementary.school': 'East City Central School', 'edu.elementary.course': 'Elementary', 'edu.elementary.year_graduated': '2012',
+  'edu.elementary.school': 'EAST CITY CENTRAL SCHOOL', 'edu.elementary.course': 'ELEMENTARY', 'edu.elementary.year_graduated': '2012',
   'edu.elementary.level_reached': '', 'edu.elementary.year_last_attended': '', 'edu.elementary.awards': '',
-  'edu.secondary.school': 'Misamis Oriental Gen. Comprehensive HS', 'edu.secondary.course': 'Junior/Senior High', 'edu.secondary.year_graduated': '2018',
+  'edu.secondary.school': 'MISAMIS ORIENTAL GEN. COMPREHENSIVE HS', 'edu.secondary.course': 'JUNIOR/SENIOR HIGH', 'edu.secondary.year_graduated': '2018',
   'edu.secondary.level_reached': '', 'edu.secondary.year_last_attended': '', 'edu.secondary.awards': '',
-  'edu.tertiary.school': 'USTP', 'edu.tertiary.course': 'BS Information Technology', 'edu.tertiary.year_graduated': '2026',
+  'edu.tertiary.school': 'USTP', 'edu.tertiary.course': 'BS INFORMATION TECHNOLOGY', 'edu.tertiary.year_graduated': '2026',
   'edu.tertiary.level_reached': '', 'edu.tertiary.year_last_attended': '', 'edu.tertiary.awards': '',
   'edu.graduate.school': '', 'edu.graduate.course': '', 'edu.graduate.year_graduated': '',
   'edu.graduate.level_reached': '', 'edu.graduate.year_last_attended': '', 'edu.graduate.awards': '',
   // Highest level (derived from the table)
-  education_level: 'Tertiary graduate', course: 'BS Information Technology',
+  education_level: 'Tertiary graduate', course: 'BS INFORMATION TECHNOLOGY',
   // V. Training
-  'training.0.course': 'Web Development Basics', 'training.0.duration': '01/2025 to 03/2025',
-  'training.0.institution': 'USTP Extension', 'training.0.certificate': 'Certificate',
+  'training.0.course': 'WEB DEVELOPMENT BASICS', 'training.0.duration': '01/2025 to 03/2025',
+  'training.0.institution': 'USTP EXTENSION', 'training.0.certificate': 'CERTIFICATE',
   'count.training_rows': 1, // rows 2 and 3 are blank
   // VI. Eligibility / license (all NA)
   'full.eligibility_license': '', 'count.eligibility_rows': 0, 'count.license_rows': 0,
   // VII. Work experience
-  'work.0.company': 'USTP ICT Office', 'work.0.address': 'Cagayan de Oro', 'work.0.position': 'IT Intern',
+  'work.0.company': 'USTP ICT OFFICE', 'work.0.address': 'CAGAYAN DE ORO', 'work.0.position': 'IT INTERN',
   'work.0.dates': '06/2025 to 08/2025', 'work.0.status': 'Internship',
-  'work.1.company': 'Freelance Client', 'work.1.address': 'Cagayan de Oro', 'work.1.position': 'Data Encoder',
+  'work.1.company': 'FREELANCE CLIENT', 'work.1.address': 'CAGAYAN DE ORO', 'work.1.position': 'DATA ENCODER',
   'work.1.dates': '01/2024 to 05/2024', 'work.1.status': 'Part-time',
   'count.work_rows': 2, // the other table rows are blank
   // VIII. Other skills
@@ -107,7 +109,9 @@ async function run(file, expected) {
   return [ok, Object.keys(expected).length];
 }
 
-(async () => {
+module.exports = { pick, norm };
+
+if (require.main === module) (async () => {
   const [a, n1] = await run('nsrp-page-1-sample.jpg', EXPECTED_PAGE1);
   const [b, n2] = await run('nsrp-page-2-sample.jpg', EXPECTED_PAGE2);
   console.log(`\nTOTAL ${a + b}/${n1 + n2} fields correct on the two sample pages`);

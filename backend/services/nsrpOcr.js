@@ -4,6 +4,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
+const { fitPageTransform, sampleRegion, mapFraction } = require('./nsrpAlign');
+const { toBlockLetters } = require('./nsrpForm');
+const { helperEnabled, readBoxes, mergeHelperReadings, isNa: isWrittenNa } = require('./ocrHelper');
 
 const OCR_TIMEOUT_MS = 180000;
 const OCR_LANG_PATH = path.resolve(__dirname, '..');
@@ -148,7 +151,99 @@ const REGION_SPECS = {
   page2: PAGE2_REGION_SPECS,
 };
 
+// Answer cells of the blank NSRP Form 1, in pixels of the form at 150 dpi (1240 x 1754), taken from its
+// ruled lines: [left, top, right, bottom, layout]. Used when the form was located on the image; the printed
+// form is erased from each cell first, so a cell may be generous.
+const cellSpecs = (cells) => Object.fromEntries(Object.entries(cells).map(([name, [x0, y0, x1, y1, psm]]) => [
+  name, { region: [x0 / 1240, y0 / 1754, (x1 - x0) / 1240, (y1 - y0) / 1754], ...(psm ? { psm } : {}) },
+]));
+const LINE = 'SINGLE_LINE';
+const BLOCK = 'SINGLE_BLOCK';
+// Characters each kind of field can contain. Reading a date as digits only, for example, keeps the reader
+// from turning a written 0 into an O or a 6 into a G.
+const DIGITS = '0123456789';
+const FIELD_CHARS = {
+  date_of_birth: `${DIGITS}/-`,
+  passport_expiry: `${DIGITS}/-NA`,
+  cell_phone_number: `${DIGITS}-+`,
+  landline_number: `${DIGITS}-()NA`,
+  email_address: `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ${DIGITS}@._-+`,
+  tin: `${DIGITS}-NA`,
+  gsis_sss_no: `${DIGITS}-NA`,
+  pagibig_no: `${DIGITS}-NA`,
+  philhealth_no: `${DIGITS}-NA`,
+  household_id: `${DIGITS}-NA`,
+  height: `${DIGITS}.'"CMFTcmftNA `,
+};
+for (const lv of ['elementary', 'secondary', 'tertiary', 'graduate']) {
+  FIELD_CHARS[`${lv}_year`] = `${DIGITS}NA/`;
+  FIELD_CHARS[`${lv}_last_attended`] = `${DIGITS}NA/`;
+}
+const ALIGNED_REGION_SPECS = {
+  page1: cellSpecs({
+    // Name boxes split halfway between the printed labels (SURNAME / FIRST NAME / MIDDLE NAME / SUFFIX).
+    surname: [62, 290, 285, 346, BLOCK], first_name: [285, 290, 565, 346, BLOCK],
+    middle_name: [565, 290, 870, 346, BLOCK], suffix: [870, 290, 1180, 346, BLOCK],
+    date_of_birth: [340, 374, 656, 400, LINE], place_of_birth: [858, 374, 1181, 400, LINE],
+    religion: [160, 432, 656, 476, BLOCK],
+    house_street: [859, 432, 1181, 455, LINE], village: [859, 455, 1181, 477, LINE],
+    barangay: [859, 478, 1181, 506, LINE], city: [859, 507, 1181, 535, LINE], province: [859, 536, 1181, 564, LINE],
+    tin: [252, 565, 656, 593, LINE], gsis_sss_no: [252, 594, 656, 622, LINE],
+    pagibig_no: [252, 623, 656, 651, LINE], philhealth_no: [252, 652, 656, 680, LINE],
+    height: [918, 565, 1181, 593, LINE], email_address: [918, 594, 1181, 622, LINE],
+    landline_number: [918, 623, 1181, 651, LINE], cell_phone_number: [918, 652, 1181, 680, LINE],
+    disability_other: [575, 705, 1181, 748, BLOCK],
+    terminated_abroad_country: [985, 872, 1182, 906, LINE], employment_type_other: [985, 920, 1182, 956, LINE],
+    looking_duration: [945, 982, 1182, 1022, LINE], available_when: [665, 1012, 1182, 1053, LINE],
+    household_id: [695, 1056, 1182, 1090, LINE],
+    preferred_occupation_1: [105, 1160, 384, 1203, LINE], preferred_occupation_2: [105, 1205, 384, 1249, LINE],
+    preferred_occupation_3: [105, 1250, 384, 1296, LINE], preferred_occupation_4: [105, 1297, 384, 1342, LINE],
+    preferred_local_location_1: [430, 1205, 722, 1249, LINE], preferred_local_location_2: [430, 1250, 722, 1296, LINE],
+    preferred_local_location_3: [430, 1297, 722, 1342, LINE],
+    preferred_overseas_location_1: [779, 1205, 1181, 1249, LINE], preferred_overseas_location_2: [779, 1250, 1181, 1296, LINE],
+    preferred_overseas_location_3: [779, 1297, 1181, 1342, LINE],
+    expected_salary: [321, 1344, 542, 1391, LINE], passport_number: [703, 1344, 861, 1391, LINE],
+    passport_expiry: [1022, 1344, 1181, 1391, LINE],
+    language_other_name: [128, 1553, 279, 1597, LINE],
+  }),
+  page2: cellSpecs({
+    ...Object.fromEntries([['elementary', 131, 179], ['secondary', 179, 226], ['tertiary', 226, 272], ['graduate', 272, 329]]
+      .flatMap(([lv, y0, y1]) => [
+        [`${lv}_school`, [199, y0, 535, y1, BLOCK]], [`${lv}_course`, [536, y0, 750, y1, BLOCK]],
+        [`${lv}_year`, [751, y0, 853, y1, LINE]], [`${lv}_level`, [854, y0, 985, y1, BLOCK]],
+        [`${lv}_last_attended`, [986, y0, 1079, y1, LINE]], [`${lv}_awards`, [1080, y0, 1182, y1, BLOCK]],
+      ])),
+    ...Object.fromEntries([[1, 403, 431], [2, 432, 460], [3, 461, 489]].flatMap(([n, y0, y1]) => [
+      [`training_${n}_course`, [105, y0, 507, y1, LINE]], [`training_${n}_duration`, [508, y0, 685, y1, LINE]],
+      [`training_${n}_institution`, [686, y0, 957, y1, LINE]], [`training_${n}_certificate`, [958, y0, 1182, y1, LINE]],
+    ])),
+    ...Object.fromEntries([[1, 548, 576], [2, 577, 605]].flatMap(([n, y0, y1]) => [
+      [`eligibility_${n}_name`, [105, y0, 345, y1, LINE]], [`eligibility_${n}_rating`, [346, y0, 442, y1, LINE]],
+      [`eligibility_${n}_exam_date`, [443, y0, 667, y1, LINE]],
+      [`license_${n}_name`, [715, y0, 985, y1, LINE]], [`license_${n}_valid_until`, [986, y0, 1182, y1, LINE]],
+    ])),
+    ...Object.fromEntries([[1, 705, 733], [2, 734, 762], [3, 763, 791], [4, 792, 820], [5, 821, 849]].flatMap(([n, y0, y1]) => [
+      [`work_${n}_company`, [58, y0, 282, y1, LINE]], [`work_${n}_address`, [283, y0, 507, y1, LINE]],
+      [`work_${n}_position`, [508, y0, 732, y1, LINE]], [`work_${n}_dates`, [733, y0, 957, y1, LINE]],
+      [`work_${n}_status`, [958, y0, 1182, y1, LINE]],
+    ])),
+    other_skills_other_text: [880, 1045, 1182, 1083, LINE],
+  }),
+};
+
 const PAGE1_CHECKBOX_GROUPS = [
+  {
+    field: 'disability',
+    multi: true,
+    threshold: 0.12,
+    values: [
+      { value: 'visual', x: 0.2211, y: 0.3967 },
+      { value: 'speech', x: 0.3537, y: 0.3967 },
+      { value: 'others', x: 0.4807, y: 0.3967 },
+      { value: 'hearing', x: 0.2211, y: 0.4155 },
+      { value: 'physical', x: 0.3537, y: 0.4136 },
+    ],
+  },
   {
     field: 'gender',
     values: [
@@ -218,6 +313,9 @@ const PAGE1_CHECKBOX_GROUPS = [
 ];
 
 // III. Language / dialect proficiency: tick marks in the Read / Write / Speak / Understand cells.
+// Cell edges of the language grid in blank-form pixels (150 dpi), from the form's ruled lines.
+const LANGUAGE_CELL_X = { read: [280, 533], write: [534, 778], speak: [779, 985], understand: [986, 1182] };
+const LANGUAGE_CELL_Y = { language_english: [1468, 1514], language_filipino: [1515, 1551], language_other: [1552, 1598] };
 const LANGUAGE_COLUMNS = [
   { value: 'read', x: 0.274 },
   { value: 'write', x: 0.482 },
@@ -229,7 +327,7 @@ PAGE1_CHECKBOX_GROUPS.push(
     field,
     multi: true,
     threshold: 0.06,
-    values: LANGUAGE_COLUMNS.map((c) => ({ value: c.value, x: c.x, y })),
+    values: LANGUAGE_COLUMNS.map((c) => ({ value: c.value, x: c.x, y, cell: [LANGUAGE_CELL_X[c.value][0], LANGUAGE_CELL_Y[field][0], LANGUAGE_CELL_X[c.value][1], LANGUAGE_CELL_Y[field][1]] })),
   })),
 );
 
@@ -375,6 +473,13 @@ function paethPredictor(a, b, c) {
 }
 
 function decodePngToBinary(buffer) {
+  const { width, height, grey } = decodePngToGrey(buffer);
+  const black = new Uint8Array(width * height);
+  for (let i = 0; i < grey.length; i += 1) black[i] = grey[i] < 160 ? 1 : 0;
+  return { width, height, black };
+}
+
+function decodePngToGrey(buffer) {
   const signature = buffer.subarray(0, 8);
   if (!signature.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
     throw new Error('Invalid PNG signature');
@@ -430,7 +535,7 @@ function decodePngToBinary(buffer) {
     rows.push(row);
   }
 
-  const black = new Uint8Array(width * height);
+  const grey = new Uint8Array(width * height);
   for (let y = 0; y < height; y += 1) {
     const row = rows[y];
     for (let x = 0; x < width; x += 1) {
@@ -449,10 +554,10 @@ function decodePngToBinary(buffer) {
         const i = x * 4;
         value = row[i + 3] === 0 ? 255 : Math.round((row[i] + row[i + 1] + row[i + 2]) / 3);
       }
-      black[y * width + x] = value < 160 ? 1 : 0;
+      grey[y * width + x] = value;
     }
   }
-  return { width, height, black };
+  return { width, height, grey };
 }
 
 function decodeTesseractBinaryImage(dataUrl) {
@@ -666,6 +771,603 @@ async function recognizeNsrpRegions(worker, Tesseract, imageBuffer, pageBox, bin
   return regions;
 }
 
+// Photos whose short side is above this are averaged down before reading, to a short side of about
+// TARGET_SHORT_SIDE (the form's width at roughly 200 dpi). Averaging works in whole steps (half, a third...), so a
+// photo is shrunk only when the result stays at least about that size; a photo just over the limit is read as is.
+const LARGE_PHOTO_SHORT_SIDE = 2000;
+const TARGET_SHORT_SIDE = 1650;
+
+// Averages each f x f block of pixels into one.
+function averageDown(image, f) {
+  const width = Math.floor(image.width / f); const height = Math.floor(image.height / f);
+  const grey = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let sum = 0;
+      for (let dy = 0; dy < f; dy += 1) {
+        const row = (y * f + dy) * image.width + x * f;
+        for (let dx = 0; dx < f; dx += 1) sum += image.grey[row + dx];
+      }
+      grey[y * width + x] = Math.round(sum / (f * f));
+    }
+  }
+  return { width, height, grey };
+}
+
+// A smaller, smoothed copy of a photo: block-averaged to about the size of the form at 150 dpi, then lightly
+// blurred. A photo of a screen carries the screen's fine pixel grid, which becomes a field of black dots when the
+// page is turned black-and-white; averaging removes the grid but keeps the letters.
+function smoothedCopy(image, targetWidth = 1240) {
+  const f = Math.max(1, Math.round(image.width / targetWidth));
+  const width = Math.floor(image.width / f); const height = Math.floor(image.height / f);
+  const small = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let sum = 0;
+      for (let dy = 0; dy < f; dy += 1) {
+        const row = (y * f + dy) * image.width + x * f;
+        for (let dx = 0; dx < f; dx += 1) sum += image.grey[row + dx];
+      }
+      small[y * width + x] = Math.round(sum / (f * f));
+    }
+  }
+  const grey = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let sum = 0; let n = 0;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          sum += small[yy * width + xx]; n += 1;
+        }
+      }
+      grey[y * width + x] = Math.round(sum / n);
+    }
+  }
+  return { width, height, grey };
+}
+
+// Turns a grey image clockwise by a quarter turn, `turns` times.
+function rotateGrey(image, turns) {
+  let { width, height, grey } = image;
+  for (let t = 0; t < turns; t += 1) {
+    const next = new Uint8Array(width * height);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) next[x * height + (height - 1 - y)] = grey[y * width + x];
+    }
+    grey = next;
+    [width, height] = [height, width];
+  }
+  return { width, height, grey };
+}
+
+// How many degrees a photo is tilted (-10 to 10), from the form's long printed lines: at the right angle, dark
+// pixels pile up in a few rows (the lines). Measured on a small copy; returns 0 when no clear tilt is found.
+function estimateSkew(image) {
+  const step = Math.max(1, Math.round(image.width / 700));
+  const points = [];
+  // Thin dark marks only (clearly darker than the pixels a little above and below): printed lines and writing,
+  // not a dark table or shadow around the page.
+  const g = image.grey; const w = image.width; const gap = 3 * step;
+  for (let y = gap; y < image.height - gap; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const v = g[y * w + x];
+      if (g[(y - gap) * w + x] - v > 40 && g[(y + gap) * w + x] - v > 40) points.push(x / step, y / step);
+    }
+  }
+  if (points.length < 2000) return 0;
+  const size = Math.ceil((image.width + image.height) / step) + 2;
+  const score = (deg) => {
+    const a = (deg * Math.PI) / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const rows = new Float64Array(size * 2);
+    for (let i = 0; i < points.length; i += 2) rows[Math.round(points[i + 1] * c - points[i] * s) + size] += 1;
+    let total = 0;
+    for (const v of rows) total += v * v;
+    return total;
+  };
+  let best = 0; let bestScore = score(0);
+  for (let deg = -10; deg <= 10; deg += 0.5) { const sc = score(deg); if (sc > bestScore) { best = deg; bestScore = sc; } }
+  for (let deg = best - 0.4; deg <= best + 0.4; deg += 0.1) { const sc = score(deg); if (sc > bestScore) { best = deg; bestScore = sc; } }
+  return Math.round(best * 10) / 10;
+}
+
+// Turns a grey image by `deg` degrees (positive = counter-clockwise on screen); new corners are white.
+function rotateGreyAngle(image, deg) {
+  const a = (deg * Math.PI) / 180; const c = Math.cos(a); const s = Math.sin(a);
+  const { width: w, height: h, grey } = image;
+  const W = Math.ceil(Math.abs(w * c) + Math.abs(h * s)); const H = Math.ceil(Math.abs(w * s) + Math.abs(h * c));
+  const out = new Uint8Array(W * H).fill(255);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const dx = x - W / 2; const dy = y - H / 2;
+      const sx = dx * c - dy * s + w / 2; const sy = dx * s + dy * c + h / 2;
+      const x0 = Math.floor(sx); const y0 = Math.floor(sy);
+      if (x0 < 0 || y0 < 0 || x0 >= w - 1 || y0 >= h - 1) continue;
+      const fx = sx - x0; const fy = sy - y0; const i = y0 * w + x0;
+      out[y * W + x] = Math.round(grey[i] * (1 - fx) * (1 - fy) + grey[i + 1] * fx * (1 - fy) + grey[i + w] * (1 - fx) * fy + grey[i + w + 1] * fx * fy);
+    }
+  }
+  return { width: W, height: H, grey: out };
+}
+
+function greyToPgm(image) {
+  return Buffer.concat([Buffer.from(`P5\n${image.width} ${image.height}\n255\n`, 'ascii'), Buffer.from(image.grey)]);
+}
+
+// Ink vs paper inside one small area: paper is the bright end of the area, ink is clearly darker than it.
+// Measuring per area (not one level for the page) keeps shadows and uneven light from turning into ink.
+function inkMask(grey, withPaper = false) {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < grey.length; i += 1) hist[grey[i]] += 1;
+  let seen = 0; let paper = 255;
+  for (let v = 255; v >= 0; v -= 1) { seen += hist[v]; if (seen >= grey.length * 0.2) { paper = v; break; } }
+  const cut = paper - Math.max(40, paper * 0.22);
+  const black = new Uint8Array(grey.length);
+  for (let i = 0; i < grey.length; i += 1) black[i] = grey[i] < cut ? 1 : 0;
+  return withPaper ? { black, paper } : black;
+}
+
+// Grey crop for Tesseract: paper stretched to white, the writing kept with its soft edges (pure black-and-white
+// loses detail in small letters); everything that is not next to kept writing (erased form, stray ink, paper
+// texture, faint line ghosts) is set to white.
+function cleanedGreyPgm(sample, ink, kept, formCovered, paper) {
+  const { width, height } = sample;
+  const near = new Uint8Array(width * height);
+  const reach = ALIGNED_SCALE;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!kept[y * width + x]) continue;
+      for (let yy = Math.max(0, y - reach); yy <= Math.min(height - 1, y + reach); yy += 1) {
+        near.fill(1, yy * width + Math.max(0, x - reach), yy * width + Math.min(width - 1, x + reach) + 1);
+      }
+    }
+  }
+  const pad = 30;
+  const W = width + pad * 2; const H = height + pad * 2;
+  const out = Buffer.alloc(W * H, 255);
+  // Darkest writing becomes black, paper becomes white.
+  let darkest = 255;
+  for (let i = 0; i < kept.length; i += 1) if (kept[i] && sample.grey[i] < darkest) darkest = sample.grey[i];
+  const range = Math.max(30, paper - darkest);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = y * width + x;
+      if (!near[i] || (formCovered[i] && !kept[i]) || (ink[i] && !kept[i])) continue;
+      out[(y + pad) * W + x + pad] = Math.max(0, Math.min(255, Math.round(((sample.grey[i] - darkest) / range) * 255)));
+    }
+  }
+  return Buffer.concat([Buffer.from(`P5\n${W} ${H}\n255\n`, 'ascii'), out]);
+}
+
+const ALIGNED_SCALE = 3; // crops are read at about 3x the 150 dpi form size
+
+// The blank form's printed ink (labels, lines, boxes) at 150 dpi, widened by a couple of pixels so a
+// slightly-off alignment still covers it. Erasing it from a crop leaves only what the person wrote.
+const blankFormInk = {};
+function getBlankFormInk(pageType, grow = 1) {
+  const cacheKey = `${pageType}:${grow}`;
+  if (blankFormInk[cacheKey] !== undefined) return blankFormInk[cacheKey];
+  const file = path.join(__dirname, '..', 'assets', `nsrp-blank-${pageType === 'page2' ? 'p2' : 'p1'}.png`);
+  let mask = null;
+  try {
+    const page = decodePngToBinary(fs.readFileSync(file));
+    const wide = new Uint8Array(page.black.length);
+    for (let y = 0; y < page.height; y += 1) {
+      for (let x = 0; x < page.width; x += 1) {
+        if (!page.black[y * page.width + x]) continue;
+        for (let dy = -grow; dy <= grow; dy += 1) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= page.height) continue;
+          const row = yy * page.width;
+          for (let dx = -grow; dx <= grow; dx += 1) {
+            const xx = x + dx;
+            if (xx >= 0 && xx < page.width) wide[row + xx] = 1;
+          }
+        }
+      }
+    }
+    mask = { width: page.width, height: page.height, black: wide, exact: page.black };
+  } catch (err) {
+    mask = null;
+  }
+  blankFormInk[cacheKey] = mask;
+  return mask;
+}
+
+// Where a pen stroke crosses an erased printed line (ink right before and right after a short erased run, in
+// the same column for a horizontal line or the same row for a vertical one), the stroke is put back, so
+// writing that sits on or crosses a line is not cut in two. Long runs (the lines themselves) are never restored.
+function restoreCrossings(written, ink, covered, width, height) {
+  const maxRun = 8 * ALIGNED_SCALE;
+  const reach = 3 * ALIGNED_SCALE;
+  const out = new Uint8Array(written);
+  const scan = (count, length, at) => {
+    for (let a = 0; a < count; a += 1) {
+      let b = 0;
+      while (b < length) {
+        if (!covered[at(a, b)]) { b += 1; continue; }
+        const start = b;
+        while (b < length && covered[at(a, b)]) b += 1;
+        const end = b - 1;
+        if (end - start + 1 > maxRun || start < reach || end + reach >= length) continue;
+        // A pen stroke continues well past the line on both sides; the blurred edge of a printed line does not.
+        let before = true; let after = true;
+        for (let k = 1; k <= reach; k += 1) {
+          before = before && !!ink[at(a, start - k)];
+          after = after && !!ink[at(a, end + k)];
+        }
+        if (before && after) {
+          for (let k = start; k <= end; k += 1) if (ink[at(a, k)]) out[at(a, k)] = 1;
+        }
+      }
+    }
+  };
+  scan(width, height, (x, y) => y * width + x); // columns: crossings of horizontal lines
+  scan(height, width, (y, x) => y * width + x); // rows: crossings of vertical lines
+  return out;
+}
+
+function printedFormCover(width, height, region, pad, mask, scale = ALIGNED_SCALE) {
+  const covered = new Uint8Array(width * height);
+  if (!mask) return covered;
+  const x0 = (region[0] - pad) * mask.width;
+  const y0 = (region[1] - pad) * mask.height;
+  for (let v = 0; v < height; v += 1) {
+    const ty = Math.floor(y0 + v / scale);
+    if (ty < 0 || ty >= mask.height) continue;
+    for (let u = 0; u < width; u += 1) {
+      const tx = Math.floor(x0 + u / scale);
+      if (tx >= 0 && tx < mask.width && mask.black[ty * mask.width + tx]) covered[v * width + u] = 1;
+    }
+  }
+  return covered;
+}
+
+// Removes ink that does not belong to this cell: specks (photo noise), and pieces of writing whose centre lies
+// above or below the cell (writing from the row above or below that spilled over the line). Writing from this
+// cell that spills over its own lines is kept whole. cellTop/cellBottom are the cell's lines in crop pixels.
+// keepEdgePieces: keep pieces touching the top/bottom edge (for tick cells, where a tick may sit on the line).
+function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 12, cellLeft = 0, cellRight = crop.width, keepEdgePieces = false) {
+  const { width, height } = crop;
+  const black = new Uint8Array(crop.black);
+  const seen = new Uint8Array(width * height);
+  const stack = [];
+  for (let start = 0; start < black.length; start += 1) {
+    if (!black[start] || seen[start]) continue;
+    const pixels = [];
+    let minY = height; let maxY = -1; let sumY = 0; let sumX = 0; let minX = width; let maxX = -1;
+    stack.push(start); seen[start] = 1;
+    while (stack.length) {
+      const i = stack.pop();
+      pixels.push(i);
+      const x = i % width; const y = (i - x) / width;
+      sumY += y;
+      sumX += x;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const xx = x + dx; const yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+          const j = yy * width + xx;
+          if (black[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+        }
+      }
+    }
+    const centre = sumY / pixels.length;
+    const centreX = sumX / pixels.length;
+    const outside = centre < cellTop || centre > cellBottom || centreX < cellLeft || centreX > cellRight;
+    const cutOff = !keepEdgePieces && (minY === 0 || maxY === height - 1) && maxY - minY + 1 < (cellBottom - cellTop) * 0.35;
+    // Leftover printed line: thin and straight, taller than the cell (vertical) or much wider than tall (horizontal).
+    const thin = 3 * ALIGNED_SCALE;
+    const cellHeight = cellBottom - cellTop;
+    const lineLeft = (maxX - minX + 1 <= thin && maxY - minY + 1 > cellHeight * 1.2)
+      || (maxY - minY + 1 <= thin && maxX - minX + 1 > cellHeight * 3);
+    // A dash left over from a dotted line: short and flat, lying on the cell's top or bottom edge. (Hyphens in
+    // IDs and dates sit in the middle of the writing, so they are kept.)
+    const flat = maxY - minY + 1 <= thin && maxX - minX + 1 >= (maxY - minY + 1) * 2;
+    const onEdge = Math.abs(centre - cellBottom) <= 4 * ALIGNED_SCALE || Math.abs(centre - cellTop) <= 4 * ALIGNED_SCALE;
+    // Leftover joined printed lines (a vertical line with short horizontal stubs, an L or T shape): it reaches both
+    // the top and the bottom of the area read, which writing never does (the area reaches about half a cell beyond
+    // the cell on each side), and only a small share of its box is ink.
+    const lineFrame = !keepEdgePieces && minY === 0 && maxY === height - 1
+      && pixels.length < (maxX - minX + 1) * (maxY - minY + 1) * 0.08;
+    if (pixels.length < minPixels || outside || cutOff || lineLeft || lineFrame || (flat && onEdge)) for (const i of pixels) black[i] = 0;
+  }
+  return { ...crop, black };
+}
+
+// Phone photos bend slightly, so the page-wide fit can be a pixel or two off at a given cell. Nudge the
+// cell (up to SHIFT form pixels each way) to where the printed lines around it match the blank form best.
+const SHIFT = 6;
+function localShift(greyImage, transform, region, mask) {
+  if (!mask) return [0, 0];
+  const m = SHIFT + 6;
+  const x0 = Math.round(region[0] * mask.width) - m; const y0 = Math.round(region[1] * mask.height) - m;
+  const w = Math.round(region[2] * mask.width) + m * 2; const h = Math.round(region[3] * mask.height) + m * 2;
+  const area = [x0 / mask.width, y0 / mask.height, w / mask.width, h / mask.height];
+  const sample = sampleRegion(greyImage, transform, area, 0, 1);
+  const ink = inkMask(sample.grey);
+  const points = [];
+  for (let y = SHIFT; y < h - SHIFT; y += 1) {
+    const ty = y0 + y;
+    if (ty < 0 || ty >= mask.height) continue;
+    for (let x = SHIFT; x < w - SHIFT; x += 1) {
+      const tx = x0 + x;
+      if (tx >= 0 && tx < mask.width && mask.exact[ty * mask.width + tx]) points.push([x, y]);
+    }
+  }
+  if (points.length < 20) return [0, 0];
+  const score = (dx, dy) => {
+    let hit = 0;
+    for (const [x, y] of points) hit += ink[(y + dy) * sample.width + x + dx] || 0;
+    return hit;
+  };
+  let best = [0, 0]; let bestScore = score(0, 0);
+  for (let dy = -SHIFT; dy <= SHIFT; dy += 1) {
+    for (let dx = -SHIFT; dx <= SHIFT; dx += 1) {
+      const sc = score(dx, dy);
+      if (sc > bestScore * 1.05) { bestScore = sc; best = [dx, dy]; }
+    }
+  }
+  return best;
+}
+
+// The kept writing as a grey image with strokes one pixel thicker (helps faint or thin pen strokes).
+function thickerPgm(crop) {
+  const { width, height, black } = crop;
+  const pad = 30;
+  const W = width + pad * 2; const H = height + pad * 2;
+  const out = Buffer.alloc(W * H, 255);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!black[y * width + x]) continue;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) out[(y + dy + pad) * W + x + dx + pad] = 0;
+      }
+    }
+  }
+  return Buffer.concat([Buffer.from(`P5\n${W} ${H}\n255\n`, 'ascii'), out]);
+}
+
+const YEAR_CELL = /^(elementary|secondary|tertiary|graduate)_(year|last_attended)$/;
+// Digit groups of each ID number as usually written (TIN 000-000-000 or with a 3-digit branch code;
+// SSS 00-0000000-0; GSIS BP number 11 digits; PhilHealth 00-000000000-0; Pag-IBIG 0000-0000-0000). A reading with
+// another number of digits is flagged for review (see reviewFlags).
+const ID_SHAPES = {
+  tin: [[3, 3, 3], [3, 3, 3, 3]],
+  gsis_sss_no: [[2, 7, 1], [11]],
+  philhealth_no: [[2, 9, 1]],
+  pagibig_no: [[4, 4, 4]],
+};
+
+// The writing split at empty columns into separate pieces (usually one digit each), as tight PGM images, with
+// each piece's width and height. Two close strokes such as the "11" in "2011" are otherwise read as one.
+function writingPieces(crop) {
+  const { width, height, black } = crop;
+  const used = (x) => { for (let y = 0; y < height; y += 1) if (black[y * width + x]) return true; return false; };
+  const pieces = [];
+  let start = -1;
+  for (let x = 0; x <= width; x += 1) {
+    const on = x < width && used(x);
+    if (on && start < 0) start = x;
+    if (!on && start >= 0) {
+      let top = height; let bottom = -1;
+      for (let y = 0; y < height; y += 1) {
+        for (let px = start; px < x; px += 1) if (black[y * width + px]) { if (y < top) top = y; bottom = y; }
+      }
+      const w = x - start; const h = bottom - top + 1; const pad = 25;
+      const W = w + pad * 2; const H = h + pad * 2;
+      const out = Buffer.alloc(W * H, 255);
+      for (let y = top; y <= bottom; y += 1) {
+        for (let px = start; px < x; px += 1) if (black[y * width + px]) out[(y - top + pad) * W + px - start + pad] = 0;
+      }
+      pieces.push({ w, h, image: Buffer.concat([Buffer.from(`P5\n${W} ${H}\n255\n`, 'ascii'), out]) });
+      start = -1;
+    }
+  }
+  return pieces;
+}
+
+// Average of Tesseract's own word confidences (0-100) in one box; used only to flag fields for review.
+function meanWordConfidence(tsv) {
+  const confs = String(tsv || '').split(/\r?\n/).map((row) => row.split('\t'))
+    .filter((c) => c[0] === '5' && (c[11] || '').trim()).map((c) => parseFloat(c[10])).filter((v) => v >= 0);
+  return confs.length ? Math.round(confs.reduce((a, b) => a + b, 0) / confs.length) : 0;
+}
+
+async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, specs, pageType, options = {}) {
+  const regions = {};
+  const confidence = {};
+  regions.__confidence = confidence;
+  const toHelper = [];
+  // Clean scans line up to about a pixel; photos less exactly, so erase a wider margin around printed lines.
+  const formInk = getBlankFormInk(pageType, transform.meanError > 1.5 ? 2 : 1);
+  for (const [name, spec] of Object.entries(specs)) {
+    try {
+      const pad = spec.expand ?? 0.003;
+      const [dx, dy] = localShift(greyImage, transform, spec.region, formInk);
+      // Writing often spills over the cell's lines, so read with room above and below (45% of the cell).
+      const extra = spec.region[3] * 0.45;
+      // Room left and right too (about a third of the cell's height): the first or last character often spills past
+      // a narrow box. Only ink whose centre lies inside the box is kept.
+      const extraX = (spec.region[3] * 1754 * 0.35) / 1240;
+      const area = [spec.region[0] - extraX, spec.region[1] - extra, spec.region[2] + extraX * 2, spec.region[3] + extra * 2];
+      const shifted = [area[0] + dx / 1240, area[1] + dy / 1754, area[2], area[3]];
+      const sample = sampleRegion(greyImage, transform, shifted, pad, ALIGNED_SCALE);
+      const { black: ink, paper } = inkMask(sample.grey, true);
+      const formCovered = printedFormCover(sample.width, sample.height, area, pad, formInk);
+      const written = restoreCrossings(ink.map((v, i) => (v && !formCovered[i] ? 1 : 0)), ink, formCovered, sample.width, sample.height);
+      const cellTop = (pad + extra) * 1754 * ALIGNED_SCALE;
+      const cellBottom = cellTop + spec.region[3] * 1754 * ALIGNED_SCALE;
+      const cellLeft = (pad + extraX) * 1240 * ALIGNED_SCALE;
+      const cellRight = cellLeft + spec.region[2] * 1240 * ALIGNED_SCALE;
+      const crop = dropStrayInk({ width: sample.width, height: sample.height, black: written }, cellTop, cellBottom, 12, cellLeft, cellRight);
+      if (isBlankOcrCrop(crop, (spec.minBlackPixels ?? 10) * ALIGNED_SCALE * ALIGNED_SCALE)) {
+        regions[name] = '';
+        continue;
+      }
+      const pgm = cleanedGreyPgm(sample, ink, crop.black, formCovered, paper);
+      if (options.debugCropsDir) {
+        fs.mkdirSync(options.debugCropsDir, { recursive: true });
+        fs.writeFileSync(path.join(options.debugCropsDir, `${name}.pgm`), pgm);
+        fs.writeFileSync(path.join(options.debugCropsDir, `${name}.raw.pgm`), greyToPgm(sample));
+        // Debug view: black = kept writing, dark grey = erased as printed form, light grey = removed as stray ink.
+        const view = new Uint8Array(sample.width * sample.height).fill(255);
+        for (let i = 0; i < view.length; i += 1) {
+          if (crop.black[i]) view[i] = 0;
+          else if (ink[i] && formCovered[i]) view[i] = 90;
+          else if (ink[i]) view[i] = 190;
+        }
+        fs.writeFileSync(path.join(options.debugCropsDir, `${name}.steps.pgm`), greyToPgm({ width: sample.width, height: sample.height, grey: view }));
+      }
+      const params = { tessedit_pageseg_mode: spec.psm ? getPsm(Tesseract, spec.psm) : Tesseract.PSM.AUTO, user_defined_dpi: '300' };
+      if (FIELD_CHARS[name]) params.tessedit_char_whitelist = FIELD_CHARS[name];
+      const read = async (image) => {
+        const result = await worker.recognize(image, params, { text: true, tsv: true });
+        // Email addresses may contain "_", which the general clean-up would turn into a space.
+        const text = name === 'email_address'
+          ? String(result.data?.text || '').replace(/\s+/g, ' ').trim()
+          : normalizeRegionText(result.data?.text || '');
+        return { text, conf: text ? meanWordConfidence(result.data?.tsv) : 0 };
+      };
+      let best = await read(pgm);
+      // Unsure reading: read the same writing again, crisp black-and-white and with slightly thicker strokes,
+      // and keep whichever reading Tesseract is most sure of. The field only counts as sure when all readings
+      // agree; if they differ, the lowest confidence is kept so the field stays flagged for review.
+      if (best.text && best.conf < LOW_CONFIDENCE) {
+        const readings = [best];
+        for (const again of [cropToPbm(crop, 1, 30), thickerPgm(crop)]) {
+          const other = await read(again);
+          if (other.text) readings.push(other);
+          if (other.text && other.conf > best.conf) best = other;
+        }
+        const same = (a, b) => a.replace(/\s+/g, '').toUpperCase() === b.replace(/\s+/g, '').toUpperCase();
+        if (!readings.every((x) => same(x.text, best.text))) best = { ...best, conf: Math.min(...readings.map((x) => x.conf)) };
+      }
+      // Read piece by piece: a tall, narrow stroke is a 1, short pieces (dashes, specks) are skipped, and every
+      // other piece is read on its own. Returns the digits found.
+      const digitsByPiece = async () => {
+        const pieces = writingPieces(crop);
+        const tallest = Math.max(...pieces.map((p) => p.h));
+        let digits = '';
+        for (const piece of pieces.filter((p) => p.h >= tallest * 0.4)) {
+          if (piece.w <= piece.h * 0.3) { digits += '1'; continue; }
+          const result = await worker.recognize(piece.image, { ...params, tessedit_pageseg_mode: getPsm(Tesseract, 'SINGLE_WORD') }, { text: true });
+          digits += String(result.data?.text || '').replace(/\D/g, '');
+        }
+        return digits;
+      };
+      // A year box holds four digits (or NA). A reading of another length is read again piece by piece; the new
+      // reading is used only when it gives four digits, and it stays flagged as unsure.
+      if (YEAR_CELL.test(name) && best.text && !/^(\d{4}|N\/?A)$/i.test(best.text.replace(/\s+/g, ''))) {
+        const digits = await digitsByPiece();
+        if (/^\d{4}$/.test(digits)) best = { text: digits, conf: Math.min(best.conf, LOW_CONFIDENCE - 1) };
+      }
+      // A TESDA level written as N, C and 1-3 thin upright strokes ("NC III"): the strokes are counted, since close
+      // strokes are often read as one ("NC II"). Counted levels are kept as they are (not sent to the second reader).
+      let counted = false;
+      if (/^training_\d_certificate$/.test(name)) {
+        const pieces = writingPieces(crop).filter((p) => p.h >= 6 * ALIGNED_SCALE);
+        const heights = pieces.map((p) => p.h).sort((a, b) => a - b);
+        const mid = heights[Math.floor(heights.length / 2)] || 0;
+        const letters = pieces.filter((p) => p.h >= mid * 0.6 && p.h <= mid * 1.4);
+        const thin = (p) => p.w <= p.h * 0.35;
+        const firstStroke = letters.findIndex((p, i) => i >= 2 && letters.slice(i).every(thin));
+        const strokes = firstStroke >= 2 ? letters.length - firstStroke : 0;
+        if (firstStroke === 2 && !thin(letters[0]) && !thin(letters[1]) && strokes >= 1 && strokes <= 3) {
+          best = { text: `NC ${'I'.repeat(strokes)}`, conf: Math.min(best.conf || LOW_CONFIDENCE - 1, LOW_CONFIDENCE - 1) };
+          counted = true;
+        }
+      }
+      regions[name] = best.text;
+      if (best.text) confidence[name] = best.conf;
+      if (counted) continue;
+      // Boxes with writing go to the second reader too, even when Tesseract read nothing; "NA" stays as read.
+      if (helperEnabled() && !isWrittenNa(best.text)) toHelper.push({ name, image: pgm });
+    } catch (err) {
+      regions[name] = '';
+      if (options.logWarnings) console.warn(`[NSRP OCR region ${name}]`, err.message || err);
+    }
+  }
+  // Second reader (see ocrHelper.js): one request for all boxes with writing; Tesseract's readings stay if it fails.
+  if (toHelper.length) {
+    const texts = await readBoxes(toHelper.map((b) => b.image));
+    if (texts) mergeHelperReadings(regions, toHelper.map((b) => b.name), texts);
+    else if (options.logWarnings) console.warn('[NSRP OCR] second reader unavailable; using Tesseract readings only');
+  }
+  return regions;
+}
+
+// Share of ink inside each checkbox: the box is located through the page fit, nudged onto the printed box,
+// and only pixels where the blank form has no ink are counted (so the printed border never counts as a tick).
+const BOX_HALF = 11; // half the measured square, in blank-form pixels
+function detectAlignedCheckboxes(greyImage, transform, groups, pageType) {
+  const formInk = getBlankFormInk(pageType, transform.meanError > 1.5 ? 2 : 1);
+  const results = {};
+  const densities = {};
+  const density = (fx, fy) => {
+    const region = [fx - BOX_HALF / 1240, fy - BOX_HALF / 1754, (BOX_HALF * 2) / 1240, (BOX_HALF * 2) / 1754];
+    const [dx, dy] = localShift(greyImage, transform, region, formInk);
+    const shifted = [region[0] + dx / 1240, region[1] + dy / 1754, region[2], region[3]];
+    const scale = 2;
+    // Paper level from a wider area, so a heavy tick cannot make the ink look like paper.
+    const wide = sampleRegion(greyImage, transform, [shifted[0] - region[2], shifted[1] - region[3], region[2] * 3, region[3] * 3], 0, 1);
+    const { paper } = inkMask(wide.grey, true);
+    const cut = paper - Math.max(55, paper * 0.3);
+    const sample = sampleRegion(greyImage, transform, shifted, 0, scale);
+    const covered = printedFormCover(sample.width, sample.height, region, 0, formInk, scale);
+    let total = 0; let black = 0;
+    for (let i = 0; i < sample.grey.length; i += 1) {
+      if (covered[i]) continue;
+      total += 1;
+      if (sample.grey[i] < cut) black += 1;
+    }
+    return total ? black / total : 0;
+  };
+  // A tick written anywhere inside a cell (no printed box): count the pen ink left in the cell after erasing the
+  // printed form and specks. About CELL_TICK_PIXELS such pixels (at 3x) is a tick; scaled so the usual tick
+  // threshold applies (leftover photo blobs in empty cells stay well below it).
+  const CELL_TICK_PIXELS = 150;
+  const cellTick = ([x0, y0, x1, y1]) => {
+    const inset = 3;
+    const region = [(x0 + inset) / 1240, (y0 + inset) / 1754, (x1 - x0 - inset * 2) / 1240, (y1 - y0 - inset * 2) / 1754];
+    const [dx, dy] = localShift(greyImage, transform, region, formInk);
+    const shifted = [region[0] + dx / 1240, region[1] + dy / 1754, region[2], region[3]];
+    const sample = sampleRegion(greyImage, transform, shifted, 0, ALIGNED_SCALE);
+    const ink = inkMask(sample.grey);
+    const covered = printedFormCover(sample.width, sample.height, region, 0, formInk);
+    // Photo grain makes many small specks; a pen tick is one connected stroke, so only strokes of 150+ pixels count.
+    const written = dropStrayInk({ width: sample.width, height: sample.height, black: ink.map((v, i) => (v && !covered[i] ? 1 : 0)) }, 0, sample.height, 150, 0, sample.width, true);
+    let count = 0;
+    for (let i = 0; i < written.black.length; i += 1) count += written.black[i];
+    return (count / CELL_TICK_PIXELS) * ALIGNED_TICK_MIN;
+  };
+  for (const group of groups) {
+    const measured = group.values.map((item) => ({ ...item, density: item.cell ? cellTick(item.cell) : density(item.x, item.y) }))
+      .sort((a, b) => b.density - a.density);
+    densities[group.field] = measured.map(({ value, density: d }) => ({ value, density: Number(d.toFixed(4)) }));
+    if (group.multi) {
+      const picked = measured.filter((item) => item.density >= ALIGNED_TICK_MIN).map((item) => item.value);
+      // (Language cells use the whole-cell measure above, scaled to the same threshold.)
+      if (picked.length > 0) results[group.field] = picked;
+    } else {
+      const best = measured[0];
+      const second = measured[1];
+      const margin = second ? best.density - second.density : best.density;
+      if (best && best.density >= ALIGNED_TICK_MIN && margin >= ALIGNED_TICK_MIN / 2) results[group.field] = best.value;
+    }
+  }
+  results.__densities = densities;
+  return results;
+}
+const ALIGNED_TICK_MIN = 0.04;
+
 async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
   assertLocalOcrLanguageData();
 
@@ -700,10 +1402,26 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       user_defined_dpi: '300',
     });
 
+    // Phone photos are often 12 megapixels or more: reading them at full size is slow, and a photo of a screen
+    // carries the screen's pixel grid. Large photos are first decoded only (no reading) and averaged down to
+    // about the form's size at 150-200 dpi; scans and images of normal size are read as they are.
+    let readBuffer = imageBuffer;
+    if (options.shrinkLarge !== false) {
+      try {
+        const decoded = await worker.recognize(imageBuffer, {}, { imageGrey: true, text: false, blocks: false, hocr: false, tsv: false });
+        const grey = decodePngToGrey(Buffer.from(String(decoded.data?.imageGrey || '').replace(/^data:image\/png;base64,/, ''), 'base64'));
+        const short = Math.min(grey.width, grey.height);
+        const factor = Math.floor(short / TARGET_SHORT_SIDE);
+        if (short > LARGE_PHOTO_SHORT_SIDE && factor >= 2) readBuffer = greyToPgm(averageDown(grey, factor));
+      } catch (err) {
+        if (options.logWarnings) console.warn('[NSRP OCR shrink]', err.message || err);
+      }
+    }
+
     const full = await worker.recognize(
-      imageBuffer,
+      readBuffer,
       { tessedit_pageseg_mode: Tesseract.PSM.AUTO, user_defined_dpi: '300' },
-      { text: true, tsv: true, imageBinary: true },
+      { text: true, tsv: true, imageBinary: true, imageGrey: true },
     );
 
     const rawText = full.data?.text || '';
@@ -716,6 +1434,60 @@ async function recognizeNsrpImage(Tesseract, imageBuffer, options = {}) {
       binaryImage = decodeTesseractBinaryImage(full.data?.imageBinary || '');
     } catch (err) {
       if (options.logWarnings) console.warn('[NSRP OCR binary decode]', err.message || err);
+    }
+
+    // Preferred path: locate the printed form on the image and read every field box straightened.
+    let greyImage = null;
+    if (options.align !== false) {
+      try {
+        greyImage = decodePngToGrey(Buffer.from(String(full.data?.imageGrey || '').replace(/^data:image\/png;base64,/, ''), 'base64'));
+      } catch (err) {
+        if (options.logWarnings) console.warn('[NSRP OCR grey decode]', err.message || err);
+      }
+    }
+    let located = greyImage && pageType !== 'unknown'
+      ? { pageType, rawText, transform: fitPageTransform(tsv, pageType), image: greyImage, turned: 0 }
+      : null;
+    if (greyImage && !located?.transform) {
+      // Not found yet: try a smoothed copy (photos of a screen), then the photo turned 90, 180 and 270 degrees
+      // (a phone photo can arrive sideways or upside down).
+      // When the upright photo was already recognised as page 1 or 2, it is not sideways: only the smoothed
+      // copy is tried. Turned copies are made one at a time, only when needed.
+      // A photo held crooked (a few degrees) is straightened first, from the tilt of the form's printed lines.
+      const skew = estimateSkew(greyImage);
+      // On a crooked or busy photo, Tesseract's automatic layout can find almost no words; reading the page as one
+      // block of text still finds the printed labels, so that is tried too (only when the form was not found).
+      let straight = null;
+      const straightened = () => (straight ||= rotateGreyAngle(greyImage, skew));
+      const tilted = Math.abs(skew) >= 1;
+      const tries = [
+        ...(tilted ? [{ make: straightened, turns: 0, skew }, { make: straightened, turns: 0, skew, block: true }] : []),
+        { make: () => smoothedCopy(greyImage), turns: 0 },
+        { make: () => greyImage, turns: 0, block: true },
+        ...(pageType === 'unknown' ? [1, 2, 3].map((turns) => ({ make: () => rotateGrey(greyImage, turns), turns })) : [])];
+      for (const { make, turns, skew: straightened, block } of tries) {
+        const image = make();
+        const again = await worker.recognize(
+          greyToPgm(image),
+          { tessedit_pageseg_mode: block ? Tesseract.PSM.SINGLE_BLOCK : Tesseract.PSM.AUTO, user_defined_dpi: '300' },
+          { text: true, tsv: true },
+        );
+        const turnedType = detectNsrpPageType(again.data?.text || '');
+        if (turnedType === 'unknown') continue;
+        const turnedFit = fitPageTransform(again.data?.tsv || '', turnedType);
+        if (turnedFit) {
+          located = { pageType: turnedType, rawText: again.data?.text || '', transform: turnedFit, image, turned: turns * 90, straightened };
+          break;
+        }
+      }
+    }
+    if (located?.transform) {
+      const { transform, image } = located;
+      const regions = await recognizeAlignedRegions(worker, Tesseract, image, transform, ALIGNED_REGION_SPECS[located.pageType], located.pageType, options);
+      regions.__page_type = located.pageType;
+      regions.__checkboxes = detectAlignedCheckboxes(image, transform, CHECKBOX_GROUPS[located.pageType], located.pageType);
+      regions.__alignment = { matches: transform.matches, meanError: transform.meanError, turned: located.turned, ...(located.straightened ? { straightened: located.straightened } : {}) };
+      return { rawText: located.rawText, regions, pageBox, dy: 0, pageType: located.pageType };
     }
 
     if (pageType === 'unknown') {
@@ -751,8 +1523,8 @@ function basicClean(value) {
     .replace(/\r/g, ' ')
     .replace(/[|_]{2,}/g, ' ')
     .replace(/[`~^]/g, ' ')
-    .replace(/^[Xx?]+\s*/, '')
-    .replace(/^[|:;.,)\]-]+|[|:;.,(\[]+$/g, '')
+    .replace(/^(?:[Xx?]+\s+|\?+)/, '')
+    .replace(/^[|:;.,)\]-]+|[|:;,(\[]+$|(?<![A-Za-zÑñ])\.+$|(?<=\b[A-Za-zÑñ]{5,})\.+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -776,33 +1548,14 @@ function cleanRegionText(raw, stripLabels = []) {
 const LABEL_JUNK = /\b(surname|first\s*name|middle\s*name|suffix|date\s*of\s*birth|place\s*of\s*birth|religion|civil\s*status|sex|height|tin|gsis|pag.?ibig|philhealth|cellphone|landline|email|disability|employment|status|type|wage|entrant|graduate|contract|resigned|retired|terminated|laidoff|salary|passport|expiry|beneficiary|household|education|elementary|secondary|tertiary|occupation|location|language|dialect|proficiency|eligibility|experience|training|company|single|married|widowed|separated|live.?in|employed|unemployed|visual|hearing|speech|physical|republic|philippines|department|labor|peso|looking|willing|immediately|4ps|prefer|expect|manager|officer|city\/municipality|municipality|barangay|village|province|house|street)\b/i;
 
 function normalizeKnownRunTogether(value) {
-  let v = String(value || '').toUpperCase();
-  v = v.replace(/CAGAYAN\s*D[EO0]\s*OR[O0]\s*CITY/g, 'CAGAYAN DE ORO CITY');
-  v = v.replace(/CAGAYANDEOROCITY/g, 'CAGAYAN DE ORO CITY');
-  v = v.replace(/CAGAYAN[O0]E[O0]R[O0]CTY/g, 'CAGAYAN DE ORO CITY');
-  v = v.replace(/CA[OG]N+EOROCTY/g, 'CAGAYAN DE ORO CITY');
-  v = v.replace(/CAGAYAN\s*DE\s*ORO\s*CTY/g, 'CAGAYAN DE ORO CITY');
-  v = v.replace(/MISAMIS\s*ORIENTAL/g, 'MISAMIS ORIENTAL');
-  v = v.replace(/MISAMISORIENTAL/g, 'MISAMIS ORIENTAL');
-  v = v.replace(/MISA(?:MIS)?\s*OR[E3]NTAL/g, 'MISAMIS ORIENTAL');
-  v = v.replace(/SAMS\s*ORENTAL/g, 'MISAMIS ORIENTAL');
-  v = v.replace(/ILIGAN\s*CITY/g, 'ILIGAN CITY');
-  v = v.replace(/ILIGANCITY/g, 'ILIGAN CITY');
-  v = v.replace(/BARANGAY\s*1/g, 'BARANGAY 1');
-  v = v.replace(/BARANGAY1/g, 'BARANGAY 1');
-  v = v.replace(/GREEN\s*VILLAGE/g, 'GREEN VILLAGE');
-  v = v.replace(/GREENVILLAGE/g, 'GREEN VILLAGE');
-  v = v.replace(/GREENVLLAGE/g, 'GREEN VILLAGE');
-  v = v.replace(/GREEN\s*VLLAGE/g, 'GREEN VILLAGE');
-  v = v.replace(/RIZAL\s*STREET/g, 'RIZAL STREET');
-  v = v.replace(/RIZALSTREET/g, 'RIZAL STREET');
-  return v;
+  return String(value || '').toUpperCase();
 }
 
 function stripOcrNoise(value) {
   return String(value || '')
+    // A zero inside a word of letters is the letter O ("CAGAYAN DE 0RRO", "G0NZAGA").
+    .replace(/\b[A-Za-z0]*[A-Za-z][A-Za-z0]*\b/g, (word) => (/[A-Za-z].*[A-Za-z]|[A-Za-z]{2}/.test(word) ? word.replace(/0/g, 'O') : word))
     .replace(/[^\w@.+,\-/\s]/g, ' ')
-    .replace(/\b(?:TTT|EEE|FE|EE|OR|ER|RE|NAI|NALA|CC|A)\b$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -814,7 +1567,13 @@ function validateName(value) {
     .replace(/[^A-ZÑa-zñ\s.'-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    // Stray marks at the ends ("PONGS.-", "-CRUZ"): a name never starts with punctuation or ends with "-" or "'",
+    // and a final "." is kept only after a short abbreviation ("MA.", "STA.").
+    .replace(/^[.'\s-]+/, '')
+    .replace(/[\s'-]+$/, '')
+    .replace(/([A-ZÑ]{4,})\.+[\s.'-]*$/i, '$1')
+    .replace(/[\s'-]+$/, '');
   if (v.length > 60) return '';
   if (LABEL_JUNK.test(v)) return '';
   if (/\d/.test(v)) return '';
@@ -826,36 +1585,234 @@ function validateLocation(value) {
   if (!value) return '';
   const normalized = normalizeKnownRunTogether(stripOcrNoise(value));
   const v = normalized
-    .replace(/[^A-ZÑ0-9\s.'-]/g, ' ')
+    .toUpperCase()
+    .replace(/[^A-ZÑ0-9\s.,'-]/g, ' ')
+    .replace(/\s+,/g, ',')
     .replace(/\s+/g, ' ')
-    .trim()
-    .toUpperCase();
+    .trim();
   if (!v || v.length > 80) return '';
-  const known = [
-    'CAGAYAN DE ORO CITY',
-    'MISAMIS ORIENTAL',
-    'ILIGAN CITY',
-    'GREEN VILLAGE',
-    'BARANGAY 1',
-  ].find((item) => v.includes(item));
-  if (known) return known;
   if (v.replace(/[^A-ZÑ]/g, '').length < 3) return '';
-  if (LABEL_JUNK.test(v) && !/^BARANGAY\s+\d+$/i.test(v)) return '';
   return v;
 }
 
-function validateDate(value) {
+// Official place names (PSA PSGC; see nsrpPlaceNames.json for the exact version) and widely spoken languages.
+// A reading Tesseract was unsure of (confidence below LOW_CONFIDENCE) that is one or two letters away from
+// exactly one listed name is changed to that name and flagged for the person to check. A confident reading is
+// kept as written (people use other spellings, e.g. BOBUNTUGAN for BOBONTUGAN), and names not on the list
+// (villages, other barangays, schools, people) are never changed.
+const PLACE_NAMES = require('./nsrpPlaceNames.json');
+const LANGUAGE_NAMES = ['CEBUANO', 'BISAYA', 'BINISAYA', 'TAGALOG', 'ILOCANO', 'HILIGAYNON', 'ILONGGO', 'WARAY',
+  'KAPAMPANGAN', 'BIKOL', 'BICOLANO', 'PANGASINAN', 'MARANAO', 'MAGUINDANAO', 'TAUSUG', 'CHAVACANO', 'KINARAY-A',
+  'SURIGAONON', 'BOHOLANO', 'HIGAONON', 'SUBANEN', 'MANDARIN', 'JAPANESE', 'KOREAN', 'SPANISH', 'ARABIC'];
+const bareCity = (name) => name.replace(/ CITY$/, '');
+const NAME_LISTS = {
+  city: [...PLACE_NAMES.cities, ...PLACE_NAMES.cities.map(bareCity), ...PLACE_NAMES.municipalities],
+  province: PLACE_NAMES.provinces,
+  barangay: PLACE_NAMES.barangays,
+  place: [...PLACE_NAMES.cities, ...PLACE_NAMES.cities.map(bareCity), ...PLACE_NAMES.municipalities, ...PLACE_NAMES.provinces],
+  language: LANGUAGE_NAMES,
+};
+
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// The listed name nearest to one reading, or the reading unchanged. Short names allow fewer wrong letters.
+function nearestListedName(part, list) {
+  const v = part.trim().replace(/\s+(CY|CTY|CIY|CIT|CITV|C1TY|CITX|LITY)$/, ' CITY');
+  const key = v.replace(/\s+/g, '');
+  if (!key || list.includes(v)) return v;
+  const allowed = key.length <= 4 ? 0 : key.length <= 6 ? 1 : key.length <= 10 ? 2 : 3;
+  if (!allowed) return part.trim();
+  let best = null; let bestD = Infinity; let tie = false;
+  for (const name of list) {
+    const d = editDistance(key, name.replace(/\s+/g, ''));
+    if (d < bestD) { best = name; bestD = d; tie = false; } else if (d === bestD && name !== best) tie = true;
+  }
+  return best && bestD <= allowed && !tie ? best : part.trim();
+}
+
+// Each comma-separated part ("GINGOOG CITY, MISAMIS ORIENTAL") is matched on its own. Changes are recorded in
+// fixes (region name -> what was read) for the review hints.
+function matchListedName(value, kind, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const list = NAME_LISTS[kind];
+  const out = String(value).split(',').map((p) => nearestListedName(p, list)).filter(Boolean).join(', ');
+  if (out.replace(/[\s,]+/g, '') !== String(value).replace(/[\s,]+/g, '')) fixes[regionName] = { read: value, kind: 'place' };
+  return out;
+}
+
+// Common words on NSRP forms (schools, courses, trainings, companies, positions, work status, religion) plus every
+// word of the official place names. An unsure reading's word one or two letters away from exactly one of these is
+// corrected and flagged, the same way as place names. Words not near any listed word (names, brands) are kept.
+const FORM_WORDS = new Set([
+  'SCHOOL', 'HIGH', 'NATIONAL', 'CENTRAL', 'ELEMENTARY', 'SECONDARY', 'INTEGRATED', 'COMPREHENSIVE', 'CITY', 'COLLEGE',
+  'COLLEGES', 'UNIVERSITY', 'INSTITUTE', 'ACADEMY', 'STATE', 'TECHNOLOGY', 'TECHNOLOGICAL', 'SCIENCE', 'SCIENCES',
+  'POLYTECHNIC', 'JUNIOR', 'SENIOR', 'BACHELOR', 'MASTER', 'BUSINESS', 'ADMINISTRATION', 'INFORMATION', 'EDUCATION',
+  'ENGINEERING', 'ELECTRICAL', 'ELECTRONICS', 'MECHANICAL', 'CIVIL', 'COMPUTER', 'MANAGEMENT', 'ACCOUNTANCY',
+  'ACCOUNTING', 'HOSPITALITY', 'HOTEL', 'RESTAURANT', 'TOURISM', 'CRIMINOLOGY', 'NURSING', 'MIDWIFERY', 'PSYCHOLOGY',
+  'AGRICULTURE', 'MARINE', 'TRANSPORTATION', 'SECRETARIAL', 'OFFICE', 'EXTENSION', 'REGION', 'TRAINING', 'CENTER',
+  'CENTRE', 'PROVINCIAL', 'MUNICIPAL', 'COOKERY', 'BAKING', 'BREAD', 'PASTRY', 'PRODUCTION', 'HOUSEKEEPING',
+  'CAREGIVING', 'MASSAGE', 'THERAPY', 'WELDING', 'SHIELDED', 'METAL', 'INSTALLATION', 'MAINTENANCE', 'SYSTEMS',
+  'SERVICING', 'AUTOMOTIVE', 'CARPENTRY', 'MASONRY', 'PLUMBING', 'DRIVING', 'TAILORING', 'DRESSMAKING', 'BOOKKEEPING',
+  'BARTENDING', 'BEAUTY', 'CARE', 'SERVICES', 'SERVICE', 'POWER', 'STEEL', 'WORKS', 'CORPORATION', 'ENTERPRISES',
+  'ENTERPRISE', 'COMPANY', 'STORE', 'MARKET', 'GRAND', 'TRADING', 'CONSTRUCTION', 'SUPPLY', 'HARDWARE', 'PHARMACY',
+  'HOSPITAL', 'CLINIC', 'BANK', 'COOPERATIVE', 'FOODS', 'RESORT', 'MALL', 'ELECTRIC', 'WATER', 'DISTRICT', 'FREELANCE',
+  'CLIENT', 'ELECTRICIAN', 'HELPER', 'CASHIER', 'CLERK', 'SALES', 'LADY', 'ENCODER', 'CREW', 'DRIVER', 'WELDER', 'COOK',
+  'TEACHER', 'AIDE', 'ASSISTANT', 'TECHNICIAN', 'SUPERVISOR', 'MANAGER', 'STAFF', 'ATTENDANT', 'GUARD', 'SECURITY',
+  'CARPENTER', 'MASON', 'PLUMBER', 'MECHANIC', 'BAKER', 'WAITER', 'WAITRESS', 'BARISTA', 'JANITOR', 'MESSENGER',
+  'ACCOUNTANT', 'BOOKKEEPER', 'RECEPTIONIST', 'SECRETARY', 'NURSE', 'CAREGIVER', 'DEVELOPER', 'PROGRAMMER',
+  'SPECIALIST', 'SUPPORT', 'INTERN', 'OPERATOR', 'CUSTOMER', 'REPRESENTATIVE', 'DEPARTMENT', 'CONTRACTUAL', 'PERMANENT',
+  'PROBATIONARY', 'SEASONAL', 'CASUAL', 'INTERNSHIP', 'PRESENT', 'YEAR', 'ROMAN', 'CATHOLIC', 'CHRISTIAN', 'IGLESIA',
+  'CRISTO', 'BORN', 'AGAIN', 'BAPTIST', 'ADVENTIST', 'ISLAM', 'MUSLIM', 'AGLIPAY', 'PUROK', 'ZONE', 'STREET', 'VILLAGE',
+  'SUBDIVISION',
+]);
+for (const list of [PLACE_NAMES.cities, PLACE_NAMES.municipalities, PLACE_NAMES.provinces, PLACE_NAMES.barangays]) {
+  for (const name of list) for (const word of name.split(/[\s-]+/)) if (/^[A-ZÑ]{4,}$/.test(word)) FORM_WORDS.add(word);
+}
+const FORM_WORD_LIST = [...FORM_WORDS];
+
+function nearestFormWord(word) {
+  if (word.length < 4 || FORM_WORDS.has(word) || !/^[A-ZÑ]+$/.test(word)) return null;
+  const allowed = word.length <= 5 ? 1 : word.length <= 10 ? 2 : 3;
+  let best = null; let bestD = Infinity; let tie = false;
+  for (const w of FORM_WORD_LIST) {
+    if (Math.abs(w.length - word.length) > allowed) continue;
+    const d = editDistance(word, w);
+    if (d < bestD) { best = w; bestD = d; tie = false; } else if (d === bestD) tie = true;
+  }
+  // More than one letter off only counts when the first letter agrees (fewer surprise changes).
+  if (!best || tie || bestD > allowed || (bestD > 1 && best[0] !== word[0])) return null;
+  return best;
+}
+
+// Common course names on NSRP forms: basic education levels and widely offered college programs. An unsure course
+// reading is completed to one of these when it is clearly that name with letters lost: the start of exactly one name
+// ("JUNIOR/SENIOR" -> "JUNIOR/SENIOR HIGH"), or the same start and ending with the middle missing
+// ("BS BUSINESTION" -> "BS BUSINESS ADMINISTRATION"). It is flagged for the person to check.
+const COURSE_NAMES = [
+  'ELEMENTARY', 'JUNIOR HIGH', 'SENIOR HIGH', 'JUNIOR/SENIOR HIGH', 'HIGH SCHOOL',
+  'BS BUSINESS ADMINISTRATION', 'BS INFORMATION TECHNOLOGY', 'BS INFORMATION SYSTEMS', 'BS COMPUTER SCIENCE',
+  'BS ACCOUNTANCY', 'BS ACCOUNTING INFORMATION SYSTEM', 'BS ELECTRICAL ENGINEERING', 'BS CIVIL ENGINEERING',
+  'BS MECHANICAL ENGINEERING', 'BS ELECTRONICS ENGINEERING', 'BS COMPUTER ENGINEERING', 'BS NURSING', 'BS CRIMINOLOGY',
+  'BS PSYCHOLOGY', 'BS AGRICULTURE', 'BS HOSPITALITY MANAGEMENT', 'BS TOURISM MANAGEMENT',
+  'BS HOTEL AND RESTAURANT MANAGEMENT', 'BS OFFICE ADMINISTRATION', 'BS ENTREPRENEURSHIP', 'BS MARINE TRANSPORTATION',
+  'BS MARINE ENGINEERING', 'BS MIDWIFERY', 'BS PHARMACY', 'BS MEDICAL TECHNOLOGY', 'BS SOCIAL WORK', 'BS BIOLOGY',
+  'BS MATHEMATICS', 'BACHELOR OF ELEMENTARY EDUCATION', 'BACHELOR OF SECONDARY EDUCATION',
+  'BACHELOR OF TECHNICAL-VOCATIONAL TEACHER EDUCATION', 'AB ENGLISH', 'AB POLITICAL SCIENCE', 'AB COMMUNICATION',
+];
+const lettersOnly = (t) => String(t || '').toUpperCase().replace(/[^A-Z]/g, '');
+function completeCourse(value, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const read = lettersOnly(value);
+  if (read.length < 6 || COURSE_NAMES.some((c) => lettersOnly(c) === read)) return value;
+  const shared = (a, b) => { let n = 0; while (n < a.length && a[n] === b[n]) n += 1; return n; };
+  const ends = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1; return n; };
+  const found = COURSE_NAMES.filter((c) => {
+    const name = lettersOnly(c);
+    if (read.length >= name.length) return false;
+    const start = shared(read, name);
+    return (start === read.length && read.length >= name.length * 0.5) || (start >= 6 && ends(read, name) >= 4 && start + ends(read, name) >= read.length);
+  });
+  if (found.length !== 1) return value;
+  fixes[regionName] = { read: value, kind: 'words' };
+  return found[0];
+}
+
+// A school name cut off after "CENTRAL", "HIGH" or "ELEMENTARY" (the rest ran past the box) ends with "SCHOOL".
+function completeSchool(value, regionName, fixes) {
+  if (!/\b(CENTRAL|HIGH|ELEMENTARY)$/i.test(String(value || '').trim())) return value;
+  fixes[regionName] = { read: value, kind: 'words' };
+  return `${String(value).trim()} SCHOOL`;
+}
+
+// Two listed words read without the space between them ("CITYCOMPREHENSIVE"), or REGION and its roman numeral
+// ("REGIONX"); returns null when the word cannot be split that way.
+function splitGluedWords(word) {
+  const region = word.match(/^REGION([IVX]{1,4})$/);
+  if (region) return `REGION ${region[1]}`;
+  if (word.length < 7) return null;
+  for (let i = 3; i <= word.length - 3; i += 1) {
+    if (FORM_WORDS.has(word.slice(0, i)) && FORM_WORDS.has(word.slice(i))) return `${word.slice(0, i)} ${word.slice(i)}`;
+  }
+  return null;
+}
+
+// Corrects the words of one unsure reading (see FORM_WORDS). A word split in two ("ELECTR CIAN") is joined when
+// the joined word is listed or near one. Changes are recorded in fixes for the review hints.
+function matchFormWords(value, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const words = String(value).split(' ');
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const w = words[i].toUpperCase();
+    const next = (words[i + 1] || '').toUpperCase();
+    const joined = next && /^[A-ZÑ]+$/.test(w + next) ? w + next : '';
+    const joinedFix = joined && !FORM_WORDS.has(w) && !FORM_WORDS.has(next)
+      ? (FORM_WORDS.has(joined) ? joined : nearestFormWord(joined)) : null;
+    if (joinedFix) {
+      out.push(joinedFix);
+      i += 1;
+      continue;
+    }
+    out.push(splitGluedWords(w) || nearestFormWord(w) || words[i]);
+  }
+  const result = out.join(' ');
+  if (result.toUpperCase() !== String(value).toUpperCase()) fixes[regionName] = { read: value, kind: 'words' };
+  return result;
+}
+
+function mmddyyyyCandidates(digits, maxYear = new Date().getFullYear()) {
+  if (digits.length < 8 || digits.length > 10) return [];
+  const found = new Set();
+  for (const sep1 of [0, 1]) {
+    for (const sep2 of [0, 1]) {
+      if (2 + sep1 + 2 + sep2 + 4 !== digits.length) continue;
+      if (sep1 && !/[17]/.test(digits[2])) continue;
+      const dStart = 2 + sep1;
+      if (sep2 && !/[17]/.test(digits[dStart + 2])) continue;
+      const mm = +digits.slice(0, 2); const dd = +digits.slice(dStart, dStart + 2); const yyyy = +digits.slice(-4);
+      const date = new Date(Date.UTC(yyyy, mm - 1, dd));
+      if (yyyy >= 1900 && yyyy <= maxYear && date.getUTCMonth() === mm - 1 && date.getUTCDate() === dd) {
+        found.add(`${digits.slice(0, 2)}/${digits.slice(dStart, dStart + 2)}/${digits.slice(-4)}`);
+      }
+    }
+  }
+  return [...found];
+}
+
+// maxYear: the latest year accepted (this year for a birth date; later for expiry dates such as a passport's).
+function validateDate(value, maxYear = new Date().getFullYear()) {
   if (!value) return '';
-  const raw = String(value);
+  // The form asks for mm/dd/yyyy. Slashes are often lost or read as 1 or 7 ("127282006" for 12/28/2006),
+  // so when no slashes were read, every way of placing them is tried and the date is used only when exactly
+  // one placement gives a real date.
+  const hasSlashes = /\d{1,2}[/-]\d{1,2}[/-]\d{4}/.test(String(value));
+  let raw = String(value);
+  if (!hasSlashes) {
+    const one = mmddyyyyCandidates(String(value).replace(/[^\d]/g, ''), maxYear);
+    if (one.length === 1) raw = one[0];
+  }
   const iso = raw.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const slashMatch = raw.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
   if (slashMatch) {
-    const [, mm, dd, yyyy] = slashMatch;
+    let [, mm] = slashMatch;
+    const [, , dd, yyyy] = slashMatch;
+    // A month cannot be above 12: a leading 0 that touched the cell's line is often read as 2, 3, 6, 8 or 9.
+    if (mm.length === 2 && +mm > 12 && /[23689]/.test(mm[0]) && +mm[1] >= 1) mm = `0${mm[1]}`;
     const y = parseInt(yyyy, 10);
     const m = parseInt(mm, 10);
     const d = parseInt(dd, 10);
-    if (y >= 1900 && y <= 2030 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+    if (y >= 1900 && y <= maxYear && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
       return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
     }
   }
@@ -871,21 +1828,98 @@ function validatePhone(value) {
   return '';
 }
 
+// Landline numbers keep the dashes the person wrote ("088-190-9378").
+function validateLandline(value) {
+  const v = String(value || '').replace(/\s+/g, '').replace(/[^\d()+-]/g, '');
+  const digits = v.replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 12 && !/^(\d)\1+$/.test(digits) ? v : '';
+}
+
 function validateEmail(value) {
   if (!value) return '';
-  const m = String(value).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  const joined = completeMailHost(String(value).replace(/\s*([.,@])\s*/g, (_, ch) => (ch === ',' ? '.' : ch)).replace(/\s+/g, ''));
+  const fixed = joined.replace(/@([a-z0-9-]+?)\.?(com|net|org|ph|edu|gov)(\.ph)?$/i, (_, host, end, ph) => `@${commonMailHost(host)}.${end}${ph || ''}`);
+  const m = fixed.replace(/^([^@]*)(@gmail\.com)$/i, (_, local, host) => `${local.replace(/_/g, '.')}${host}`)
+    .match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   return m ? m[0].toLowerCase() : '';
+}
+
+// The end of an address often runs past the box ("...@GMALC(", "...@yahoo.c"): when what follows "@" is clearly
+// the start of a widely used provider's address (at most one letter off), the rest is completed ("gmail.com").
+// The field still gets a review hint when the two readers disagree.
+const MAIL_ADDRESSES = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'ymail.com', 'icloud.com'];
+function completeMailHost(text) {
+  const at = text.lastIndexOf('@');
+  if (at < 1 || /\.[A-Za-z]{2,}$/.test(text.slice(at + 1)) && /\.(com|net|org|ph|edu|gov)(\.ph)?$/i.test(text)) return text;
+  const read = text.slice(at + 1).toLowerCase().replace(/[^a-z]/g, '');
+  if (read.length < 4) return text;
+  for (const address of MAIL_ADDRESSES) {
+    const letters = address.replace('.', '');
+    for (let n = Math.max(4, read.length - 1); n <= Math.min(letters.length, read.length + 1); n += 1) {
+      // One letter off; or two when the first two letters already match ("GMALA" for gmail).
+      const allowed = read.slice(0, 2) === letters.slice(0, 2) && read.length >= 5 ? 2 : 1;
+      if (editDistance(read, letters.slice(0, n)) <= allowed) return `${text.slice(0, at + 1)}${address}`;
+    }
+  }
+  return text;
+}
+
+// One misread letter in a widely used mail provider's name ("qmail", "amail" for gmail) is corrected; any
+// other host is kept as read.
+const MAIL_HOSTS = ['gmail', 'yahoo', 'outlook', 'hotmail', 'ymail', 'icloud'];
+// Real providers kept exactly as read, so they are never "corrected" into a similar name (email.com -> gmail.com).
+const OTHER_MAIL_HOSTS = ['email', 'mail', 'gmx', 'aol', 'live', 'msn', 'proton', 'protonmail', 'zoho', 'yandex', 'example'];
+function commonMailHost(host) {
+  const h = String(host).toLowerCase();
+  if (MAIL_HOSTS.includes(h) || OTHER_MAIL_HOSTS.includes(h)) return h;
+  const near = MAIL_HOSTS.find((name) => name.length === h.length && [...name].filter((ch, i) => ch !== h[i]).length === 1);
+  return near || h;
+}
+
+// "163CM" -> "163 CM", "2MONTHS" -> "2 MONTHS": a number and its unit are separate words.
+function spaceNumberUnit(value) {
+  return String(value || '').replace(/(\d)([A-Za-z]{2,})/g, '$1 $2');
+}
+
+// "AFTER Z WEEKS": a lone Z (or z) before a time unit is a handwritten 2.
+function fixDurationDigits(value) {
+  return String(value || '').replace(/\b[Zz](?=\s*(?:DAYS?|WEEKS?|MONTHS?|YEARS?)\b)/gi, '2');
+}
+
+// Training durations and work dates are written mm/yyyy (or mm/dd/yyyy) "to" mm/yyyy. A slash read as 1 or 7,
+// or lost ("0572009", "122005"), is put back when the month is a real month.
+function fixDateRange(value) {
+  return String(value || '')
+    .replace(/(\d)\s*to\s*(?=\d)/gi, '$1 to ')
+    // A junk 1-2 character word between two dates ("+o", "Yo", "hv" for the handwritten "to") is "to".
+    // (A dash between the dates is a real separator and is left as written.)
+    .replace(/(\d)\s+(?!to\b)[^\s\d\-–]{1,2}\s+(?=\d|PRESENT\b)/gi, '$1 to ')
+    .replace(/\b(\d{6,7})\b/g, (whole) => {
+    const m = whole.length === 7 ? whole.match(/^(\d{2})[17](\d{4})$/) : whole.match(/^(\d{2})(\d{4})$/);
+    return m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1900 ? `${m[1]}/${m[2]}` : whole;
+  });
+}
+
+// TESDA levels are NC I to NC IV; a II is often read as H, l or 1.
+function fixNcLevel(value) {
+  // The C is often read as a lowercase c, O or 0 ("Nc lI", "NOI").
+  return String(value || '').replace(/\bN[CcOo0]\s*M\b/g, 'NC III').replace(/\bN[CcOo0]\s*([IiLl1|HT]{1,3}|[IiLl1|]?[Vv])\b/g, (_, lvl) => {
+    if (/v$/i.test(lvl)) return lvl.length === 2 ? 'NC IV' : 'NC V';
+    const count = [...lvl].reduce((n, ch) => n + (ch === 'H' ? 2 : 1), 0);
+    return count >= 1 && count <= 3 ? `NC ${'I'.repeat(count)}` : `NC ${lvl}`;
+  });
 }
 
 function validateHeight(value) {
   if (!value || !/\d/.test(value)) return '';
-  const cleaned = String(value).toUpperCase().replace(/[^0-9A-Z\s'".FTCM]/g, ' ').replace(/\s+/g, ' ').trim();
+  const cleaned = spaceNumberUnit(String(value).toUpperCase().replace(/[^0-9A-Z\s'".FTCM]/g, ' ')).replace(/\s+/g, ' ').trim();
   return cleaned.length > 0 && cleaned.length < 25 ? cleaned : '';
 }
 
 function validateIdNumber(value) {
   if (!value) return '';
-  const v = basicClean(value);
+  // A space read inside a number ("0680788184 87") is not part of it.
+  const v = basicClean(value).replace(/(\d)\s+(?=\d)/g, '$1');
   if (!v || isEmptyToken(v)) return '';
   if (LABEL_JUNK.test(v) || v.length > 35) return '';
   if (!/\d/.test(v)) return '';
@@ -895,11 +1929,21 @@ function validateIdNumber(value) {
 
 function validateSalary(value) {
   if (!value || !/\d/.test(value)) return '';
-  let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim();
-  const m = v.match(/(?:PHP|P)?\s*\d{1,3}(?:,\d{3})?(?:\s*-\s*\d{1,3}(?:,\d{3})?)/i);
+  let v = String(value).toUpperCase().replace(/\s+/g, ' ').trim()
+    // "₱18,000-₱22,000": a peso sign (often read as #) means PHP; the second one is dropped.
+    .replace(/[₱#]\s*(?=\d)/g, (m, i) => (i === 0 ? 'PHP ' : ''))
+    // "12, 000": a space read after the thousands comma.
+    .replace(/(\d),\s+(\d{3})\b/g, '$1,$2')
+    // "18,00022,000": two amounts stuck together are a range.
+    .replace(/(\d{1,3},\d{3})(?=\d{1,3},\d{3}\b)/, '$1 - ');
+  // Every amount is written with the peso sign and thousands commas: "₱12,000 - ₱15,000" whether the person wrote
+  // ₱, PHP, P or no sign. What follows the amounts is kept ("/ MONTH", "PER MONTH").
+  const peso = (amount) => `₱${Number(amount.replace(/,/g, '')).toLocaleString('en-US')}`;
+  const m = v.match(/(?:PHP|P)?\s*(\d{1,3}(?:,\d{3})+|\d{3,7})(?:\s*-\s*(?:PHP|P)?\s*(\d{1,3}(?:,\d{3})+|\d{3,7}))?/i);
   if (m) {
-    v = m[0].replace(/^P\s+/i, 'PHP ').replace(/^PHP\s*/i, 'PHP ');
-    return v.replace(/\s*-\s*/g, ' - ');
+    const rest = v.slice(m.index + m[0].length).replace(/^[^A-Z/]+/, '').trim();
+    const range = m[2] ? `${peso(m[1])} - ${peso(m[2])}` : peso(m[1]);
+    return `${range}${rest ? ` ${rest}` : ''}`;
   }
   return basicClean(v);
 }
@@ -914,14 +1958,9 @@ function pickEmailFromText(text) {
   return m ? m[0].toLowerCase() : '';
 }
 
-function pickDateFromText(text) {
-  const m = String(text || '').match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(\d{4}-\d{2}-\d{2})/);
-  return m ? validateDate(m[0]) : '';
-}
-
 function cleanOccupation(raw) {
   const v = cleanRegionText(raw, ['Preferred', 'Occupation']);
-  if (!v || LABEL_JUNK.test(v) || /[|_]{2,}/.test(v)) return '';
+  if (!v || LABEL_JUNK.test(v) || /[|_]{2,}/.test(v) || v.replace(/[^A-Za-z]/g, '').length < 3) return '';
   return normalizeKnownRunTogether(v)
     .replace(/[^A-ZÑ0-9\s/'-]/gi, ' ')
     .replace(/\s+/g, ' ')
@@ -932,19 +1971,10 @@ function cleanOccupation(raw) {
 function cleanFreeText(raw) {
   let v = stripOcrNoise(cleanRegionText(raw));
   v = v
-    .replace(/\bISTP\b/g, 'USTP')
-    .replace(/\bUsTP\b/gi, 'USTP')
-    .replace(/\bUSTPICT\b/gi, 'USTP ICT')
-    .replace(/\bTT Intern\b/gi, 'IT Intern')
-    .replace(/\bLilent\b/gi, 'Client')
-    .replace(/\bIntemship\b/gi, 'Internship')
-    .replace(/\bFart-time\b/gi, 'Part-time')
-    .replace(/\bCagdyan de Lro\b/gi, 'Cagayan de Oro')
     .replace(/\b(\d{2}\/\d{4})\s+10\s+(\d{2}\/\d{4})\b/g, '$1 to $2')
-    .replace(/\b(?:wee|veo|eo)\s+Development Basics\b/i, 'Web Development Basics')
     .replace(/\s+/g, ' ')
     .trim();
-  if (isEmptyToken(v)) return '';
+  if (isEmptyToken(v) || (/^[A-Za-z\s]+$/.test(v) && new Set(v.replace(/\s/g, '').toUpperCase()).size === 1 && v.replace(/\s/g, '').length >= 2)) return '';
   return v;
 }
 
@@ -969,6 +1999,21 @@ function educationLine(label, school, course, year, level, lastAttended, awards)
   if (cleanAwards) pieces.push(`Awards: ${cleanAwards}`);
   return pieces.length ? `${label}: ${pieces.join(' | ')}` : '';
 }
+
+// "NA" (not applicable) counts as blank, also with a stray mark next to it ("3 NA", "NA ."): NA must be its own
+// word and what is left besides it at most 2 characters, so a real value is never taken for NA.
+const repeatedLetterNoise = (v) => {
+  const letters = String(v || '').replace(/[^A-Za-z]/g, '').toUpperCase();
+  return letters.length >= 2 && new Set(letters).size === 1 && !/\d/.test(String(v));
+};
+const notNaText = (v) => {
+  const text = String(v || '').trim();
+  if (/^n\.?\s*\/?\s*a\.?$/i.test(text) || repeatedLetterNoise(text)) return '';
+  const words = text.split(/\s+/);
+  const isNa = (w) => /^n\.?\/?a\.?$/i.test(w);
+  const rest = words.filter((w) => !isNa(w)).join('');
+  return words.some(isNa) && rest.length <= 2 ? '' : (v || '');
+};
 
 function parsePage2Text(rawText, ocrRegions = {}) {
   const checkboxes = ocrRegions.__checkboxes || {};
@@ -1011,23 +2056,14 @@ function parsePage2Text(rawText, ocrRegions = {}) {
     rv('graduate_awards'),
   );
 
-  const training = joinParts([
-    rv('training_1_course'),
-    rv('training_1_duration'),
-    rv('training_1_institution'),
-    rv('training_1_certificate'),
-  ]);
-
-  const workRows = [
-    joinParts([
-      rv('work_1_company'),
-      rv('work_1_address'),
-      rv('work_1_position') || (/IT\s+Intern/i.test(rawText) ? 'IT Intern' : ''),
-      rv('work_1_dates'),
-      rv('work_1_status'),
-    ]),
-    joinParts([rv('work_2_company'), rv('work_2_address'), rv('work_2_position'), rv('work_2_dates'), rv('work_2_status')]),
-  ].filter(Boolean);
+  const TRAINING_ROWS = [1, 2, 3];
+  const WORK_ROWS = [1, 2, 3, 4, 5];
+  const training = TRAINING_ROWS.map((n) => joinParts([
+    rv(`training_${n}_course`), rv(`training_${n}_duration`), rv(`training_${n}_institution`), rv(`training_${n}_certificate`),
+  ])).filter(Boolean).join('\n');
+  const workRows = WORK_ROWS.map((n) => joinParts([
+    rv(`work_${n}_company`), rv(`work_${n}_address`), rv(`work_${n}_position`), rv(`work_${n}_dates`), rv(`work_${n}_status`),
+  ])).filter(Boolean);
 
   const checkedSkills = Array.isArray(checkboxes.other_skills_acquired)
     ? checkboxes.other_skills_acquired.filter((skill) => skill !== 'Others')
@@ -1036,9 +2072,18 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   if (otherSkillText) checkedSkills.push(`Others: ${otherSkillText}`);
 
   // Structured rows matching the NSRP Form 1 tables ("NA" cells count as blank).
+  const nameFixes = {};
+  // Readings changed to common form words, for the review hints (see reviewFlags).
+  ocrRegions.__name_fixes = nameFixes;
+  const WORD_CELL = /_(school|course|institution|company|address|position|status|level|name)$/;
   const cell = (key) => {
     const v = cleanFreeText(rv(key));
-    return /^n\.?\/?a\.?$/i.test(v) ? '' : v;
+    if (/^n\.?\/?a\.?$/i.test(v)) return '';
+    if (!WORD_CELL.test(key)) return v;
+    const words = matchFormWords(v, key, nameFixes, ocrRegions.__confidence);
+    if (/_course$/.test(key) && /^(elementary|secondary|tertiary|graduate)_/.test(key)) return completeCourse(words, key, nameFixes, ocrRegions.__confidence);
+    if (/_school$/.test(key)) return completeSchool(words, key, nameFixes);
+    return words;
   };
   const eduRow = (prefix) => ({
     school: cell(`${prefix}_school`),
@@ -1048,11 +2093,24 @@ function parsePage2Text(rawText, ocrRegions = {}) {
     year_last_attended: cell(`${prefix}_last_attended`),
     awards: cell(`${prefix}_awards`),
   });
+  // A row counts only with at least 3 letters or digits in it: a lone stray mark ("T") in an empty row is not a row.
+  const filledRow = (row) => Object.values(row).join('').replace(/[^A-Za-z0-9Ññ]/g, '').length >= 3;
+  // Empty paper rows are skipped, so paper row n can be row n-1 (or earlier) in the form. The mapping is kept for
+  // the review hints (reviewFlags), which name the paper row.
+  const rowIndex = {};
+  ocrRegions.__row_index = rowIndex;
+  const keepRows = (table, list) => {
+    rowIndex[table] = {};
+    const out = [];
+    list.forEach((row, i) => { if (filledRow(row)) { rowIndex[table][i + 1] = out.length; out.push(row); } });
+    return out;
+  };
+  const dateCell = (key) => fixDateRange(cell(key));
   const workRow = (n) => ({
     company: cell(`work_${n}_company`),
     address: cell(`work_${n}_address`),
-    position: cell(`work_${n}_position`) || (n === 1 && /IT\s+Intern/i.test(rawText) ? 'IT Intern' : ''),
-    dates: cell(`work_${n}_dates`),
+    position: cell(`work_${n}_position`),
+    dates: dateCell(`work_${n}_dates`),
     status: cell(`work_${n}_status`),
   });
 
@@ -1064,13 +2122,17 @@ function parsePage2Text(rawText, ocrRegions = {}) {
       tertiary: eduRow('tertiary'),
       graduate: eduRow('graduate'),
     },
-    training_rows: [{
-      course: cell('training_1_course'),
-      duration: cell('training_1_duration'),
-      institution: cell('training_1_institution'),
-      certificate: cell('training_1_certificate'),
-    }],
-    work_rows: [workRow(1), workRow(2)],
+    training_rows: keepRows('training_rows', TRAINING_ROWS.map((n) => ({
+      course: cell(`training_${n}_course`),
+      duration: dateCell(`training_${n}_duration`),
+      institution: cell(`training_${n}_institution`),
+      certificate: fixNcLevel(cell(`training_${n}_certificate`)),
+    }))),
+    eligibility_rows: keepRows('eligibility_rows', [1, 2].map((n) => ({
+      eligibility: cell(`eligibility_${n}_name`), rating: cell(`eligibility_${n}_rating`), exam_date: cell(`eligibility_${n}_exam_date`),
+    }))),
+    license_rows: keepRows('license_rows', [1, 2].map((n) => ({ license: cell(`license_${n}_name`), valid_until: cell(`license_${n}_valid_until`) }))),
+    work_rows: keepRows('work_rows', WORK_ROWS.map(workRow)),
     other_skills_checked: checkedSkills.filter((skill) => !skill.startsWith('Others:')),
     other_skills_other: otherSkillText,
     trainings: training,
@@ -1089,7 +2151,13 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   };
 }
 
+// Text answers come back in block letters, the same capitals the profile is saved in (see toBlockLetters), so
+// the review screen shows exactly what will be saved.
 function parseNsrpText(rawText, ocrRegions = {}) {
+  return toBlockLetters(parseNsrpTextAsRead(rawText, ocrRegions));
+}
+
+function parseNsrpTextAsRead(rawText, ocrRegions = {}) {
   const pageType = ocrRegions.__page_type || detectNsrpPageType(rawText);
   if (pageType === 'page2') {
     return parsePage2Text(rawText, ocrRegions);
@@ -1099,20 +2167,24 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const text = String(rawText || '').replace(/\r/g, '');
   const checkboxes = ocrRegions.__checkboxes || {};
   const rv = (key, stripLabels = []) => cleanRegionText(ocrRegions[key] || '', stripLabels);
+  const nameFixes = {};
+  const listed = (value, kind, regionName) => matchListedName(value, kind, regionName, nameFixes, ocrRegions.__confidence);
 
   const lastName = validateName(rv('surname', ['Surname', 'Last Name']));
   const firstName = validateName(rv('first_name', ['First Name', 'Given Name']));
   const middleName = validateName(rv('middle_name', ['Middle Name']));
 
-  const rawSuffix = rv('suffix', ['Suffix', 'Ex.', 'Sr.', 'Jr.', 'III', 'etc.']);
+  const rawSuffix = rv('suffix', ['Suffix']);
   let suffix = '';
-  if (rawSuffix && /^(jr\.?|sr\.?|i{1,3}v?|vi{0,3}|[IV]+)$/i.test(rawSuffix.replace(/\s+/g, ''))) {
-    suffix = rawSuffix.toUpperCase();
+  const suffixText = rawSuffix.replace(/\s+/g, '').replace(/^[Il1|]{1,3}$/, (m) => 'I'.repeat(m.length));
+  if (suffixText && /^(jr\.?|sr\.?|i{1,3}v?|vi{0,3}|[IV]+)$/i.test(suffixText)) {
+    suffix = suffixText.toUpperCase();
   }
 
-  const dateOfBirth = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy'])) || pickDateFromText(text);
-  const placeOfBirth = validateLocation(rv('place_of_birth', ['Place of Birth']));
-  const religion = validateName(rv('religion', ['Religion']));
+  const dobRead = validateDate(rv('date_of_birth', ['Date of Birth', 'mm/dd/yyyy']));
+  const dateOfBirth = dobRead && dobRead <= new Date().toISOString().slice(0, 10) ? dobRead : '';
+  const placeOfBirth = listed(validateLocation(rv('place_of_birth', ['Place of Birth'])), 'place', 'place_of_birth');
+  const religion = matchFormWords(validateName(rv('religion', ['Religion'])), 'religion', nameFixes, ocrRegions.__confidence);
   const height = validateHeight(rv('height', ['Height']));
 
   const tin = validateIdNumber(rv('tin', ['TIN']));
@@ -1120,25 +2192,38 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const pagibigNo = validateIdNumber(rv('pagibig_no', ['PAG-IBIG', 'No.']));
   const philhealthNo = validateIdNumber(rv('philhealth_no', ['PhilHealth', 'No.']));
 
-  const emailAddr = validateEmail(rv('email_address', ['Email Address', 'Email'])) || validateEmail(pickEmailFromText(text));
-  const landline = validatePhone(rv('landline_number', ['Landline', 'Number']));
-  const cellphone = validatePhone(rv('cell_phone_number', ['Cellphone', 'Cell Phone', 'Number'])) || validatePhone(pickPhoneFromText(text));
+  const emailAddr = validateEmail(rv('email_address', ['Email Address'])) || validateEmail(pickEmailFromText(text));
+  const landline = validateLandline(rv('landline_number', ['Landline', 'Number']));
+  const cellRead = rv('cell_phone_number', ['Cellphone', 'Cell Phone', 'Number']);
+  const cellDigits = String(cellRead || '').replace(/[^\d+]/g, '');
+  const cellphone = validatePhone(cellRead) || (/^\+?\d{7,13}$/.test(cellDigits) ? cellDigits : '') || validatePhone(pickPhoneFromText(text));
 
-  let houseStreet = stripOcrNoise(rv('house_street', ['House', 'No.']));
-  houseStreet = normalizeKnownRunTogether(houseStreet)
-    .replace(/.*?(\d+\s+[A-ZÑ\s.'-]*RIZAL\s+STREET).*/i, '$1')
+  const houseStreet = notNaText(normalizeKnownRunTogether(stripOcrNoise(rv('house_street', ['House', 'No.'])))
+    .replace(/\b([A-Za-z]{3,})(\d{1,3})\b/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
-    .toUpperCase();
-  if (houseStreet && !/\d/.test(houseStreet)) houseStreet = '';
+    .toUpperCase());
 
   const village = validateLocation(rv('village'));
-  const barangay = validateLocation(rv('barangay'));
-  const city = validateLocation(rv('city', ['Municipality']));
-  const province = validateLocation(rv('province'));
+  const barangay = listed(validateLocation(rv('barangay')), 'barangay', 'barangay');
+  const city = listed(validateLocation(rv('city', ['Municipality'])), 'city', 'city');
+  const province = listed(validateLocation(rv('province')), 'province', 'province');
   const address = [houseStreet, village, barangay, city, province].filter(Boolean).join(', ');
 
-  const disabilityOther = validateLocation(rv('disability_other', ['Others', 'specify']));
+  const disabilityOther = notNaText(validateLocation(rv('disability_other', ['Others', 'specify'])));
+  // "NONE" written on the Others line means no disability, same as leaving it blank.
+  const disabilityOtherText = /^none\.?$/i.test(disabilityOther) ? '' : disabilityOther;
+  const DISABILITY_LABELS = { visual: 'Visual', hearing: 'Hearing', speech: 'Speech', physical: 'Physical' };
+  const disabilityTicks = Array.isArray(checkboxes.disability) ? checkboxes.disability : [];
+  const disabilities = ['visual', 'hearing', 'speech', 'physical', 'others']
+    .filter((d) => disabilityTicks.includes(d) || (d === 'others' && disabilityOtherText));
+  const disabilitySummary = [
+    ...disabilities.filter((d) => d !== 'others').map((d) => DISABILITY_LABELS[d]),
+    ...(disabilityOtherText ? [disabilityOtherText] : []),
+  ].join(', ');
+  const terminatedCountry = notNaText(validateLocation(rv('terminated_abroad_country', ['specify', 'country'])));
+  const employmentTypeOther = notNaText(cleanFreeText(rv('employment_type_other', ['Others', 'specify'])));
+  const languageOtherName = listed(notNaText(validateName(rv('language_other_name', ['Others']))), 'language', 'language_other_name');
 
   const gender = checkboxes.gender || '';
   const civilStatus = checkboxes.civil_status || '';
@@ -1147,23 +2232,23 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const lookingWork = checkboxes.looking_for_work || '';
   const willingNow = checkboxes.willing_to_work_immediately || '';
   const fourPs = checkboxes.four_ps_beneficiary || '';
-  const notNa = (v) => (/^n\.?\/?a\.?$/i.test(v) ? '' : v);
-  const lookingDuration = notNa(cleanFreeText(rv('looking_duration', ['How long'])));
-  const availableWhen = notNa(cleanFreeText(rv('available_when', ['If no', 'when'])));
+  const notNa = notNaText;
+  const lookingDuration = notNa(fixDurationDigits(spaceNumberUnit(cleanFreeText(rv('looking_duration', ['How long'])))));
+  const availableWhen = notNa(fixDurationDigits(cleanFreeText(rv('available_when', ['If no', 'when']))));
   const householdId = notNa(validateIdNumber(rv('household_id', ['Household', 'ID', 'No.'])) || '');
   const workLocation = checkboxes.work_location || '';
 
   const occList = [
-    cleanOccupation(rv('preferred_occupation_1')),
-    cleanOccupation(rv('preferred_occupation_2')),
-    cleanOccupation(rv('preferred_occupation_3')),
-    cleanOccupation(rv('preferred_occupation_4')),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_1')), 'preferred_occupation_1', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_2')), 'preferred_occupation_2', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_3')), 'preferred_occupation_3', nameFixes, ocrRegions.__confidence),
+    matchFormWords(cleanOccupation(rv('preferred_occupation_4')), 'preferred_occupation_4', nameFixes, ocrRegions.__confidence),
   ].filter(Boolean);
 
   const localLocations = [
-    validateLocation(rv('preferred_local_location_1')),
-    validateLocation(rv('preferred_local_location_2')),
-    validateLocation(rv('preferred_local_location_3')),
+    listed(validateLocation(rv('preferred_local_location_1')), 'place', 'preferred_local_location_1'),
+    listed(validateLocation(rv('preferred_local_location_2')), 'place', 'preferred_local_location_2'),
+    listed(validateLocation(rv('preferred_local_location_3')), 'place', 'preferred_local_location_3'),
   ].filter(Boolean);
 
   const overseasLocations = [
@@ -1174,7 +2259,8 @@ function parseNsrpText(rawText, ocrRegions = {}) {
 
   const expectedSalary = validateSalary(rv('expected_salary', ['Expected Salary', 'Range']));
   const passportNumber = validateIdNumber(rv('passport_number', ['Passport', 'No.']));
-  const passportExpiry = validateDate(rv('passport_expiry', ['Expiry', 'date']));
+  const passportExpiryIso = validateDate(rv('passport_expiry', ['Expiry', 'date']), new Date().getFullYear() + 20);
+  const passportExpiry = passportExpiryIso ? passportExpiryIso.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1') : '';
   // Language grid: use the tick marks detected in each Read / Write / Speak / Understand cell
   // (the row labels are printed on every form, so they say nothing about what was ticked).
   const SKILL_ORDER = ['read', 'write', 'speak', 'understand'];
@@ -1185,7 +2271,7 @@ function parseNsrpText(rawText, ocrRegions = {}) {
   const languageGrid = {
     english: languageTicks('language_english'),
     filipino: languageTicks('language_filipino'),
-    other: languageTicks('language_other'),
+    other: { ...languageTicks('language_other'), ...(languageOtherName ? { name: languageOtherName } : {}) },
   };
   const titleCase = (skill) => skill.charAt(0).toUpperCase() + skill.slice(1);
   const languageRows = [['English', languageGrid.english], ['Filipino', languageGrid.filipino], ['Others', languageGrid.other]]
@@ -1211,8 +2297,14 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     house_street: houseStreet,
     village,
     barangay,
-    disability_other: disabilityOther,
+    disability_other: disabilityOtherText,
+    disability: disabilitySummary,
+    ...(disabilities.length ? { disabilities } : {}),
     employment_type: empType,
+    // Kept even when the matching tick was missed, so nothing written is lost (the app shows these lines
+    // when the person picks that employment type).
+    terminated_abroad_country: terminatedCountry,
+    employment_type_other: employmentTypeOther,
     looking_for_work: lookingWork,
     willing_to_work_immediately: willingNow,
     four_ps_beneficiary: fourPs,
@@ -1232,8 +2324,11 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     preferred_occupation_list: occList,
     local_location_list: localLocations,
     overseas_location_list: overseasLocations,
-    ...(languageRows.length ? { languages: languageGrid } : {}),
+    ...(languageRows.length || languageOtherName ? { languages: languageGrid } : {}),
   };
+
+  // Readings changed to a listed name, for the review hints (see reviewFlags).
+  ocrRegions.__name_fixes = nameFixes;
 
   return {
     first_name: firstName,
@@ -1253,6 +2348,156 @@ function parseNsrpText(rawText, ocrRegions = {}) {
     preferred_occupation: occList[0] || '',
     nsrp_full_data: nsrpFullData,
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Review flags: fields the person should look at closely before saving. They are hints only; a field without
+// a flag can still be wrong, so the review screen asks the person to check every field against the paper.
+// Each flag: { key, label, reason } where key is the field in the NSRP form (dots for nested values).
+const LOW_CONFIDENCE = 70;
+const REGION_FIELDS = {
+  surname: ['last_name', 'Surname'], first_name: ['first_name', 'First Name'], middle_name: ['middle_name', 'Middle Name'],
+  suffix: ['suffix', 'Suffix'], date_of_birth: ['date_of_birth', 'Date of Birth'], place_of_birth: ['place_of_birth', 'Place of Birth'],
+  religion: ['religion', 'Religion'], house_street: ['house_street', 'House No. / Street'], village: ['village', 'Village'],
+  barangay: ['barangay', 'Barangay'], city: ['city', 'Municipality/City'], province: ['province', 'Province'],
+  tin: ['tin', 'TIN'], gsis_sss_no: ['gsis_sss_no', 'GSIS/SSS ID No.'], pagibig_no: ['pagibig_no', 'PAG-IBIG No.'],
+  philhealth_no: ['philhealth_no', 'PhilHealth No.'], height: ['height', 'Height'], email_address: ['email_address', 'Email Address'],
+  landline_number: ['landline_number', 'Landline Number'], cell_phone_number: ['cell_phone_number', 'Cellphone Number'],
+  disability_other: ['disability_other', 'Disability - Others, specify'],
+  terminated_abroad_country: ['terminated_abroad_country', 'Terminated/Laidoff (abroad) - country'],
+  employment_type_other: ['employment_type_other', 'Employment type - Others, specify'],
+  looking_duration: ['looking_duration', 'How long have you been looking for work?'], available_when: ['available_when', 'If no, when?'],
+  household_id: ['household_id', 'Household ID No.'], expected_salary: ['expected_salary', 'Expected Salary'],
+  passport_number: ['passport_number', 'Passport No.'], passport_expiry: ['passport_expiry', 'Passport Expiry Date'],
+  language_other_name: ['languages.other.name', 'Other language (name)'],
+  other_skills_other_text: ['other_skills_other', 'Other skills - Others'],
+};
+for (let n = 1; n <= 4; n += 1) REGION_FIELDS[`preferred_occupation_${n}`] = [`preferred_occupation_list.${n - 1}`, `Preferred Occupation ${n}`];
+for (let n = 1; n <= 3; n += 1) {
+  REGION_FIELDS[`preferred_local_location_${n}`] = [`local_location_list.${n - 1}`, `Local work location ${n}`];
+  REGION_FIELDS[`preferred_overseas_location_${n}`] = [`overseas_location_list.${n - 1}`, `Overseas work location ${n}`];
+}
+const EDU_LABELS = { elementary: 'Elementary', secondary: 'Secondary', tertiary: 'Tertiary', graduate: 'Graduate Studies' };
+const EDU_COLS = { school: ['school', 'School'], course: ['course', 'Course'], year: ['year_graduated', 'Year Graduated'], level: ['level_reached', 'What level?'], last_attended: ['year_last_attended', 'Year last attended'], awards: ['awards', 'Awards'] };
+for (const [lv, lvLabel] of Object.entries(EDU_LABELS)) {
+  for (const [col, [field, colLabel]] of Object.entries(EDU_COLS)) REGION_FIELDS[`${lv}_${col}`] = [`education.${lv}.${field}`, `${lvLabel} - ${colLabel}`];
+}
+const ROW_TABLES = [
+  ['training', 3, 'training_rows', 'Training row', { course: 'Course', duration: 'Duration', institution: 'Institution', certificate: 'Certificate' }],
+  ['eligibility', 2, 'eligibility_rows', 'Eligibility row', { name: 'Eligibility', rating: 'Rating', exam_date: 'Date of Examination' }],
+  ['license', 2, 'license_rows', 'License row', { name: 'License', valid_until: 'Valid Until' }],
+  ['work', 5, 'work_rows', 'Work experience row', { company: 'Company', address: 'Address', position: 'Position', dates: 'Inclusive Dates', status: 'Status' }],
+];
+for (const [prefix, count, table, rowLabel, cols] of ROW_TABLES) {
+  for (let n = 1; n <= count; n += 1) {
+    for (const [col, colLabel] of Object.entries(cols)) REGION_FIELDS[`${prefix}_${n}_${col}`] = [`${table}.paper_row_${n}.${col}`, `${rowLabel} ${n} - ${colLabel}`];
+  }
+}
+const TICK_FIELDS = {
+  gender: ['gender', 'Sex', true], civil_status: ['civil_status', 'Civil Status', true],
+  employment_status: ['employment_status', 'Employment Status', true], employment_type: ['employment_type', 'Employment Type', false],
+  looking_for_work: ['looking_for_work', 'Actively looking for work?', true],
+  willing_to_work_immediately: ['willing_to_work_immediately', 'Willing to work immediately?', true],
+  four_ps_beneficiary: ['four_ps_beneficiary', '4Ps beneficiary?', true], work_location: ['preferred_work_location', 'Preferred Work Location', false],
+  disability: ['disabilities', 'Disability'], language_english: ['languages.english', 'English (language ticks)'],
+  language_filipino: ['languages.filipino', 'Filipino (language ticks)'], language_other: ['languages.other', 'Other language (ticks)'],
+  other_skills_acquired: ['other_skills_checked', 'Other skills (Section VIII ticks)'],
+};
+
+function valueAt(parsed, key) {
+  const full = parsed?.nsrp_full_data || {};
+  const parts = key.split('.');
+  let v = parts[0] in (parsed || {}) && parts.length === 1 ? parsed[parts[0]] : full;
+  for (const part of (parts.length === 1 && parts[0] in (parsed || {}) ? [] : parts)) v = v?.[part];
+  return v;
+}
+
+function reviewFlags(parsed, regions = {}) {
+  const flags = [];
+  const pageType = regions.__page_type;
+  if (pageType === 'unknown') return flags;
+  if (!regions.__alignment) {
+    flags.push({ key: '__page', label: 'Whole page', reason: 'The form could not be lined up exactly on this photo. Check every field.' });
+  }
+  for (const [name, { read, kind }] of Object.entries(regions.__name_fixes || {})) {
+    const [key, label] = REGION_FIELDS[name] || [];
+    const what = kind === 'place' ? 'the nearest official name' : 'common form words';
+    if (key) flags.push({ key, label, reason: `Read as "${read}" and changed to ${what}. Check it.` });
+  }
+  const confidence = regions.__confidence || {};
+  for (const [name, [key, label]] of Object.entries(REGION_FIELDS)) {
+    if (!(name in regions)) continue;
+    const raw = String(regions[name] || '').trim();
+    if (!raw) continue;
+    const value = key.includes('paper_row_') || /_list\.\d+$/.test(key) ? null : valueAt(parsed, key);
+    const letters = raw.replace(/[^A-Za-z]/g, '').toUpperCase();
+    // An empty field whose box holds only a dash or lines (drawn to mean "none"), a stray mark, or a misread "NA"
+    // ("N4", "1M"): at most 3 letters or digits, which no real answer here is (suffix excepted: "JR", "III"), so no hint.
+    const marks = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const onlyMarks = marks.length < 2 || (marks.length <= 3 && name !== 'suffix');
+    if (value !== null && !String(value ?? '').trim() && onlyMarks) continue;
+    if (value !== null && !String(value ?? '').trim() && letters !== 'NA' && letters !== 'NONE') {
+      flags.push({ key, label, reason: 'Something is written here but could not be read.' });
+    } else if (confidence[name] !== undefined && confidence[name] < LOW_CONFIDENCE) {
+      flags.push({ key, label, reason: 'Hard to read. Compare with your paper form.' });
+    }
+  }
+  // The month was read as more than 12 and repaired: always ask the person to check the date.
+  const dobMonth = String(regions.date_of_birth || '').match(/^\D*(\d{2})\D/);
+  if (dobMonth && +dobMonth[1] > 12 && !flags.some((f) => f.key === 'date_of_birth')) {
+    flags.push({ key: 'date_of_birth', label: 'Date of Birth', reason: 'The month was unclear. Check the date.' });
+  }
+  for (const [name, groups] of Object.entries(ID_SHAPES)) {
+    const [key, label] = REGION_FIELDS[name];
+    const digits = String(valueAt(parsed, key) || '').replace(/\D/g, '');
+    if (digits && !groups.some((g) => g.reduce((a, b) => a + b, 0) === digits.length) && !flags.some((f) => f.key === key)) {
+      flags.push({ key, label, reason: 'The number of digits does not look complete. Check it.' });
+    }
+  }
+  // Training and work dates: a year after this year (or before 1950) cannot be right.
+  const thisYear = new Date().getFullYear();
+  for (const [name, [key, label]] of Object.entries(REGION_FIELDS)) {
+    if (!/^(training_\d_duration|work_\d_dates)$/.test(name)) continue;
+    const years = String(regions[name] || '').match(/\d{4}/g) || [];
+    if (years.some((y) => +y > thisYear || +y < 1950) && !flags.some((f) => f.key === key)) {
+      flags.push({ key, label, reason: 'A year here looks impossible. Check the dates.' });
+    }
+  }
+  const cell = String(valueAt(parsed, 'cell_phone_number') || '');
+  if (cell && !/^(09\d{9}|\+?639\d{9})$/.test(cell) && !flags.some((f) => f.key === 'cell_phone_number')) {
+    flags.push({ key: 'cell_phone_number', label: 'Cellphone Number', reason: 'Not a complete 11-digit mobile number.' });
+  }
+  const densities = regions.__checkboxes?.__densities || {};
+  for (const [group, [key, label, required]] of Object.entries(TICK_FIELDS)) {
+    const list = densities[group];
+    if (!list || !list.length) continue;
+    const [best, second] = list;
+    const multi = required === undefined;
+    if (multi) {
+      if (list.some((d) => d.density >= ALIGNED_TICK_MIN * 0.5 && d.density < ALIGNED_TICK_MIN * 1.5)) {
+        flags.push({ key, label, reason: 'A tick mark is faint or unclear.' });
+      }
+    } else if (second && second.density >= ALIGNED_TICK_MIN) {
+      flags.push({ key, label, reason: 'More than one box looks ticked.' });
+    } else if (required && best.density < ALIGNED_TICK_MIN) {
+      flags.push({ key, label, reason: 'No tick was found.' });
+    } else if (best.density >= ALIGNED_TICK_MIN * 0.5 && best.density < ALIGNED_TICK_MIN * 1.5) {
+      flags.push({ key, label, reason: 'The tick mark is faint or unclear.' });
+    }
+  }
+  // Table hints name the paper row; the form shows only filled rows, so name the form's row instead
+  // ("work_rows.0.company"). The eligibility and license name columns are called eligibility / license in the form.
+  const rowIndex = regions.__row_index || {};
+  const COLUMN_NAMES = { eligibility_rows: { name: 'eligibility' }, license_rows: { name: 'license' } };
+  const formKeyed = flags.map((f) => {
+    const m = f.key.match(/^(\w+)\.paper_row_(\d+)\.(\w+)$/);
+    if (!m) return f;
+    const [, table, paperRow, column] = m;
+    const index = (rowIndex[table] || {})[paperRow];
+    return index === undefined ? f : { ...f, key: `${table}.${index}.${(COLUMN_NAMES[table] || {})[column] || column}` };
+  });
+  const seen = new Set();
+  return formKeyed.filter((f) => !seen.has(f.key) && seen.add(f.key));
 }
 
 function countExtractedFields(parsed) {
@@ -1326,5 +2571,6 @@ module.exports = {
   recognizeNsrpImage,
   parseNsrpText,
   countExtractedFields,
+  reviewFlags,
   makeTempCropDir,
 };

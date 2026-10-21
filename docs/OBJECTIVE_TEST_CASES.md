@@ -17,6 +17,7 @@ Each case has a stable ID so it can become a QA-tracker row.
 | E-A | `backend/tests/e2e_objective_a.mjs` (84 checks on 2026-10-15) |
 | E-F | `backend/tests/e2e_nsrp_form.mjs` (39 checks on 2026-10-15) |
 | E-B | `backend/tests/e2e_block_letters.mjs` (29 checks on 2026-10-15) |
+| E-O | `backend/tests/e2e_ocr.mjs` (64 checks on 2026-10-21; NSRP scan, review hints, reading rules, PaddleOCR second reader) |
 | PY | `backend/tests/*.py` (pytest: 62 passed, 1 skipped on 2026-10-05) |
 | OCR | `backend/scripts/ocr-accuracy.js` on `samples/nsrp-ocr` |
 | EMU | Android emulator (Pixel 7, Android 15, Expo Go) walkthrough, 2026-10-04 |
@@ -110,7 +111,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 
 | ID | Item | Result | Evidence |
 | --- | --- | --- | --- |
-| TC-C-01 | Automated API end-to-end tests | Pass: 221/221 on 2026-10-15 (E-N 69, E-A 84, E-F 39, E-B 29); 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B |
+| TC-C-01 | Automated API end-to-end tests | Pass: 285/285 on 2026-10-21 (E-N 69, E-A 84, E-F 39, E-B 29, E-O 64); 221/221 on 2026-10-15; 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B, E-O |
 | TC-C-02 | Backend regression suites (pytest) | Pass: 61 passed, 1 skipped on 2026-10-15 (conditional test; no profile waiting at that point in the run; the pending-employer sign-in test was removed with the demo's pending employer). Earlier: 62 passed, 1 skipped. On 2026-10-05, three checks first failed: one test compared the stored email case-sensitively after the backend started lowercasing emails. The test now expects the normalized email | PY |
 | TC-C-03 | TypeScript type-check and Expo lint | Pass: 0 errors (10 older warnings) | `npx tsc --noEmit`, `npx expo lint` |
 | TC-C-04 | Database upgrade on a copy of the real database | Pass: existing decisions kept; repeat run does nothing | Copy of peso_link_misor (deleted afterwards) |
