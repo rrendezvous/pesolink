@@ -80,3 +80,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] PESO-Link MisOr backend running on http://0.0.0.0:${PORT}`);
   console.log(`[Server] Health: http://localhost:${PORT}/api/health`);
 });
+
+// Optional second reader for handwritten NSRP answers (see services/ocrHelper.js and ocr-helper/README.md).
+require('./services/ocrHelper').startLocalHelper();

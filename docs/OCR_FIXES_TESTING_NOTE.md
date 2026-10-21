@@ -1,5 +1,7 @@
 # Trying the OCR on branch `ocr-fixes` (optional)
 
+> **Update 2026-10-21:** the OCR work is now merged into `main`. Use `docs/OCR_SETUP.md` instead of this note.
+
 Keep recording on `main` as usual. `ocr-fixes` is a separate branch; switching back to `main` puts everything back.
 Use only the demo/test data below. Never scan a real person's form, and never run `npm run init-db`.
 

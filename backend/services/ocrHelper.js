@@ -100,4 +100,33 @@ function mergeHelperReadings(regions, names, texts) {
   regions.__second_reader = 'paddleocr';
 }
 
-module.exports = { helperEnabled, readBoxes, mergeHelperReadings, isNa };
+// Started with the backend (server.js): when OCR_HELPER_URL is not set and the helper has been set up
+// (npm run ocr:setup), it is started on this machine (127.0.0.1 only) and used. OCR_HELPER_AUTO=off turns this off;
+// a server that runs the helper as its own service sets OCR_HELPER_URL instead.
+function startLocalHelper() {
+  if (process.env.OCR_HELPER_URL || process.env.OCR_HELPER_AUTO === 'off') return null;
+  const { venvPython, HELPER_DIR } = require('../scripts/ocr-helper');
+  const fs = require('fs');
+  if (!fs.existsSync(venvPython())) {
+    console.log('[OCR] Second reader (PaddleOCR) not set up: scans use Tesseract only. To add it once: npm run ocr:setup');
+    return null;
+  }
+  const port = process.env.OCR_HELPER_PORT || '8765';
+  process.env.OCR_HELPER_URL = `http://127.0.0.1:${port}`;
+  const { spawn } = require('child_process');
+  const child = spawn(venvPython(), [require('path').join(HELPER_DIR, 'server.py')], {
+    cwd: HELPER_DIR, env: { ...process.env, OCR_HELPER_PORT: port }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', (d) => { const line = String(d).trim(); if (line) console.log(`[OCR helper] ${line}`); });
+  child.stderr.on('data', () => {}); // model download and library notices
+  // If another backend on this computer already runs the helper, this copy stops at once and that one is used.
+  child.on('exit', (code) => { if (code) console.log('[OCR helper] stopped (another copy may already be running); scans still work'); });
+  const stop = () => { try { child.kill(); } catch (_) { /* already stopped */ } };
+  process.on('exit', stop);
+  process.on('SIGINT', () => { stop(); process.exit(0); });
+  process.on('SIGTERM', () => { stop(); process.exit(0); });
+  console.log(`[OCR] Second reader (PaddleOCR) starting on 127.0.0.1:${port}; scans use Tesseract only until it is ready`);
+  return child;
+}
+
+module.exports = { helperEnabled, readBoxes, mergeHelperReadings, isNa, startLocalHelper };
