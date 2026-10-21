@@ -293,7 +293,7 @@ export function NsrpForm({
           <Input key={`ovs-${i}`} testID={id(`overseas-${i + 1}`)} warning={flags?.[`overseas_location_list.${i}`]} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('overseas_location_list', 3, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.overseas_location_list), 'preferred_overseas_locations')}
-        {Text1({ k: "expected_salary", label: "Expected Salary (Range)", placeholder: "e.g., PHP 15,000 - 20,000" })}
+        {Text1({ k: "expected_salary", label: "Expected Salary (Range)", placeholder: "e.g., ₱15,000 - ₱20,000" })}
         <View style={styles.twoCol}>
           <View style={styles.col}>{Text1({ k: "passport_number", label: "Passport No." })}</View>
           <View style={styles.col}>{Text1({ k: "passport_expiry", label: "Expiry Date" })}</View>

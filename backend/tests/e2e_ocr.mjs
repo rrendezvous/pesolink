@@ -111,7 +111,9 @@ check('a month read above 12 (leading 0 misread) is repaired', parseNsrpText('',
 check('Gmail address: underscore read for a dot is fixed', rules({ email_address: 'juan_cruz@gmail.com' }).email_address === 'juan.cruz@gmail.com');
 check('other providers keep underscores and their own names', rules({ email_address: 'juan_cruz@yahoo.com' }).email_address === 'juan_cruz@yahoo.com'
   && rules({ email_address: 'maria@email.com' }).email_address === 'maria@email.com');
-check('salary with a space after the comma is joined', rules({ expected_salary: '12, 000 -15,000' }).expected_salary === '12,000 - 15,000');
+check('salary with a space after the comma is joined', rules({ expected_salary: '12, 000 -15,000' }).expected_salary === '₱12,000 - ₱15,000');
+check('every salary is written with the peso sign (PHP, P or no sign)', rules({ expected_salary: 'PHP 18,000 - 22,000' }).expected_salary === '₱18,000 - ₱22,000'
+  && rules({ expected_salary: '15000-20000' }).expected_salary === '₱15,000 - ₱20,000');
 check('text answers come back in block letters', rules({ house_street: 'Purok 5' }).house_street === 'PUROK 5');
 const unsure = { __confidence: { city: 40, language_other_name: 40, barangay: 40 } };
 const listedRegions = { __page_type: 'page1', ...unsure, city: 'GINAOOG CY', language_other_name: 'CERVANO', barangay: 'MARKET VILAGE X' };
@@ -147,6 +149,19 @@ check('two listed words read without a space are split', gluedRows.education.sec
 check('REGION and its roman numeral are split (REGIONX)', gluedRows.training_rows[0]?.institution === 'TESDA REGION X');
 check('an NC level with a lowercase letter is read (NC Li -> NC II)', gluedRows.training_rows[0]?.certificate === 'NC II');
 check('a street word and its number are split (PUROK5)', rules({ house_street: 'PUROK5' }).house_street === 'PUROK 5');
+const courses = parseNsrpText('', { __page_type: 'page2', __confidence: { secondary_course: 50, tertiary_course: 50 },
+  secondary_course: 'JUNIOR SENIOR', tertiary_course: 'BS BUSINESTION', elementary_school: 'TAGOLOAN CENTRAL',
+  training_1_course: 'BOOKKEEPING', training_1_duration: '06/2022to 08/2022', training_1_certificate: 'NCM' }).nsrp_full_data;
+check('a course cut short is completed (JUNIOR/SENIOR HIGH)', courses.education.secondary.course === 'JUNIOR/SENIOR HIGH');
+check('a course with its middle lost is completed (BS BUSINESS ADMINISTRATION)', courses.education.tertiary.course === 'BS BUSINESS ADMINISTRATION');
+check('a school name cut after CENTRAL ends with SCHOOL', courses.education.elementary.school === 'TAGOLOAN CENTRAL SCHOOL');
+check('a date range missing the space before "to" is fixed', courses.training_rows[0]?.duration === '06/2022 to 08/2022');
+check('NC III read as NCM is fixed', courses.training_rows[0]?.certificate === 'NC III');
+const ncRead = (c) => parseNsrpText('', { __page_type: 'page2', training_1_course: 'COOKERY', training_1_certificate: c }).nsrp_full_data.training_rows[0]?.certificate;
+check('NC with a lowercase c or an O for the C is read (Nc lI, NOI)', ncRead('Nc lI') === 'NC II' && ncRead('NOI') === 'NC I' && ncRead('CERTIFICATE') === 'CERTIFICATE');
+const noise = parseNsrpText('', { __page_type: 'page1', disability_other: 'EEE EE', preferred_occupation_1: 'CASHIER', preferred_occupation_4: 'ET' }).nsrp_full_data;
+check('a reading of one repeated letter is not an answer (EEE EE)', noise.disability_other === '');
+check('a 2-letter stray mark is not an occupation', JSON.stringify(noise.preferred_occupation_list) === '["CASHIER"]');
 
 const marksOnly = { __page_type: 'page1', village: '—', passport_expiry: '1 N4', household_id: "'", landline_number: 'ABCDE' };
 const markFlags = reviewFlags(parseNsrpText('', marksOnly), marksOnly).map((f) => f.key);

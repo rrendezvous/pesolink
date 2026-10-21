@@ -1269,8 +1269,25 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
         const digits = await digitsByPiece();
         if (/^\d{4}$/.test(digits)) best = { text: digits, conf: Math.min(best.conf, LOW_CONFIDENCE - 1) };
       }
+      // A TESDA level written as N, C and 1-3 thin upright strokes ("NC III"): the strokes are counted, since close
+      // strokes are often read as one ("NC II"). Counted levels are kept as they are (not sent to the second reader).
+      let counted = false;
+      if (/^training_\d_certificate$/.test(name)) {
+        const pieces = writingPieces(crop).filter((p) => p.h >= 6 * ALIGNED_SCALE);
+        const heights = pieces.map((p) => p.h).sort((a, b) => a - b);
+        const mid = heights[Math.floor(heights.length / 2)] || 0;
+        const letters = pieces.filter((p) => p.h >= mid * 0.6 && p.h <= mid * 1.4);
+        const thin = (p) => p.w <= p.h * 0.35;
+        const firstStroke = letters.findIndex((p, i) => i >= 2 && letters.slice(i).every(thin));
+        const strokes = firstStroke >= 2 ? letters.length - firstStroke : 0;
+        if (firstStroke === 2 && !thin(letters[0]) && !thin(letters[1]) && strokes >= 1 && strokes <= 3) {
+          best = { text: `NC ${'I'.repeat(strokes)}`, conf: Math.min(best.conf || LOW_CONFIDENCE - 1, LOW_CONFIDENCE - 1) };
+          counted = true;
+        }
+      }
       regions[name] = best.text;
       if (best.text) confidence[name] = best.conf;
+      if (counted) continue;
       // Boxes with writing go to the second reader too, even when Tesseract read nothing; "NA" stays as read.
       if (helperEnabled() && !isWrittenNa(best.text)) toHelper.push({ name, image: pgm });
     } catch (err) {
@@ -1677,6 +1694,46 @@ function nearestFormWord(word) {
   return best;
 }
 
+// Common course names on NSRP forms: basic education levels and widely offered college programs. An unsure course
+// reading is completed to one of these when it is clearly that name with letters lost: the start of exactly one name
+// ("JUNIOR/SENIOR" -> "JUNIOR/SENIOR HIGH"), or the same start and ending with the middle missing
+// ("BS BUSINESTION" -> "BS BUSINESS ADMINISTRATION"). It is flagged for the person to check.
+const COURSE_NAMES = [
+  'ELEMENTARY', 'JUNIOR HIGH', 'SENIOR HIGH', 'JUNIOR/SENIOR HIGH', 'HIGH SCHOOL',
+  'BS BUSINESS ADMINISTRATION', 'BS INFORMATION TECHNOLOGY', 'BS INFORMATION SYSTEMS', 'BS COMPUTER SCIENCE',
+  'BS ACCOUNTANCY', 'BS ACCOUNTING INFORMATION SYSTEM', 'BS ELECTRICAL ENGINEERING', 'BS CIVIL ENGINEERING',
+  'BS MECHANICAL ENGINEERING', 'BS ELECTRONICS ENGINEERING', 'BS COMPUTER ENGINEERING', 'BS NURSING', 'BS CRIMINOLOGY',
+  'BS PSYCHOLOGY', 'BS AGRICULTURE', 'BS HOSPITALITY MANAGEMENT', 'BS TOURISM MANAGEMENT',
+  'BS HOTEL AND RESTAURANT MANAGEMENT', 'BS OFFICE ADMINISTRATION', 'BS ENTREPRENEURSHIP', 'BS MARINE TRANSPORTATION',
+  'BS MARINE ENGINEERING', 'BS MIDWIFERY', 'BS PHARMACY', 'BS MEDICAL TECHNOLOGY', 'BS SOCIAL WORK', 'BS BIOLOGY',
+  'BS MATHEMATICS', 'BACHELOR OF ELEMENTARY EDUCATION', 'BACHELOR OF SECONDARY EDUCATION',
+  'BACHELOR OF TECHNICAL-VOCATIONAL TEACHER EDUCATION', 'AB ENGLISH', 'AB POLITICAL SCIENCE', 'AB COMMUNICATION',
+];
+const lettersOnly = (t) => String(t || '').toUpperCase().replace(/[^A-Z]/g, '');
+function completeCourse(value, regionName, fixes, confidence = {}) {
+  if (!value || !(confidence[regionName] < LOW_CONFIDENCE)) return value;
+  const read = lettersOnly(value);
+  if (read.length < 6 || COURSE_NAMES.some((c) => lettersOnly(c) === read)) return value;
+  const shared = (a, b) => { let n = 0; while (n < a.length && a[n] === b[n]) n += 1; return n; };
+  const ends = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1; return n; };
+  const found = COURSE_NAMES.filter((c) => {
+    const name = lettersOnly(c);
+    if (read.length >= name.length) return false;
+    const start = shared(read, name);
+    return (start === read.length && read.length >= name.length * 0.5) || (start >= 6 && ends(read, name) >= 4 && start + ends(read, name) >= read.length);
+  });
+  if (found.length !== 1) return value;
+  fixes[regionName] = { read: value, kind: 'words' };
+  return found[0];
+}
+
+// A school name cut off after "CENTRAL", "HIGH" or "ELEMENTARY" (the rest ran past the box) ends with "SCHOOL".
+function completeSchool(value, regionName, fixes) {
+  if (!/\b(CENTRAL|HIGH|ELEMENTARY)$/i.test(String(value || '').trim())) return value;
+  fixes[regionName] = { read: value, kind: 'words' };
+  return `${String(value).trim()} SCHOOL`;
+}
+
 // Two listed words read without the space between them ("CITYCOMPREHENSIVE"), or REGION and its roman numeral
 // ("REGIONX"); returns null when the word cannot be split that way.
 function splitGluedWords(word) {
@@ -1833,6 +1890,7 @@ function fixDurationDigits(value) {
 // or lost ("0572009", "122005"), is put back when the month is a real month.
 function fixDateRange(value) {
   return String(value || '')
+    .replace(/(\d)\s*to\s*(?=\d)/gi, '$1 to ')
     // A junk 1-2 character word between two dates ("+o", "Yo", "hv" for the handwritten "to") is "to".
     // (A dash between the dates is a real separator and is left as written.)
     .replace(/(\d)\s+(?!to\b)[^\s\d\-–]{1,2}\s+(?=\d|PRESENT\b)/gi, '$1 to ')
@@ -1844,7 +1902,8 @@ function fixDateRange(value) {
 
 // TESDA levels are NC I to NC IV; a II is often read as H, l or 1.
 function fixNcLevel(value) {
-  return String(value || '').replace(/\bNC\s*([IiLl1|HT]{1,3}|[IiLl1|]?[Vv])\b/g, (_, lvl) => {
+  // The C is often read as a lowercase c, O or 0 ("Nc lI", "NOI").
+  return String(value || '').replace(/\bN[CcOo0]\s*M\b/g, 'NC III').replace(/\bN[CcOo0]\s*([IiLl1|HT]{1,3}|[IiLl1|]?[Vv])\b/g, (_, lvl) => {
     if (/v$/i.test(lvl)) return lvl.length === 2 ? 'NC IV' : 'NC V';
     const count = [...lvl].reduce((n, ch) => n + (ch === 'H' ? 2 : 1), 0);
     return count >= 1 && count <= 3 ? `NC ${'I'.repeat(count)}` : `NC ${lvl}`;
@@ -1877,12 +1936,14 @@ function validateSalary(value) {
     .replace(/(\d),\s+(\d{3})\b/g, '$1,$2')
     // "18,00022,000": two amounts stuck together are a range.
     .replace(/(\d{1,3},\d{3})(?=\d{1,3},\d{3}\b)/, '$1 - ');
-  const m = v.match(/(?:PHP|P)?\s*\d{1,3}(?:,\d{3})?(?:\s*-\s*\d{1,3}(?:,\d{3})?)/i);
+  // Every amount is written with the peso sign and thousands commas: "₱12,000 - ₱15,000" whether the person wrote
+  // ₱, PHP, P or no sign. What follows the amounts is kept ("/ MONTH", "PER MONTH").
+  const peso = (amount) => `₱${Number(amount.replace(/,/g, '')).toLocaleString('en-US')}`;
+  const m = v.match(/(?:PHP|P)?\s*(\d{1,3}(?:,\d{3})+|\d{3,7})(?:\s*-\s*(?:PHP|P)?\s*(\d{1,3}(?:,\d{3})+|\d{3,7}))?/i);
   if (m) {
-    // Keep what follows the range too ("/ MONTH", "PER MONTH").
     const rest = v.slice(m.index + m[0].length).replace(/^[^A-Z/]+/, '').trim();
-    v = m[0].replace(/^P\s+/i, 'PHP ').replace(/^PHP\s*/i, 'PHP ');
-    return `${v.replace(/\s*-\s*/g, ' - ')}${rest ? ` ${rest}` : ''}`;
+    const range = m[2] ? `${peso(m[1])} - ${peso(m[2])}` : peso(m[1]);
+    return `${range}${rest ? ` ${rest}` : ''}`;
   }
   return basicClean(v);
 }
@@ -1899,7 +1960,7 @@ function pickEmailFromText(text) {
 
 function cleanOccupation(raw) {
   const v = cleanRegionText(raw, ['Preferred', 'Occupation']);
-  if (!v || LABEL_JUNK.test(v) || /[|_]{2,}/.test(v)) return '';
+  if (!v || LABEL_JUNK.test(v) || /[|_]{2,}/.test(v) || v.replace(/[^A-Za-z]/g, '').length < 3) return '';
   return normalizeKnownRunTogether(v)
     .replace(/[^A-ZÑ0-9\s/'-]/gi, ' ')
     .replace(/\s+/g, ' ')
@@ -1913,7 +1974,7 @@ function cleanFreeText(raw) {
     .replace(/\b(\d{2}\/\d{4})\s+10\s+(\d{2}\/\d{4})\b/g, '$1 to $2')
     .replace(/\s+/g, ' ')
     .trim();
-  if (isEmptyToken(v)) return '';
+  if (isEmptyToken(v) || (/^[A-Za-z\s]+$/.test(v) && new Set(v.replace(/\s/g, '').toUpperCase()).size === 1 && v.replace(/\s/g, '').length >= 2)) return '';
   return v;
 }
 
@@ -1941,9 +2002,13 @@ function educationLine(label, school, course, year, level, lastAttended, awards)
 
 // "NA" (not applicable) counts as blank, also with a stray mark next to it ("3 NA", "NA ."): NA must be its own
 // word and what is left besides it at most 2 characters, so a real value is never taken for NA.
+const repeatedLetterNoise = (v) => {
+  const letters = String(v || '').replace(/[^A-Za-z]/g, '').toUpperCase();
+  return letters.length >= 2 && new Set(letters).size === 1 && !/\d/.test(String(v));
+};
 const notNaText = (v) => {
   const text = String(v || '').trim();
-  if (/^n\.?\s*\/?\s*a\.?$/i.test(text)) return '';
+  if (/^n\.?\s*\/?\s*a\.?$/i.test(text) || repeatedLetterNoise(text)) return '';
   const words = text.split(/\s+/);
   const isNa = (w) => /^n\.?\/?a\.?$/i.test(w);
   const rest = words.filter((w) => !isNa(w)).join('');
@@ -2014,7 +2079,11 @@ function parsePage2Text(rawText, ocrRegions = {}) {
   const cell = (key) => {
     const v = cleanFreeText(rv(key));
     if (/^n\.?\/?a\.?$/i.test(v)) return '';
-    return WORD_CELL.test(key) ? matchFormWords(v, key, nameFixes, ocrRegions.__confidence) : v;
+    if (!WORD_CELL.test(key)) return v;
+    const words = matchFormWords(v, key, nameFixes, ocrRegions.__confidence);
+    if (/_course$/.test(key) && /^(elementary|secondary|tertiary|graduate)_/.test(key)) return completeCourse(words, key, nameFixes, ocrRegions.__confidence);
+    if (/_school$/.test(key)) return completeSchool(words, key, nameFixes);
+    return words;
   };
   const eduRow = (prefix) => ({
     school: cell(`${prefix}_school`),

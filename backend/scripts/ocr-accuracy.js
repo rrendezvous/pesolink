@@ -39,7 +39,7 @@ const EXPECTED_PAGE1 = {
   'full.preferred_work_location': 'local',
   'list.local_location_list': ['CAGAYAN DE ORO CITY', 'MISAMIS ORIENTAL', 'ILIGAN CITY'],
   'list.overseas_location_list': [],
-  'full.expected_salary': 'PHP 18,000 - 25,000', 'full.passport_number': '', 'full.passport_expiry': '',
+  'full.expected_salary': '₱18,000 - ₱25,000', 'full.passport_number': '', 'full.passport_expiry': '',
   // III. Language / dialect proficiency (all four ticked for English and Filipino; Others empty)
   'lang.english': 'read,write,speak,understand', 'lang.filipino': 'read,write,speak,understand', 'lang.other': '', 'langname.other': '',
 };
