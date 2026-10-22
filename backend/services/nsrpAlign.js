@@ -134,7 +134,26 @@ function fitPageTransform(tsv, pageType) {
     const perspError = meanErrorOf(persp);
     if (perspError < meanError) { t = persp; meanError = perspError; }
   }
-  return { ...t, scale, matches: pairs.length, meanError: Number(meanError.toFixed(2)) };
+  // How far each matched label sits from where the page-wide fit puts it. On a curved or bent page these
+  // differences change smoothly across the page; localCorrection() uses the nearest ones for each box.
+  const residuals = pairs.map((p) => { const q = apply(t, p.x, p.y); return { x: p.x, y: p.y, du: p.u - q.x, dv: p.v - q.y }; });
+  return { ...t, scale, matches: pairs.length, meanError: Number(meanError.toFixed(2)), residuals };
+}
+
+// The local correction (image pixels) at a point of the blank form: a weighted average of the nearest labels'
+// differences, closer labels counting more. With few labels nearby it fades toward no correction.
+const NEAR = 260; // blank-form pixels
+function localCorrection(t, x, y) {
+  // Only for a loosely fitting photo (bent or curled paper); flat photos and scans are fitted well enough already.
+  if (!t.residuals || !t.residuals.length || !(t.meanError > 5)) return { du: 0, dv: 0 };
+  let su = 0; let sv = 0; let sw = 1.5; // the 1.5 weight of "no correction" keeps sparse areas steady
+  for (const r of t.residuals) {
+    const d = Math.hypot(r.x - x, r.y - y);
+    if (d > NEAR) continue;
+    const w = 1 / (1 + (d / 80) ** 2);
+    su += w * r.du; sv += w * r.dv; sw += w;
+  }
+  return { du: su / sw, dv: sv / sw };
 }
 
 // Cuts a field box (fractions of the blank form) out of an image, straightened through the transform.
@@ -147,10 +166,15 @@ function sampleRegion(image, t, region, pad = 0.003, outScale = null) {
   const s = outScale || t.scale;
   const width = Math.max(1, Math.round(tw * s)); const height = Math.max(1, Math.round(th * s));
   const grey = new Uint8Array(width * height);
+  // Local correction measured at the box's left and right ends and blended across it, so a long box follows a
+  // row that slants or bends on the photo.
+  const left = localCorrection(t, x0, y0 + th / 2);
+  const right = localCorrection(t, x0 + tw, y0 + th / 2);
   for (let v = 0; v < height; v += 1) {
     for (let u = 0; u < width; u += 1) {
       const q = apply(t, x0 + u / s, y0 + v / s);
-      const fx = q.x - 0.5; const fy = q.y - 0.5;
+      const k = width > 1 ? u / (width - 1) : 0;
+      const fx = q.x + left.du + (right.du - left.du) * k - 0.5; const fy = q.y + left.dv + (right.dv - left.dv) * k - 0.5;
       const ix = Math.floor(fx); const iy = Math.floor(fy);
       if (ix < 0 || iy < 0 || ix + 1 >= image.width || iy + 1 >= image.height) { grey[v * width + u] = 255; continue; }
       const ax = fx - ix; const ay = fy - iy; const i = iy * image.width + ix;
@@ -164,7 +188,9 @@ function sampleRegion(image, t, region, pad = 0.003, outScale = null) {
 
 // Maps a point given as fractions of the blank form to image pixels.
 function mapFraction(t, fx, fy) {
-  return apply(t, fx * TEMPLATE_W, fy * TEMPLATE_H);
+  const q = apply(t, fx * TEMPLATE_W, fy * TEMPLATE_H);
+  const { du, dv } = localCorrection(t, fx * TEMPLATE_W, fy * TEMPLATE_H);
+  return { x: q.x + du, y: q.y + dv };
 }
 
 module.exports = { fitPageTransform, sampleRegion, mapFraction, parseTsvWords, TEMPLATE_W, TEMPLATE_H };
