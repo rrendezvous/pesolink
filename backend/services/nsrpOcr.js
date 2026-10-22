@@ -980,6 +980,45 @@ function getBlankFormInk(pageType, grow = 1) {
 // Where a pen stroke crosses an erased printed line (ink right before and right after a short erased run, in
 // the same column for a horizontal line or the same row for a vertical one), the stroke is put back, so
 // writing that sits on or crosses a line is not cut in two. Long runs (the lines themselves) are never restored.
+// The printed lines actually visible in an area: long straight runs of ink (rows for horizontal lines, columns for
+// vertical ones), thickened by a pixel. Writing has no runs that long, and a slanted or bent line still breaks into
+// long pieces, so this finds the real lines on a curved photo where the blank form's lines no longer line up.
+function visibleLines(ink, width, height, cellHeight) {
+  const lines = new Uint8Array(width * height);
+  const hLen = Math.round(cellHeight * 1.6);
+  const vLen = Math.round(cellHeight * 1.3);
+  for (let y = 0; y < height; y += 1) {
+    let x = 0;
+    while (x < width) {
+      if (!ink[y * width + x]) { x += 1; continue; }
+      const start = x;
+      while (x < width && ink[y * width + x]) x += 1;
+      if (x - start >= hLen) for (let k = start; k < x; k += 1) lines[y * width + k] = 1;
+    }
+  }
+  for (let x = 0; x < width; x += 1) {
+    let y = 0;
+    while (y < height) {
+      if (!ink[y * width + x]) { y += 1; continue; }
+      const start = y;
+      while (y < height && ink[y * width + x]) y += 1;
+      if (y - start >= vLen) for (let k = start; k < y; k += 1) lines[k * width + x] = 1;
+    }
+  }
+  const out = new Uint8Array(lines);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!lines[y * width + x]) continue;
+      for (let d = -1; d <= 1; d += 2) {
+        const yy = y + d; const xx = x + d;
+        if (yy >= 0 && yy < height && ink[yy * width + x]) out[yy * width + x] = 1;
+        if (xx >= 0 && xx < width && ink[y * width + xx]) out[y * width + xx] = 1;
+      }
+    }
+  }
+  return out;
+}
+
 function restoreCrossings(written, ink, covered, width, height) {
   const maxRun = 8 * ALIGNED_SCALE;
   const reach = 3 * ALIGNED_SCALE;
@@ -1084,6 +1123,9 @@ function dropStrayInk(crop, cellTop = 0, cellBottom = crop.height, minPixels = 1
 
 // Phone photos bend slightly, so the page-wide fit can be a pixel or two off at a given cell. Nudge the
 // cell (up to SHIFT form pixels each way) to where the printed lines around it match the blank form best.
+// A photo fits loosely when its labels sit on average more than this many blank-form pixels from the fit (bent or
+// curled paper); clean scans and flat photos stay well under it.
+const LOOSE_FIT = 5;
 const SHIFT = 6;
 function localShift(greyImage, transform, region, mask) {
   if (!mask) return [0, 0];
@@ -1201,7 +1243,11 @@ async function recognizeAlignedRegions(worker, Tesseract, greyImage, transform, 
       const shifted = [area[0] + dx / 1240, area[1] + dy / 1754, area[2], area[3]];
       const sample = sampleRegion(greyImage, transform, shifted, pad, ALIGNED_SCALE);
       const { black: ink, paper } = inkMask(sample.grey, true);
-      const formCovered = printedFormCover(sample.width, sample.height, area, pad, formInk);
+      // The printed lines to erase: where the blank form has them, or, on a loosely fitting photo (bent or slanted
+      // paper, where the blank form's lines no longer line up), the lines actually seen in the area.
+      const formCovered = transform.meanError > LOOSE_FIT
+        ? visibleLines(ink, sample.width, sample.height, spec.region[3] * 1754 * ALIGNED_SCALE)
+        : printedFormCover(sample.width, sample.height, area, pad, formInk);
       const written = restoreCrossings(ink.map((v, i) => (v && !formCovered[i] ? 1 : 0)), ink, formCovered, sample.width, sample.height);
       const cellTop = (pad + extra) * 1754 * ALIGNED_SCALE;
       const cellBottom = cellTop + spec.region[3] * 1754 * ALIGNED_SCALE;
