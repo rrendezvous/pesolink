@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { TouchableOpacity } from 'react-native';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/context/AuthContext';
 import { SignOutModal } from '../../src/components/SignOutModal';
 import { Colors, FontSize } from '../../src/constants/theme';
+import { alertBadge, ALERT_BADGE_STYLE, useUnreadAlertCount } from '../../src/utils/alertBadge';
 import { confirmLeave, hasUnsavedChanges } from '../../src/utils/unsavedChanges';
 
 function LogoutTabButton({ children, ...props }: any) {
@@ -40,6 +41,7 @@ function LogoutTabButton({ children, ...props }: any) {
 
 export default function SeekerLayout() {
   const insets = useSafeAreaInsets();
+  const unreadAlerts = useUnreadAlertCount(usePathname());
   const bottomInset = insets.bottom || 0;
   const tabBarBottomPadding = Math.max(8 + bottomInset, 16);
 
@@ -106,6 +108,8 @@ export default function SeekerLayout() {
         name="notifications"
         options={{
           title: 'Alerts',
+          tabBarBadge: alertBadge(unreadAlerts),
+          tabBarBadgeStyle: ALERT_BADGE_STYLE,
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={size} color={color} />
           ),
