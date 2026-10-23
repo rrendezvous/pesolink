@@ -6,6 +6,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } fr
 import { useFocusEffect } from 'expo-router';
 import { Card, EmptyState } from '../../src/components/ui';
 import { api, getApiError } from '../../src/api/client';
+import { alertCountChanged } from '../../src/utils/alertBadge';
 import { Colors, Spacing, FontSize, Radius } from '../../src/constants/theme';
 
 export default function EmpNotifications() {
@@ -20,6 +21,7 @@ export default function EmpNotifications() {
       const res = await api.get('/notifications');
       setNotifs(res.data.notifications || []);
       setUnread(res.data.unread_count || 0);
+      alertCountChanged(res.data.unread_count || 0);
     } catch (err) {
       console.warn(getApiError(err));
     }
@@ -38,6 +40,7 @@ export default function EmpNotifications() {
       await api.put(`/notifications/${id}/read`);
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
       setUnread((count) => Math.max(0, count - 1));
+      alertCountChanged();
     } catch {}
   };
 
