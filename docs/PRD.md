@@ -19,7 +19,7 @@ The app is designed to complement PESO workflows. It does not replace official P
 - Backend: Node.js Express REST API
 - Database: MySQL
 - Authentication: JWT and bcryptjs password hashing
-- OCR: Tesseract.js on the backend
+- OCR: Tesseract.js on the backend, plus an optional PaddleOCR (PP-OCRv5) helper on the same server as a second reader; unsure fields are marked for review
 - Target demo platform: Android through Expo Go or Android Emulator
 
 ## User Roles

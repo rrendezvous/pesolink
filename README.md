@@ -11,7 +11,7 @@ The submitted system is:
 - Android-focused mobile app using Expo React Native.
 - REST API backend using Node.js, Express, JWT authentication, and MySQL.
 - Local or LAN-demo runnable prototype for PIT/demo.
-- OCR-assisted NSRP encoding using Tesseract.js as the emerging technology.
+- OCR-assisted NSRP encoding using Tesseract.js, with PaddleOCR (PP-OCRv5 text recognition) as an optional second reader on the same server, as the emerging technology. Both are open-source and run on the project's own backend; form images are not sent to outside services.
 
 The submitted system is not:
 
@@ -99,7 +99,7 @@ OCR is optional and assistive only.
 
 1. Job seeker opens **Upload NSRP**.
 2. Job seeker selects or captures an NSRP form image.
-3. Backend runs OCR using Tesseract.js.
+3. Backend runs OCR using Tesseract.js. When the PaddleOCR helper is set up (`npm run ocr:setup`, see `docs/OCR_SETUP.md`), it gives a second reading of each written answer box, and boxes where the two readings disagree are marked for the job seeker to check.
 4. Parsed values are placed into editable review fields.
 5. Job seeker checks and edits the fields.
 6. Job seeker taps **Confirm and Save**.
