@@ -152,6 +152,6 @@ The OCR samples belong to **Juan Dela Cruz Santos**, not to a seeded account. Re
 1. Profile, **Use OCR Assistant**, Gallery, page 1, **Scan and Pre-fill** (about 1 minute), OK.
 2. Gallery, page 2 (check the preview shows page 2), **Scan and Pre-fill**, OK. Both pages are now in one review.
 3. Scroll the review: every field matches the paper, NA items are blank, and the ticks (Male, Single, Unemployed / New Entrant, Local, the language grid, Computer Literate, Photography) are set.
-4. **Confirm and Save**. Back in Profile: *19/19 required items complete*.
+4. **Confirm and Save**. Back in Profile: *16/16 required items complete*.
 5. Pick skills (for example Web Development, JavaScript, Database Management), tick the certification, **Save and Submit to PESO**.
 6. Admin verifies him; he applies to Junior Software Developer (3/4 matched).

@@ -10,6 +10,7 @@ import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Button, Input, Card, Chip, StatusBadge } from '../../src/components/ui';
 import { NsrpForm } from '../../src/components/NsrpForm';
 import { api, getApiError } from '../../src/api/client';
+import { useAuth } from '../../src/context/AuthContext';
 import { nsrpStatusMessage, sentBackMessage } from '../../src/utils/referral';
 import { birthDateError } from '../../src/utils/dates';
 import { Colors, Spacing, FontSize, Radius, StatusColors } from '../../src/constants/theme';
@@ -67,31 +68,36 @@ const defaultNsrpFullData = {
   passport_expiry: '',
 };
 
+// NSRP Form 1 certification/authorization statement, split into the three consents PESO asked for.
+const CONSENT_STATEMENTS: { key: 'truthful' | 'authorize' | 'aware'; text: string }[] = [
+  { key: 'truthful', text: 'This is to certify that all data/information that I have provided in this form are true to the best of my knowledge.' },
+  { key: 'authorize', text: 'This is also to authorize the DOLE to include my profile in the PESO Employment Information System, which is a subsystem of the PhilJobNet. It is understood that my name shall be made available to employers who have access to the Registry.' },
+  { key: 'aware', text: 'I am also aware that DOLE is not obliged to seek employment on my behalf.' },
+];
+
 const hasText = (value: any) => String(value ?? '').trim().length > 0;
 const hasAny = (...values: any[]) => values.some(hasText);
 const anyRowFilled = (rows: any[]) => rows.some((r) => r && Object.values(r).some(hasText));
 
-function getMissingReferralFields(form: any, full: Record<string, any>, selectedSkills: Set<number>) {
+function getMissingReferralFields(form: any, full: Record<string, any>) {
+  // Same 16 items as the backend check (PESO's list, 2026-10-31); every other NSRP item is optional.
   const checks = [
+    { label: 'Surname', ok: hasText(form.last_name) },
     { label: 'First name', ok: hasText(form.first_name) },
-    { label: 'Last name', ok: hasText(form.last_name) },
     { label: 'Date of birth', ok: hasText(form.date_of_birth) },
-    { label: 'Place of birth', ok: hasText(full.place_of_birth) },
     { label: 'Sex', ok: hasText(form.gender) },
+    { label: 'Religion', ok: hasText(full.religion) },
     { label: 'Civil status', ok: hasText(form.civil_status) },
-    { label: 'Contact number or cellphone number', ok: hasAny(form.contact_number, full.cell_phone_number, full.landline_number) },
     { label: 'Present address or house/street/barangay', ok: hasAny(form.address, full.house_street) && hasAny(form.address, full.barangay) },
     { label: 'City/Municipality', ok: hasText(form.city) },
     { label: 'Province', ok: hasText(form.province) },
+    { label: 'Height', ok: hasText(full.height) },
+    { label: 'Contact number or cellphone number', ok: hasAny(form.contact_number, full.cell_phone_number, full.landline_number) },
+    { label: 'Email address', ok: hasText(full.email_address) },
     { label: 'Employment status', ok: hasText(form.employment_status) },
-    { label: 'Employment type', ok: hasText(full.employment_type) },
-    { label: 'Actively looking for work', ok: hasText(full.looking_for_work) },
-    { label: 'Willing to work immediately', ok: hasText(full.willing_to_work_immediately) },
-    { label: '4Ps beneficiary answer', ok: hasText(full.four_ps_beneficiary) },
     { label: 'Educational background', ok: hasAny(form.education_level, form.course, full.elementary_background, full.secondary_background, full.tertiary_background, full.graduate_studies_background) || anyRowFilled(Object.values(full.education || {})) },
     { label: 'Preferred occupation', ok: hasAny(form.preferred_occupation, full.preferred_occupations, ...(full.preferred_occupation_list || [])) },
     { label: 'Preferred work location', ok: hasAny(full.preferred_work_location, full.preferred_local_locations, full.preferred_overseas_locations, ...(full.local_location_list || []), ...(full.overseas_location_list || [])) },
-    { label: 'At least one skill, training, or work experience', ok: selectedSkills.size > 0 || hasAny(full.other_skills_acquired, full.trainings, full.eligibility_license, full.work_experience) || anyRowFilled([...(full.training_rows || []), ...(full.work_rows || []), ...(full.eligibility_rows || []), ...(full.license_rows || [])]) },
   ];
   return checks.filter((check) => !check.ok).map((check) => check.label);
 }
@@ -115,7 +121,9 @@ export default function ProfileScreen() {
   const [savedFilled, setSavedFilled] = useState<number | null>(null);
   const [nsrp, setNsrp] = useState<{ status: string; notes?: string | null }>({ status: 'not_submitted' });
   const [submitting, setSubmitting] = useState(false);
-  const [certified, setCertified] = useState(false);
+  // NSRP Form 1 certification/authorization, as three statements; all three must be ticked to submit.
+  const [consents, setConsents] = useState({ truthful: false, authorize: false, aware: false });
+  const certified = consents.truthful && consents.authorize && consents.aware;
   // Set when the profile could not be loaded: the form is hidden so a blank or outdated form is never saved
   // over the saved profile (saving replaces every field and the skills list).
   const [loadError, setLoadError] = useState('');
@@ -131,6 +139,7 @@ export default function ProfileScreen() {
   const loadToken = useRef(0);
   // What was last loaded or saved; null while loading or after the user chose to discard their edits.
   const savedSnapshot = useRef<string | null>(null);
+  const loginEmail = useAuth().user?.email || '';
   const loadProfile = useCallback(() => {
     savedSnapshot.current = null;
     const token = ++loadToken.current;
@@ -165,6 +174,8 @@ export default function ProfileScreen() {
           preferred_occupation: prof.preferred_occupation || '',
         };
         const loadedFullData = normalizeYesNo({ ...defaultNsrpFullData, ...parsedFullData });
+        // The NSRP email is required; start it from the login email when it was never filled (the seeker can change it).
+        if (!hasText(loadedFullData.email_address) && loginEmail) loadedFullData.email_address = loginEmail;
         const loadedSkills = new Set<number>((p.data.skills || []).map((sk: any) => sk.id));
         setForm(loadedForm);
         setNsrpFullData(loadedFullData);
@@ -178,7 +189,7 @@ export default function ProfileScreen() {
         if (active()) setLoading(false);
       }
     })();
-  }, []);
+  }, [loginEmail]);
 
   useFocusEffect(useCallback(() => {
     loadProfile();
@@ -261,7 +272,9 @@ export default function ProfileScreen() {
     setSubmitting(true);
     try {
       await saveProfileDraft();
-      await api.post('/job-seeker/profile/submit-nsrp', { certified });
+      await api.post('/job-seeker/profile/submit-nsrp', { consents });
+      // A later resubmission (after PESO returns the profile) asks for the three statements again.
+      setConsents({ truthful: false, authorize: false, aware: false });
       setNsrp({ status: 'submitted', notes: null });
       Alert.alert(
         'Sent to PESO',
@@ -309,8 +322,8 @@ export default function ProfileScreen() {
     if (!skillsByCategory[cat]) skillsByCategory[cat] = [];
     skillsByCategory[cat].push(sk);
   }
-  const missingReferralFields = getMissingReferralFields(form, nsrpFullData, selectedSkills);
-  const requiredReferralCount = 19;
+  const missingReferralFields = getMissingReferralFields(form, nsrpFullData);
+  const requiredReferralCount = 16;
   const filledReferralCount = requiredReferralCount - missingReferralFields.length;
 
   if (loading) {
@@ -394,25 +407,24 @@ export default function ProfileScreen() {
             )}
 
             {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
-              <TouchableOpacity
-                testID="nsrp-certify"
-                onPress={() => setCertified((c) => !c)}
-                activeOpacity={0.8}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: certified }}
-                style={styles.certifyRow}
-              >
-                <View style={[styles.checkbox, certified && styles.checkboxOn]}>
-                  {certified && <Text style={styles.checkMark}>✓</Text>}
-                </View>
-                <Text style={styles.certifyText}>
-                  This is to certify that all data/information that I have provided in this form are true to the best
-                  of my knowledge. This is also to authorize the DOLE to include my profile in the PESO Employment
-                  Information System, which is a subsystem of the PhilJobNet. It is understood that my name shall be
-                  made available to employers who have access to the Registry. I am also aware that DOLE is not obliged
-                  to seek employment on my behalf.
-                </Text>
-              </TouchableOpacity>
+              <View>
+                {CONSENT_STATEMENTS.map(({ key, text }) => (
+                  <TouchableOpacity
+                    key={key}
+                    testID={`nsrp-certify-${key}`}
+                    onPress={() => setConsents((c) => ({ ...c, [key]: !c[key] }))}
+                    activeOpacity={0.8}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: consents[key] }}
+                    style={styles.certifyRow}
+                  >
+                    <View style={[styles.checkbox, consents[key] && styles.checkboxOn]}>
+                      {consents[key] && <Text style={styles.checkMark}>✓</Text>}
+                    </View>
+                    <Text style={styles.certifyText}>{text}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             )}
             {['not_submitted', 'needs_revision'].includes(nsrp.status) && (
               <Button

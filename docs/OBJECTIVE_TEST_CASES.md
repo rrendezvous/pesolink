@@ -28,7 +28,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 
 > **Deviations from V11.49** (covered in manuscript V13.5; not yet discussed with the adviser).
 > - **NSRP verification:** PESO verifies the NSRP profile once instead of reviewing each job request.
-> - **Skill minimum:** a temporary minimum of 3 matching skills (`MIN_SKILL_MATCHES`). The paper's §3.5.1 says missing skills never block a referral request. Set `MIN_SKILL_MATCHES=0` to follow the paper exactly.
+> - **Skill minimum:** a temporary minimum of 3 matching skills (`MIN_SKILL_MATCHES`). The paper's §3.5.1 says missing skills never block a referral request. Set `MIN_SKILL_MATCHES=0` to follow the paper exactly. After participant testing (which ran with 3), the cloud server runs with 0 as PESO's interim answer (2026-10-31); the code default stays 3.
 
 ---
 
@@ -43,7 +43,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-03 | Filter by job type / location (§3.5.1) | Seeker | Tap a type chip, then a location chip | List narrows to matching jobs | Pass | EMU (narrowing, 2026-10-04); EMU2 (type and location chips return the right result, and "No jobs found" when nothing matches) |
 | TC-A-04 | Job details: position info, requirements, employer details, application email (§3.5.1, §3.5.2) | Seeker | Open Junior Software Developer; then a closed post | All sections shown; "Apply Directly" card shows careers@techcorp.ph; on a post that is not accepting applications the Apply Directly card is hidden | Pass | EMU; PY test_job_details; EMU3 (`6713b03`) |
 | TC-A-05 | Closed or expired jobs are not offered | Seeker | Employer closes a job / sets the closing date to yesterday; seeker browses and tries to apply | Job hidden; apply refused with "closed" message | Pass | E-A |
-| TC-A-06 | Submit NSRP profile to PESO with certification (§3.5.1) | Seeker | Complete 19 items, tick the certification, tap Submit | Status Submitted; admins notified; refused without certification | Pass | E-N, E-F; EMU2 (full NSRP Form 1 certification text; Submit disabled until 19/19 and ticked; "Sent to PESO") |
+| TC-A-06 | Submit NSRP profile to PESO with certification (§3.5.1) | Seeker | Complete the 16 required items, tick all three certification statements, tap Submit | Status Submitted; admins notified; refused without all three statements | Pass | E-N, E-F; EMU2; EMU4 (three statements; Submit disabled with two ticked; "Sent to PESO"; admin sees "Accepted") |
 | TC-A-07 | PESO opens a submitted profile and it becomes For Review (§3.5.3) | Admin | NSRP tab, tap the seeker | Status For Review; seeker notified | Pass | E-N; EMU2 (badge changed on open; seeker's Alerts showed "NSRP Profile For Review") |
 | TC-A-08 | PESO verifies the NSRP profile (§3.5.3) | Admin | Verify NSRP Profile, then Confirm | PESO-Verified; seeker notified | Pass | E-N; EMU2 |
 | TC-A-09 | PESO returns a profile for revision; note required | Admin | Return without a note, then with a note | Refused without a note; Needs Revision with the note shown to the seeker | Pass | E-N, PY; EMU2 ("Note Required" without a note) |
@@ -51,6 +51,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-A-11 | Unverified seeker cannot apply with PESO referral | Seeker | Submitted / Needs-Revision seeker taps Apply | Refused: "must be PESO-verified" | Pass | E-N, PY |
 | TC-A-12 | No duplicate application per job | Seeker | Apply twice to the same job | Second attempt refused (409) | Pass | E-N, PY; EMU2 (reopened job shows "Applied on ..." and no Apply button) |
 | TC-A-13 | Temporary skill minimum (deviation from the paper) | Seeker | Open a job with 0 of 4 skills matched; try to apply | "Needs at least 3 matching skills" and no Apply button; API refuses | Pass | E-N; EMU |
+| TC-A-45 | Skill minimum turned off (`MIN_SKILL_MATCHES=0`, PESO interim answer) | Seeker | Server set to 0; a verified seeker with 0 of 4 skills opens the job and applies | "You can apply with PESO referral", no skill warning; application sent as PESO-Referred; skill comparison still shown | Pass | API check; EMU4 (Ana, IT Support Staff) |
 | TC-A-14 | Changed verified profile goes back to PESO; unchanged save does not | Seeker | Save with no changes; then change a field or skill | Unchanged: stays Verified. Changed: Submitted, admins and seeker notified, cannot apply until re-verified | Pass | E-N, E-F; EMU2 (both cases; the job page then shows "waiting to be checked") |
 | TC-A-15 | Employer sees only PESO-referred applicants, with NSRP summary and matched/missing skills (§3.5.2) | Employer | Open the job's applicants | Only referred applicants; contact, summary, skills, and cover letter shown | Pass | E-N; EMU2 |
 | TC-A-16 | Employer updates application status; seeker sees the timeline (§3.5.2) | Employer, seeker | Set For Interview, then Hired / Rejected | Status saved; seeker notified; timeline shows "Employer: ..." | Pass | E-N, E-A, PY; EMU2 (For Interview; seeker alert and timeline) |
@@ -86,7 +87,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-B-01 | Profile follows NSRP Form 1 sections I-VIII (§3.5.1, Req 4) | Seeker | Open Profile and scroll | Sections, labels, checklists, and table rows match the official form | Pass | EMU2; item-by-item table in QA_TRACKER_PROPOSED_UPDATES.md (re-checked 2026-10-05) |
 | TC-B-02 | Live-in civil status (form option) | Seeker | Choose Live-in and save | Saved | Pass | E-F |
 | TC-B-03 | Form rows fill the summary fields | Seeker | Save education rows | Highest level, course, and background text derived | Pass | E-F |
-| TC-B-04 | 19 required NSRP items gate submission | Seeker | Submit with missing items | Refused with a list of missing items | Pass | E-N, PY |
+| TC-B-04 | 16 required NSRP items gate submission (PESO's list, 2026-10-31) | Seeker | Submit with missing items | Refused with a list of missing items | Pass | E-N, E-F, PY |
 | TC-B-05 | Typing in the form keeps focus | Seeker | Type in a training row | All characters entered; keyboard stays | Pass | EMU |
 | TC-B-06 | OCR page 1 extraction (Req 5) | Seeker | `node scripts/ocr-accuracy.js`; on device: Gallery, page 1, Scan | Every field matches the sample image; NA fields stay blank | Pass: 48/48 fields (`ocr-accuracy.js`, page 1) | OCR; EMU2 (every field and checkbox compared with the image) |
 | TC-B-07 | OCR page 2 extraction (education, training, work, skills) | Seeker | Same script; on device: Gallery, page 2, Scan into the same review | Every field matches the sample image; NA fields stay blank | Pass: 47/47 fields (`ocr-accuracy.js`, page 2; 95/95 for both pages) | OCR; EMU2 |
@@ -104,6 +105,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 | TC-B-19 | Profile warns before leaving with unsaved changes | Seeker | Change a field; tap another tab / Back / Exit / OCR link | "Unsaved Changes": Keep Editing keeps it; Discard reloads the saved profile; no warning after a successful save or when tapping the Profile tab itself | Pass | EMU3 (`1358df1`, `d8163dc`) |
 | TC-B-20 | Date of birth as on NSRP Form 1 (mm/dd/yyyy); real, non-future dates only | Seeker, admin | Type unreal, future, incomplete, leap-day and cleared dates; Save / Submit / OCR confirm | Typed and shown as mm/dd/yyyy, stored as YYYY-MM-DD; clear messages; 02/29 only in leap years; a cleared date shows as a missing item; no minimum age | Pass | E-F (date checks); EMU3 (`9576871`) |
 | TC-B-21 | NSRP free-text answers saved in block letters (form instruction; to be confirmed with PESO) | Seeker | Type in small letters; save; first save of a profile verified before the change | Listed fields in capitals (Ñ kept); other fields as typed; a case-only first save stays PESO-Verified (v1 and v2 records); a real change re-checks | Pass | E-B (29 checks); EMU3 (`c77cb4d`, `5ebba1e`) |
+| TC-B-22 | Required items follow PESO's list; the rest is optional | Seeker, admin | Leave place of birth, employment type, looking/willing, 4Ps and all skill/training/work rows empty; then clear religion, height and email | Complete (16/16) with the optional items empty; religion, height and email listed as missing and submission refused; form marks required items with *; NSRP email starts from the login email | Pass | E-F (8 checks); EMU4 (new account: 5/16 with email pre-filled; admin "16/16 complete") |
 
 ## Objective (c): test and evaluate functionality and usability
 
@@ -111,7 +113,7 @@ Run the API tests with `cd backend && npm run test:e2e` (backend running on the 
 
 | ID | Item | Result | Evidence |
 | --- | --- | --- | --- |
-| TC-C-01 | Automated API end-to-end tests | Pass: 285/285 on 2026-10-21 (E-N 69, E-A 84, E-F 39, E-B 29, E-O 64); 221/221 on 2026-10-15; 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B, E-O |
+| TC-C-01 | Automated API end-to-end tests | Pass: 293/293 on 2026-11-03 (E-N 69, E-A 84, E-F 47, E-B 29, E-O 64); 285/285 on 2026-10-21 (E-N 69, E-A 84, E-F 39, E-B 29, E-O 64); 221/221 on 2026-10-15; 112/112 on 2026-10-05 | E-N, E-A, E-F, E-B, E-O |
 | TC-C-02 | Backend regression suites (pytest) | Pass: 61 passed, 1 skipped on 2026-10-15 (conditional test; no profile waiting at that point in the run; the pending-employer sign-in test was removed with the demo's pending employer). Earlier: 62 passed, 1 skipped. On 2026-10-05, three checks first failed: one test compared the stored email case-sensitively after the backend started lowercasing emails. The test now expects the normalized email | PY |
 | TC-C-03 | TypeScript type-check and Expo lint | Pass: 0 errors (10 older warnings) | `npx tsc --noEmit`, `npx expo lint` |
 | TC-C-04 | Database upgrade on a copy of the real database | Pass: existing decisions kept; repeat run does nothing | Copy of peso_link_misor (deleted afterwards) |

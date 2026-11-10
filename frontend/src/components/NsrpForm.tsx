@@ -174,8 +174,8 @@ export function NsrpForm({
         NSRP Form 1 (January 2017) - Department of Labor and Employment{'\n'}PESO Employment Information System Registration Form
       </Text>
       <Text style={styles.hint}>
-        Please do not leave any items unanswered. Where the paper form says to write &quot;NA&quot; (not applicable),
-        leave the item blank.
+        Items marked * are required by PESO; the rest are optional. Where the paper form says to write &quot;NA&quot;
+        (not applicable), leave the item blank.
       </Text>
       <Section title="I. Personal Information">
         {Text1({ k: "last_name", label: "Surname *", base: true, autoCapitalize: "words" })}
@@ -184,16 +184,16 @@ export function NsrpForm({
         {Text1({ k: "suffix", label: "Suffix (Ex: Sr., Jr., III, etc.)", placeholder: "Leave blank if none" })}
         <BirthDateInput testID={id('date_of_birth')} value={value.date_of_birth} onChange={(v) => setBase('date_of_birth', v)} warning={flags?.date_of_birth} />
         {Text1({ k: "place_of_birth", label: "Place of Birth", autoCapitalize: "words" })}
-        <Choice label="Sex" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
-        {Text1({ k: "religion", label: "Religion", autoCapitalize: "words" })}
-        <Choice label="Civil Status" options={CIVIL_OPTIONS} value={value.civil_status} onSelect={(v) => setBase('civil_status', v)} testID={id('civil')} />
+        <Choice label="Sex *" options={SEX_OPTIONS} value={value.gender} onSelect={(v) => setBase('gender', v)} testID={id('gender')} />
+        {Text1({ k: "religion", label: "Religion *", autoCapitalize: "words" })}
+        <Choice label="Civil Status *" options={CIVIL_OPTIONS} value={value.civil_status} onSelect={(v) => setBase('civil_status', v)} testID={id('civil')} />
 
         <SubTitle text="Present Address" />
-        {Text1({ k: "house_street", label: "House No. / Street" })}
+        {Text1({ k: "house_street", label: "House No. / Street *" })}
         {Text1({ k: "village", label: "Village" })}
-        {Text1({ k: "barangay", label: "Barangay" })}
-        {Text1({ k: "city", label: "Municipality/City", base: true, autoCapitalize: "words" })}
-        {Text1({ k: "province", label: "Province", base: true, autoCapitalize: "words" })}
+        {Text1({ k: "barangay", label: "Barangay *" })}
+        {Text1({ k: "city", label: "Municipality/City *", base: true, autoCapitalize: "words" })}
+        {Text1({ k: "province", label: "Province *", base: true, autoCapitalize: "words" })}
 
         <View style={styles.twoCol}>
           <View style={styles.col}>{Text1({ k: "tin", label: "TIN" })}</View>
@@ -203,11 +203,11 @@ export function NsrpForm({
           <View style={styles.col}>{Text1({ k: "pagibig_no", label: "PAG-IBIG No." })}</View>
           <View style={styles.col}>{Text1({ k: "philhealth_no", label: "PhilHealth No." })}</View>
         </View>
-        {Text1({ k: "height", label: "Height", placeholder: "e.g., 170 cm" })}
-        {Text1({ k: "email_address", label: "Email Address", keyboardType: "email-address" })}
+        {Text1({ k: "height", label: "Height *", placeholder: "e.g., 170 cm" })}
+        {Text1({ k: "email_address", label: "Email Address *", keyboardType: "email-address" })}
         <View style={styles.twoCol}>
           <View style={styles.col}>{Text1({ k: "landline_number", label: "Landline Number", keyboardType: "phone-pad" })}</View>
-          <View style={styles.col}>{Text1({ k: "cell_phone_number", label: "Cellphone Number", keyboardType: "phone-pad" })}</View>
+          <View style={styles.col}>{Text1({ k: "cell_phone_number", label: "Cellphone Number * (or landline)", keyboardType: "phone-pad" })}</View>
         </View>
 
         <ChipGroup
@@ -221,7 +221,7 @@ export function NsrpForm({
 
         <SubTitle text="Employment Status / Type" />
         <Choice
-          label="Employment Status"
+          label="Employment Status *"
           options={EMPLOYMENT_STATUS_OPTIONS}
           value={value.employment_status}
           // Re-tapping the current status keeps the employment type; only a real change clears it.
@@ -267,14 +267,14 @@ export function NsrpForm({
       </Section>
 
       <Section title="II. Job Preference">
-        <SubTitle text="Preferred Occupation" />
+        <SubTitle text="Preferred Occupation *" />
         {list('preferred_occupation_list', 4).map((v, i) => (
           <Input key={`occ-${i}`} testID={id(`occupation-${i + 1}`)} warning={flags?.[`preferred_occupation_list.${i}`]} label={`${i + 1}.`} value={v} onChangeText={(t) => setListItem('preferred_occupation_list', 4, i, caps(t))} autoCapitalize="characters" />
         ))}
         {legacyBox(!anyRowList(full.preferred_occupation_list), 'preferred_occupations')}
 
         <ChipGroup
-          label="Preferred Work Location"
+          label="Preferred Work Location *"
           options={[{ value: 'local', label: 'Local' }, { value: 'overseas', label: 'Overseas' }]}
           selected={['local', 'overseas'].filter((l) => workLocations.split(/[ ,]+/).includes(l))}
           onToggle={(l) => toggleWorkLocation(l as 'local' | 'overseas')}
@@ -331,7 +331,7 @@ export function NsrpForm({
         {legacyBox(!full.languages, 'language_proficiency')}
       </Section>
 
-      <Section title="IV. Educational Background">
+      <Section title="IV. Educational Background *">
         {EDUCATION_LEVELS.map((level) => {
           const row = education[level.key] || {};
           return (
@@ -463,7 +463,7 @@ function BirthDateInput({ value, onChange, testID, warning }: { value?: string; 
     <View>
       <Input
         testID={testID}
-        label="Date of Birth (mm/dd/yyyy)"
+        label="Date of Birth (mm/dd/yyyy) *"
         value={text}
         placeholder="05/15/1998"
         warning={warning}

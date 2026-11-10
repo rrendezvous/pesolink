@@ -384,7 +384,7 @@ router.get('/job-seekers/:id/profile', async (req, res) => {
       [profile.id]
     );
 
-    const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skills.length });
+    const referralRequirements = validateReferralReadiness(profile);
     const [[uploads]] = await conn.query('SELECT COUNT(*) AS count FROM uploaded_nsrp_forms WHERE job_seeker_id = ?', [profile.id]);
     const token = await reviewToken(conn, profile.id);
     await conn.commit();
@@ -724,7 +724,7 @@ router.get('/applications/:id', async (req, res) => {
       profile,
       skills,
       skill_comparison: buildSkillComparison(requiredSkills, skills),
-      referral_requirements: validateReferralReadiness(profile, { selectedSkillCount: skills.length }),
+      referral_requirements: validateReferralReadiness(profile),
       history,
     });
   } catch (err) {

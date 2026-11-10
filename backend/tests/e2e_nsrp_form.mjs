@@ -39,7 +39,7 @@ check('Ana education table present', full(p.profile).education?.secondary?.schoo
 check('summary filled from table', /TAGOLOAN NATIONAL HIGH SCHOOL/.test(full(p.profile).secondary_background || ''));
 check('address built from House No./Street + Barangay', p.profile.address === 'PUROK 1, POBLACION', p.profile.address);
 check('education level derived (highest level)', /Secondary/.test(p.profile.education_level || ''), p.profile.education_level);
-check('19/19 required items', p.referral_requirements.isComplete === true, JSON.stringify(p.referral_requirements.missing_fields));
+check('16/16 required items', p.referral_requirements.isComplete === true, JSON.stringify(p.referral_requirements.missing_fields));
 
 console.log('Saving structured rows');
 const anaProfile = p.profile;
@@ -69,9 +69,27 @@ p = (await call('GET', '/job-seeker/profile', pedro)).data.profile;
 r = await call('POST', '/job-seeker/profile', pedro, { ...p, civil_status: 'live-in', nsrp_full_data: full(p) });
 check('live-in saves', r.status === 200 && r.data.profile.civil_status === 'live-in', JSON.stringify(r.data?.profile?.civil_status));
 
+console.log('Required items follow PESO\'s list (2026-10-31)');
+p = r.data.profile;
+check('16 required items', r.data.referral_requirements?.required_count === 16, JSON.stringify(r.data.referral_requirements));
+const optionalBlank = { place_of_birth: '', employment_type: '', looking_for_work: '', willing_to_work_immediately: '', four_ps_beneficiary: '', household_id: '' };
+r = await call('POST', '/job-seeker/profile', pedro, { ...p, nsrp_full_data: { ...full(p), ...optionalBlank } });
+check('place of birth, employment type, looking/willing and 4Ps are optional', r.status === 200 && r.data.referral_requirements?.isComplete === true, JSON.stringify(r.data.referral_requirements?.missing_fields));
+check('no skill, training or work row needed', r.data.referral_requirements?.missing_fields?.length === 0, JSON.stringify(r.data.referral_requirements?.missing_fields));
+p = r.data.profile;
+r = await call('POST', '/job-seeker/profile', pedro, { ...p, nsrp_full_data: { ...full(p), religion: '', height: '', email_address: '' } });
+const missing = r.data.referral_requirements?.missing_fields || [];
+check('religion, height and email are required', ['Religion', 'Height', 'Email address'].every((f) => missing.includes(f)), JSON.stringify(missing));
+check('submit refused while they are missing', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { consents: { truthful: true, authorize: true, aware: true } })).status === 400);
+p = r.data.profile;
+r = await call('POST', '/job-seeker/profile', pedro, { ...p, nsrp_full_data: { ...full(p), religion: 'Roman Catholic', height: '168 cm', email_address: 'pedro.reyes@example.com' } });
+check('complete again after filling them', r.data.referral_requirements?.isComplete === true, JSON.stringify(r.data.referral_requirements?.missing_fields));
+
 console.log('Certification and PESO assessment');
 check('submit without certification refused', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, {})).data?.code === 'CERTIFICATION_REQUIRED');
-check('submit with certification', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { certified: true })).status === 200);
+check('submit with only two of the three statements refused', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { consents: { truthful: true, authorize: true } })).data?.code === 'CERTIFICATION_REQUIRED');
+check('old single certification flag alone refused', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { certified: true })).data?.code === 'CERTIFICATION_REQUIRED');
+check('submit with certification', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { consents: { truthful: true, authorize: true, aware: true } })).status === 200);
 const seekers = (await call('GET', '/admin/job-seekers', admin)).data.job_seekers;
 const pedroId = seekers.find((s) => s.email === 'pedro.reyes@example.com').id;
 r = await decide(admin, pedroId, {

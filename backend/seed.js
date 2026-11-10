@@ -130,7 +130,7 @@ async function run() {
       years_of_experience: 5, employment_status: 'unemployed',
       nsrp_full_data: nsrpData({
         place_of_birth: 'Gingoog City', religion: 'Roman Catholic', height: '168 cm',
-        cell_phone_number: '09191234569',
+        cell_phone_number: '09191234569', email_address: 'pedro.reyes@example.com',
         house_street: 'Sitio Bagong Silang', barangay: 'Lunao',
         employment_type: 'terminated/laidoff(local)', looking_duration: '6 months',
         four_ps_beneficiary: 'yes', household_id: '104305001-0001',
@@ -160,7 +160,7 @@ async function run() {
       years_of_experience: 1, employment_status: 'unemployed',
       nsrp_full_data: nsrpData({
         place_of_birth: 'Tagoloan, Misamis Oriental', religion: 'Roman Catholic', height: '155 cm',
-        cell_phone_number: '09201234570',
+        cell_phone_number: '09201234570', email_address: 'ana.bautista@example.com',
         house_street: 'Purok 1', barangay: 'Poblacion',
         employment_type: 'new entrant/fresh graduate', looking_duration: '1 month',
         preferred_occupation_list: ['Cook', 'Kitchen Helper', 'Baker', ''],

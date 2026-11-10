@@ -127,7 +127,7 @@ class TestJobSeeker:
                           headers=headers(seeker_token), json=payload)
         assert r.status_code in (200, 201), r.text
         body = r.json()
-        # Only 5 basic fields: the profile is saved but is NOT complete under the 19-item NSRP check
+        # Only 5 basic fields: the profile is saved but is NOT complete under the 16-item NSRP check (PESO list)
         # (the old 5-field rule was flagged in QA as too weak).
         assert body["profile"]["profile_completed"] in (0, False)
         assert body["referral_requirements"]["isComplete"] is False

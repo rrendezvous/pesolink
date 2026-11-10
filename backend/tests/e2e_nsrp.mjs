@@ -100,7 +100,7 @@ check('apply blocked 400 SKILL_MINIMUM', r.status === 400 && r.data.code === 'SK
 console.log('Not verified yet');
 r = await call('POST', '/applications', juan, { job_post_id: juniorDev.id });
 check('submitted seeker blocked 400 NSRP_NOT_VERIFIED', r.status === 400 && r.data.code === 'NSRP_NOT_VERIFIED', JSON.stringify(r.data));
-check('submit again while waiting 409', (await call('POST', '/job-seeker/profile/submit-nsrp', juan, { certified: true })).status === 409);
+check('submit again while waiting 409', (await call('POST', '/job-seeker/profile/submit-nsrp', juan, { consents: { truthful: true, authorize: true, aware: true } })).status === 409);
 check('needs-revision seeker blocked', (await call('POST', '/applications', pedro, { job_post_id: rider.id })).data?.code === 'NSRP_NOT_VERIFIED');
 const pedroId = idOf('pedro.reyes@example.com');
 check('admin cannot verify a needs-revision profile', (await call('PUT', `/admin/job-seekers/${pedroId}/nsrp-status`, admin, { nsrp_status: 'verified' })).status === 400);
@@ -147,12 +147,12 @@ console.log('Returned profile, resubmit, incomplete');
 r = await saveProfile(pedro, {}, { gsis_sss_no: '07-1234567-8' });
 check('editing a needs-revision profile keeps it Needs Revision', r.data.profile.nsrp_status === 'needs_revision');
 check('submit without certification 400', (await call('POST', '/job-seeker/profile/submit-nsrp', pedro)).data?.code === 'CERTIFICATION_REQUIRED');
-r = await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { certified: true });
+r = await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { consents: { truthful: true, authorize: true, aware: true } });
 check('Pedro resubmits', r.status === 200 && r.data.nsrp_status === 'submitted');
 check('admins told of resubmission', (await notifs(admin)).some((n) => n.title === 'NSRP Profile Resubmitted'));
 r = await saveProfile(pedro, { city: '' });
 check('waiting profile made incomplete -> Not Submitted', r.data.nsrp_status_changed_to === 'not_submitted', JSON.stringify(r.data.nsrp_status_changed_to));
-r = await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { certified: true });
+r = await call('POST', '/job-seeker/profile/submit-nsrp', pedro, { consents: { truthful: true, authorize: true, aware: true } });
 check('incomplete submit 400 with missing fields', r.status === 400 && r.data.missing_fields.includes('City/Municipality'), JSON.stringify(r.data));
 
 console.log('Final');

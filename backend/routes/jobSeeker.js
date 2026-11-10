@@ -42,7 +42,7 @@ router.get('/profile', async (req, res) => {
        WHERE jss.job_seeker_id = ?`,
       [profile.id]
     );
-    const referralRequirements = validateReferralReadiness(profile, { selectedSkillCount: skills.length });
+    const referralRequirements = validateReferralReadiness(profile);
 
     res.json({ profile, skills, referral_requirements: referralRequirements });
   } catch (err) {
@@ -138,10 +138,13 @@ router.post('/profile/submit-nsrp', async (req, res) => {
     const jsId = await getJobSeekerId(req.user.id);
     if (!jsId) return res.status(404).json({ error: 'Profile not found' });
 
-    // NSRP Form 1 certification/authorization statement.
-    if (req.body?.certified !== true) {
+    // NSRP Form 1 certification/authorization statement, as three separate consents (PESO, 2026-10-31):
+    // information is true, DOLE may include the profile in the registry, DOLE is not obliged to find work.
+    // All three are required; one certification time is stored.
+    const consents = req.body?.consents || {};
+    if (!['truthful', 'authorize', 'aware'].every((key) => consents[key] === true)) {
       return res.status(400).json({
-        error: 'Please confirm the certification that your NSRP information is true before submitting',
+        error: 'Please tick all three certification statements before submitting',
         code: 'CERTIFICATION_REQUIRED',
       });
     }

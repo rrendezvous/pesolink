@@ -34,7 +34,7 @@ The submitted system is not:
 - Search and filter jobs by keyword and job type.
 - View job details, requirements, application instructions, optional application email, employer details, and skill comparison.
 - Once PESO-verified, apply to any job with one tap (Apply with PESO Referral); the application reaches the employer as PESO-Referred.
-- Temporary rule: at least 3 of the job's required skills must match (capped at the job's own skill count; `MIN_SKILL_MATCHES`, 0 turns it off) until PESO confirms its own rule.
+- Temporary rule: at least 3 of the job's required skills must match (capped at the job's own skill count; `MIN_SKILL_MATCHES`, 0 turns it off) until PESO confirms its own rule. The cloud server runs with 0 after participant testing (PESO's interim answer, 2026-10-31).
 - Changing a verified NSRP profile sends it back to PESO for re-checking.
 - Track applications and employer status with a full status history.
 - View notifications.
@@ -75,7 +75,7 @@ PESO verifies each job seeker's NSRP profile once; verified job seekers then app
 (This replaces the per-job PESO review described in proposal V11.49; the manuscript and compliance matrix are being updated to match.)
 
 1. **NSRP-Based Profile (one per job seeker)**
-   - The job seeker completes the 19 required NSRP items (manually or with optional OCR assistance) and taps **Submit to PESO**.
+   - The job seeker completes the 16 required NSRP items (PESO's list; everything else is optional), ticks the three certification statements (manually or with optional OCR assistance) and taps **Submit to PESO**.
 
 2. **NSRP Status - updated by PESO Admin, once**
    - `not_submitted` - incomplete or not yet sent to PESO.
