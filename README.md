@@ -10,7 +10,7 @@ The submitted system is:
 
 - Android-focused mobile app using Expo React Native.
 - REST API backend using Node.js, Express, JWT authentication, and MySQL.
-- Local or LAN-demo runnable prototype for PIT/demo.
+- Runs locally or on a LAN for development and demos, and was also deployed on a cloud server (Azure virtual machine) with a release APK for the evaluation.
 - OCR-assisted NSRP encoding using Tesseract.js, with PaddleOCR (PP-OCRv5 text recognition) as an optional second reader on the same server, as the emerging technology. Both are open-source and run on the project's own backend; form images are not sent to outside services.
 
 The submitted system is not:
@@ -31,10 +31,10 @@ The submitted system is not:
 - Save selected skills for rule-based job comparison.
 - View the required NSRP fields checklist, then submit the NSRP profile to PESO for a one-time verification.
 - Browse active job postings.
-- Search and filter jobs by keyword and job type.
+- Search and filter jobs by keyword, job type, and location.
 - View job details, requirements, application instructions, optional application email, employer details, and skill comparison.
 - Once PESO-verified, apply to any job with one tap (Apply with PESO Referral); the application reaches the employer as PESO-Referred.
-- Temporary rule: at least 3 of the job's required skills must match (capped at the job's own skill count; `MIN_SKILL_MATCHES`, 0 turns it off) until PESO confirms its own rule.
+- Optional skill minimum (`MIN_SKILL_MATCHES`): the number of the job's required skills that must match before applying, capped at the job's own skill count. The code default is 3; the deployed server uses 0 (rule off) since 2026-11-03, so any PESO-verified job seeker can apply while the skill comparison is still shown.
 - Changing a verified NSRP profile sends it back to PESO for re-checking.
 - Track applications and employer status with a full status history.
 - View notifications.
@@ -65,17 +65,17 @@ The submitted system is not:
 - Verify each job seeker's NSRP profile once (Verify, or Return for Revision with a note); changed profiles come back for re-checking.
 - Deactivate job seeker accounts with invalid information.
 - Monitor job postings.
-- Soft-close job postings (undecided referral requests for the job are closed automatically).
+- Soft-close job postings (in-progress applications for the job are marked Closed and the applicants are notified; this is not a rejection, and Hired stays Hired).
 - Search and filter all applications.
-- View system notifications through the affected user accounts.
+- View PESO Admin notifications (for example, NSRP profiles submitted, resubmitted, or changed after verification).
 
 ## Important Workflow Explanation
 
 PESO verifies each job seeker's NSRP profile once; verified job seekers then apply to any job with one tap.
-(This replaces the per-job PESO review described in proposal V11.49; the manuscript and compliance matrix are being updated to match.)
+(This replaced the per-job PESO review described in proposal V11.49.)
 
 1. **NSRP-Based Profile (one per job seeker)**
-   - The job seeker completes the 19 required NSRP items (manually or with optional OCR assistance) and taps **Submit to PESO**.
+   - The job seeker completes the 19 required NSRP items (manually or with optional OCR assistance), ticks the certification, and taps **Save and Submit to PESO** (**Save and Resubmit to PESO** after a return).
 
 2. **NSRP Status - updated by PESO Admin, once**
    - `not_submitted` - incomplete or not yet sent to PESO.
@@ -86,10 +86,11 @@ PESO verifies each job seeker's NSRP profile once; verified job seekers then app
    - Any change to a verified profile (fields or skills) sends it back to `submitted` for re-checking.
 
 3. **Applying** - a verified job seeker taps **Apply with PESO Referral**. The application is created as `peso_referred` and the employer is notified right away.
-   - Temporary rule until PESO confirms its own: at least `MIN_SKILL_MATCHES` (default 3) of the job's required skills must match, capped at the job's own required-skill count. Set it to 0 to turn the rule off.
+   - Optional skill minimum: at least `MIN_SKILL_MATCHES` (code default 3) of the job's required skills must match, capped at the job's own required-skill count. The deployed server sets it to 0 (rule off).
 
 4. **Application Status - updated by the employer**
    - `for_review`, `for_interview`, `hired`, `rejected`
+   - `closed` is set by the system when the job post is closed or an account is deactivated (not a rejection).
 
 PESO-Verified, PESO-Referred, and Hired are tracking labels, not automated decisions.
 
@@ -97,8 +98,8 @@ PESO-Verified, PESO-Referred, and Hired are tracking labels, not automated decis
 
 OCR is optional and assistive only.
 
-1. Job seeker opens **Upload NSRP**.
-2. Job seeker selects or captures an NSRP form image.
+1. Job seeker opens **Profile**, then **Fill from a scanned NSRP form (OCR Assistant, optional)** (the **Scan NSRP Form** screen).
+2. Job seeker picks an image from the **Gallery** or takes one with the **Camera** (one page per image), then taps **Scan and Pre-fill**.
 3. Backend runs OCR using Tesseract.js. When the PaddleOCR helper is set up (`npm run ocr:setup`, see `docs/OCR_SETUP.md`), it gives a second reading of each written answer box, and boxes where the two readings disagree are marked for the job seeker to check.
 4. Parsed values are placed into editable review fields.
 5. Job seeker checks and edits the fields.
@@ -137,9 +138,11 @@ Notification examples:
 - NSRP profile submitted, resubmitted, or changed after verification (PESO Admin).
 - NSRP For Review / PESO-Verified / Needs Revision / sent back for re-checking (job seeker).
 - New PESO-referred applicant (employer).
-- New job posted by an approved employer.
+- New job posted by an approved employer; job post updated (applicants).
 - Application status updated.
-- Job post soft-closed by PESO Admin.
+- Application closed because the job post was closed (job seeker; "not a rejection").
+- Job post closed by PESO Admin (employer).
+- Vacancies filled (waiting applicants) and all vacancies filled (employer); nobody's status changes.
 - Account deactivated/reactivated.
 
 These are in-app notification records, not native Android push notifications.
@@ -166,23 +169,24 @@ pes-main/
     src/context/             Authentication context
   docs/
     PRD.md                   Product requirements and current behavior
-    PAPER_ALIGNMENT_NOTES.md Paper/defense wording notes
+    OBJECTIVE_TEST_CASES.md  Test cases per objective
+    OCR_SETUP.md             Setting up the optional PaddleOCR second reader
   samples/
     nsrp-ocr/                Sample NSRP images for OCR demo and smoke testing
 ```
 
 ## Reference Materials And OCR Samples
 
-The `samples/nsrp-ocr` folder contains the two NSRP images that should be kept in GitHub for OCR demo and testing.
+The `samples/nsrp-ocr` folder contains the sample NSRP images kept in GitHub for OCR demo and testing: the two typed sample pages, a sideways copy of page 1 (`nsrp-page-1-sample-sideways.jpg`), and fictional development samples in `Digital/` (digitally filled forms) and `Handwritten/` (handwritten forms). The development samples were used while improving the OCR, so they are not used as final test results.
 
-Use these files when demonstrating **Upload NSRP Form (OCR)**:
+Use these files when demonstrating the OCR scan (**Scan NSRP Form**):
 
 - `samples/nsrp-ocr/nsrp-page-1-sample.jpg`
 - `samples/nsrp-ocr/nsrp-page-2-sample.jpg`
 
 These images are used for:
 
-- Demonstrating the Upload NSRP OCR feature.
+- Demonstrating the OCR scan feature.
 - Running the backend OCR smoke test.
 - Giving group members a consistent test input.
 
@@ -192,11 +196,11 @@ Recommended OCR demo flow using the samples:
 
 1. Start the backend.
 2. Start the frontend in Expo.
-3. Log in as a job seeker.
-4. Open **Upload NSRP Form (OCR)**.
-5. Upload `samples/nsrp-ocr/nsrp-page-1-sample.jpg`.
+3. Log in as a new job seeker account (do not scan the sample into the seeded demo accounts).
+4. Open **Profile**, then **Fill from a scanned NSRP form (OCR Assistant, optional)**.
+5. Pick `samples/nsrp-ocr/nsrp-page-1-sample.jpg` and tap **Scan and Pre-fill**.
 6. Review the extracted editable fields.
-7. Upload `samples/nsrp-ocr/nsrp-page-2-sample.jpg` to merge education, training, work experience, and skills.
+7. Scan `samples/nsrp-ocr/nsrp-page-2-sample.jpg` the same way to merge education, training, work experience, and skills.
 8. Review/edit the combined fields.
 9. Tap **Confirm and Save** only after checking the data.
 
@@ -212,7 +216,7 @@ Install these before running the project:
 
 Optional:
 
-- Python and pytest, only if running the Python backend regression tests.
+- Python with `pytest` and `requests`, only if running the Python backend regression tests.
 
 ## Download Or Copy The Project
 
@@ -251,22 +255,21 @@ DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_mysql_password
-DB_NAME=peso_link_misor
+DB_NAME=peso_link_demo
 PORT=8001
 JWT_SECRET=replace_with_any_long_secret
 JWT_EXPIRES_IN=7d
 ```
 
-Initialize and seed the database:
+Create and seed a demo database (recommended):
 
 ```cmd
-node init-db.js
-node seed.js
+npm run reset-demo
 ```
 
-Warning: `init-db.js` always targets `peso_link_misor` (the name is in `schema.sql`) and drops its tables.
-For a separate demo/test database use `npm run reset-demo` instead (resets `peso_link_demo` only and seeds it).
-Run the backend against it with `DB_NAME=peso_link_demo`.
+This resets `peso_link_demo` only and seeds it. The backend uses it when `backend/.env` has `DB_NAME=peso_link_demo` (as above).
+
+Warning: `node init-db.js` always targets `peso_link_misor` (the name is in `schema.sql`) and drops its tables. Use it only on a fresh setup where that database holds nothing you need; then set `DB_NAME=peso_link_misor` in `backend/.env` and run `node seed.js`.
 
 Start the backend:
 
@@ -277,9 +280,12 @@ npm start
 Expected output:
 
 ```text
-[DB] Connected to MySQL database: peso_link_misor
 [Server] PESO-Link MisOr backend running on http://0.0.0.0:8001
+[Server] Health: http://localhost:8001/api/health
+[DB] Connected to MySQL database: peso_link_demo
 ```
+
+(If the PaddleOCR helper is set up, a line about the second reader also appears.)
 
 Health check:
 
@@ -307,11 +313,14 @@ npm install
 
 ### Android Emulator
 
-If using Android Emulator, start Expo:
+If using Android Emulator, let the emulator reach the backend on your computer, then start Expo:
 
 ```cmd
+adb reverse tcp:8001 tcp:8001
 npm run android
 ```
+
+(Inside the emulator, `localhost` is the emulator itself, so without `adb reverse` the app cannot reach the backend. Alternatively set `EXPO_PUBLIC_BACKEND_URL=http://10.0.2.2:8001` before starting Expo.)
 
 ### Physical Android Phone On Same Network
 
@@ -356,17 +365,17 @@ Tunnel mode is slower but often works when LAN mode is blocked.
 
 ## Demo Accounts
 
-These are created by `node seed.js`.
+These are created by `npm run reset-demo` (or `node seed.js`). They are for local demos only; the cloud server uses its own accounts.
 
 | Role | Email | Password | Notes |
 |---|---|---|---|
 | PESO Admin | `admin@peso.gov.ph` | `Admin@123` | Main admin account |
-| Job Seeker | `juan.cruz@example.com` | `Test@123` | Complete seeker profile |
-| Job Seeker | `maria.santos@example.com` | `Test@123` | Existing application data |
-| Job Seeker | `pedro.reyes@example.com` | `Test@123` | Trade/electrical profile |
+| Job Seeker | `juan.cruz@example.com` | `Test@123` | NSRP submitted, waiting for PESO |
+| Job Seeker | `maria.santos@example.com` | `Test@123` | PESO-verified, applied to IT Support Staff |
+| Job Seeker | `pedro.reyes@example.com` | `Test@123` | NSRP needs revision |
+| Job Seeker | `ana.bautista@example.com` | `Test@123` | PESO-verified, no applications yet |
 | Employer | `hr@techcorp.ph` | `Test@123` | Approved employer |
 | Employer | `hr@northstar.ph` | `Test@123` | Approved employer |
-| Employer | `hr@bluemountain.ph` | `Test@123` | Pending employer account |
 
 ## Recommended Demo Flow
 
@@ -388,14 +397,14 @@ These are created by `node seed.js`.
 3. Open profile.
 4. Show the PESO Verification card and required NSRP items checklist.
 5. Show selected skills.
-6. Open Upload NSRP.
-7. Scan page 1 or page 2 sample if demonstrating OCR.
+6. Open **Fill from a scanned NSRP form (OCR Assistant, optional)** from Profile.
+7. Scan page 1 or page 2 sample if demonstrating OCR (use a new job seeker account for this).
 8. Show editable OCR review fields.
 9. Open jobs.
 10. Search/filter jobs.
 11. Open job details.
 12. Show rule-based matched/missing skills.
-13. Tap Apply with PESO Referral (needs a PESO-verified NSRP profile and the temporary skill minimum).
+13. Tap Apply with PESO Referral (needs a PESO-verified NSRP profile, and the skill minimum if it is turned on).
 14. Open My Applications.
 15. Open Notifications.
 
@@ -554,9 +563,9 @@ cd backend
 npm run test:e2e
 ```
 
-OCR accuracy on the two sample NSRP pages: `node scripts/ocr-accuracy.js`.
+OCR check on the two typed sample NSRP pages (run from the `backend` folder; a regression check on that one sample, not a general accuracy rate): `node scripts/ocr-accuracy.js`.
 
-Backend regression tests, if Python and pytest are installed (a virtualenv is fine), on a freshly reset demo database:
+Backend regression tests, if Python with pytest and requests is installed (a virtualenv is fine), on a freshly reset demo database:
 
 ```cmd
 set PESO_LINK_BASE_URL=http://localhost:8001
@@ -613,7 +622,7 @@ Check:
 - MySQL service is running.
 - `backend/.env` has correct DB credentials.
 - Database exists.
-- `node init-db.js` and `node seed.js` were run.
+- `npm run reset-demo` was run (or `node init-db.js` and `node seed.js` on a fresh setup).
 
 ### Port already in use
 
