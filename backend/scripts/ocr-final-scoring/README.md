@@ -7,7 +7,7 @@ These are the two scripts used for the final handwriting OCR test (forms HW-01 t
 | `apply_corrections.js` | Makes a corrected copy of the answer key from the key checker's corrections (what the writer actually wrote). The original key is never changed. It also writes a list of every changed row. |
 | `score_tab.js` | Compares each stored OCR reading with the corrected answer key and writes one row per field (columns A to N of the "OCR scoring" sheet). |
 
-## Scoring rules (manuscript section 3.8.3, fixed before the run)
+## Scoring rules (manuscript section 3.7.3 OCR Accuracy Evaluation, fixed before the run)
 
 - **Written fields:** Exact = same characters; Normalized = differs only in letter case or extra spaces (a missing space is Wrong); Wrong; Missed (nothing read).
 - **Blank fields:** Blank kept / False fill.
