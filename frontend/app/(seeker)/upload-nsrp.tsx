@@ -418,6 +418,7 @@ export default function UploadNSRP() {
                   <Text style={styles.placeholderSub}>Select an image or use the camera to begin.</Text>
                   <View style={styles.tipBox} testID="photo-tips">
                     <Text style={styles.tipTitle}>For a clearer scan</Text>
+                    <Text style={styles.tipItem}>{'• Handwritten forms should be in CAPITAL (block) letters'}</Text>
                     <Text style={styles.tipItem}>{'• One page per photo: page 1 and page 2 separately'}</Text>
                     <Text style={styles.tipItem}>{'• Lay the form flat in good, even light (no shadow)'}</Text>
                     <Text style={styles.tipItem}>{'• Hold the phone straight above it; the whole page in view'}</Text>
